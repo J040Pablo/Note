@@ -1,0 +1,80 @@
+import React, { createContext, useContext, useMemo, useState } from "react";
+import { useColorScheme } from "react-native";
+
+export type ThemeMode = "light" | "dark" | "system";
+
+interface Theme {
+  mode: Exclude<ThemeMode, "system">;
+  colors: {
+    background: string;
+    surface: string;
+    surfaceElevated: string;
+    text: string;
+    textMuted: string;
+    primary: string;
+    accent: string;
+    border: string;
+    danger: string;
+  };
+}
+
+interface ThemeContextValue {
+  theme: Theme;
+  mode: ThemeMode;
+  setMode: (mode: ThemeMode) => void;
+}
+
+const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
+
+const lightPalette: Theme["colors"] = {
+  background: "#f9fafb",
+  surface: "#ffffff",
+  surfaceElevated: "#f3f4f6",
+  text: "#0f172a",
+  textMuted: "#6b7280",
+  primary: "#6366f1",
+  accent: "#22c55e",
+  border: "#e5e7eb",
+  danger: "#ef4444"
+};
+
+const darkPalette: Theme["colors"] = {
+  background: "#020617",
+  surface: "#020617",
+  surfaceElevated: "#0f172a",
+  text: "#e5e7eb",
+  textMuted: "#9ca3af",
+  primary: "#818cf8",
+  accent: "#4ade80",
+  border: "#1f2937",
+  danger: "#f97373"
+};
+
+export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const system = useColorScheme();
+  const [mode, setMode] = useState<ThemeMode>("system");
+
+  const theme: Theme = useMemo(() => {
+    const effectiveMode: "light" | "dark" =
+      mode === "system" ? (system === "dark" ? "dark" : "light") : mode;
+    return {
+      mode: effectiveMode,
+      colors: effectiveMode === "dark" ? darkPalette : lightPalette
+    };
+  }, [mode, system]);
+
+  return (
+    <ThemeContext.Provider value={{ theme, mode, setMode }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+};
+
+export const useTheme = () => {
+  const ctx = useContext(ThemeContext);
+  if (!ctx) {
+    throw new Error("useTheme must be used within ThemeProvider");
+  }
+  return ctx;
+};
+
