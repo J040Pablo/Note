@@ -9,6 +9,7 @@ import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { useTheme } from "@hooks/useTheme";
 import { useAppStore } from "@store/useAppStore";
 import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
+import { addRecentOpen, getPinnedItems, savePinnedItems } from "@services/appMetaService";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { FoldersStackParamList } from "@navigation/RootNavigator";
@@ -24,6 +25,10 @@ const FoldersScreen: React.FC = () => {
   const setFolders = useAppStore((s) => s.setFolders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);
   const removeFolder = useAppStore((s) => s.removeFolder);
+  const pinnedItems = useAppStore((s) => s.pinnedItems);
+  const togglePinned = useAppStore((s) => s.togglePinned);
+  const setPinnedItems = useAppStore((s) => s.setPinnedItems);
+  const setRecentItems = useAppStore((s) => s.setRecentItems);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -34,8 +39,10 @@ const FoldersScreen: React.FC = () => {
     (async () => {
       const rootFolders = await getFoldersByParent(null);
       setFolders(rootFolders);
+      const pinned = await getPinnedItems();
+      setPinnedItems(pinned);
     })();
-  }, [setFolders]);
+  }, [setFolders, setPinnedItems]);
 
   const rootFolders = Object.values(folders)
     .filter((f) => f.parentId == null)
@@ -61,7 +68,11 @@ const FoldersScreen: React.FC = () => {
               onLongPress={() => setSelectedFolder(item)}
               delayLongPress={260}
               onPress={() =>
-                navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] })
+                (async () => {
+                  const nextRecent = await addRecentOpen("folder", item.id);
+                  setRecentItems(nextRecent);
+                  navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
+                })()
               }
               style={[styles.folderRow, { backgroundColor: theme.colors.card }]}
             >
@@ -84,6 +95,22 @@ const FoldersScreen: React.FC = () => {
         title={selectedFolder?.name}
         onClose={() => setSelectedFolder(null)}
         actions={[
+          {
+            key: "pin",
+            label:
+              selectedFolder && pinnedItems.some((x) => x.type === "folder" && x.id === selectedFolder.id)
+                ? "Unpin"
+                : "Pin",
+            icon:
+              selectedFolder && pinnedItems.some((x) => x.type === "folder" && x.id === selectedFolder.id)
+                ? "pin"
+                : "pin-outline",
+            onPress: async () => {
+              if (!selectedFolder) return;
+              const next = togglePinned("folder", selectedFolder.id);
+              await savePinnedItems(next);
+            }
+          },
           {
             key: "edit",
             label: "Edit",

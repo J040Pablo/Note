@@ -40,6 +40,11 @@ export const getFoldersByParent = async (parentId: ID | null): Promise<Folder[]>
   return getFolders(parentId);
 };
 
+export const getAllFolders = async (): Promise<Folder[]> => {
+  const db = await getDb();
+  return db.getAllAsync<Folder>("SELECT * FROM folders ORDER BY name");
+};
+
 export const updateFolder = async (folder: Folder): Promise<Folder> => {
   const db = await getDb();
   await db.runAsync(

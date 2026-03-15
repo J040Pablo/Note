@@ -71,6 +71,11 @@ export const getRecentNotes = async (limit = 5): Promise<Note[]> => {
   return rows;
 };
 
+export const getAllNotes = async (): Promise<Note[]> => {
+  const db = await getDb();
+  return db.getAllAsync<Note>("SELECT * FROM notes ORDER BY updatedAt DESC");
+};
+
 export const deleteNote = async (noteId: ID): Promise<void> => {
   const db = await getDb();
   await db.runAsync("DELETE FROM notes WHERE id = ?", noteId);

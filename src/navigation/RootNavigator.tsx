@@ -23,7 +23,7 @@ export type FoldersStackParamList = {
 export type TabsParamList = {
   Home: undefined;
   Folders: NavigatorScreenParams<FoldersStackParamList> | undefined;
-  Tasks: undefined;
+  Tasks: { focusTaskId?: string; dateKey?: string } | undefined;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();

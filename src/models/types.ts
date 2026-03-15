@@ -33,6 +33,22 @@ export interface Task {
   completedDates?: string[];
 }
 
+export type PinnedItemType = "folder" | "note" | "task";
+
+export interface PinnedItem {
+  type: PinnedItemType;
+  id: ID;
+  pinnedAt: number;
+}
+
+export type RecentItemType = "folder" | "note";
+
+export interface RecentItem {
+  type: RecentItemType;
+  id: ID;
+  openedAt: number;
+}
+
 export interface Attachment {
   id: ID;
   uri: string;

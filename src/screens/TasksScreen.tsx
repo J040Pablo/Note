@@ -7,6 +7,7 @@ import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { useTheme } from "@hooks/useTheme";
 import { useTasksStore } from "@store/useTasksStore";
+import { useAppStore } from "@store/useAppStore";
 import {
   createTask,
   deleteTask,
@@ -20,8 +21,14 @@ import {
   weekdayFromDateKey,
   TaskPriority
 } from "@services/tasksService";
+import { getPinnedItems, savePinnedItems } from "@services/appMetaService";
 import { Ionicons } from "@expo/vector-icons";
 import type { Task } from "@models/types";
+import { useRoute } from "@react-navigation/native";
+import type { RouteProp } from "@react-navigation/native";
+import type { TabsParamList } from "@navigation/RootNavigator";
+
+type TasksRoute = RouteProp<TabsParamList, "Tasks">;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -42,10 +49,14 @@ const sameMonth = (a: Date, b: Date) =>
 
 const TasksScreen: React.FC = () => {
   const { theme } = useTheme();
+  const route = useRoute<TasksRoute>();
   const tasksMap = useTasksStore((s) => s.tasks);
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
   const removeTask = useTasksStore((s) => s.removeTask);
+  const pinnedItems = useAppStore((s) => s.pinnedItems);
+  const togglePinned = useAppStore((s) => s.togglePinned);
+  const setPinnedItems = useAppStore((s) => s.setPinnedItems);
 
   const [newText, setNewText] = useState("");
   const [priority, setPriority] = useState<TaskPriority>(1);
@@ -62,8 +73,27 @@ const TasksScreen: React.FC = () => {
     (async () => {
       const all = await getAllTasks();
       setTasks(all);
+      const pinned = await getPinnedItems();
+      setPinnedItems(pinned);
     })();
-  }, [setTasks]);
+  }, [setPinnedItems, setTasks]);
+
+  useEffect(() => {
+    const focusTaskId = route.params?.focusTaskId;
+    const targetDate = route.params?.dateKey;
+    if (targetDate) {
+      setSelectedDate(targetDate);
+      return;
+    }
+    if (!focusTaskId) return;
+    const task = tasksMap[focusTaskId];
+    if (!task) return;
+    if (task.scheduledDate) {
+      setSelectedDate(task.scheduledDate);
+    } else {
+      setSelectedDate(toDateKey(new Date()));
+    }
+  }, [route.params?.dateKey, route.params?.focusTaskId, tasksMap]);
 
   const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
 
@@ -310,6 +340,22 @@ const TasksScreen: React.FC = () => {
         title={selectedTask?.text}
         onClose={() => setSelectedTask(null)}
         actions={[
+          {
+            key: "pin",
+            label:
+              selectedTask && pinnedItems.some((x) => x.type === "task" && x.id === selectedTask.id)
+                ? "Unpin"
+                : "Pin",
+            icon:
+              selectedTask && pinnedItems.some((x) => x.type === "task" && x.id === selectedTask.id)
+                ? "pin"
+                : "pin-outline",
+            onPress: async () => {
+              if (!selectedTask) return;
+              const next = togglePinned("task", selectedTask.id);
+              await savePinnedItems(next);
+            }
+          },
           {
             key: "edit",
             label: "Edit",

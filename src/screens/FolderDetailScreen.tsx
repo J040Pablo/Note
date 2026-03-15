@@ -16,9 +16,15 @@ import { useAppStore } from "@store/useAppStore";
 import { useNotesStore } from "@store/useNotesStore";
 import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
 import { deleteNote, getNotesByFolder, updateNote } from "@services/notesService";
+import { addRecentOpen, getPinnedItems, savePinnedItems } from "@services/appMetaService";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Folder, Note } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
+
+const firstLine = (text: string): string => {
+  const line = (text || "").split(/\r?\n/).find((x) => x.trim().length > 0) ?? "";
+  return line.length > 80 ? line.slice(0, 77).trimEnd() + "…" : line;
+};
 
 type FolderDetailRoute = RouteProp<FoldersStackParamList, "FolderDetail">;
 type Nav = CompositeNavigationProp<
@@ -35,6 +41,10 @@ const FolderDetailScreen: React.FC = () => {
   const folders = useAppStore((s) => s.folders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);
   const removeFolder = useAppStore((s) => s.removeFolder);
+  const pinnedItems = useAppStore((s) => s.pinnedItems);
+  const togglePinned = useAppStore((s) => s.togglePinned);
+  const setPinnedItems = useAppStore((s) => s.setPinnedItems);
+  const setRecentItems = useAppStore((s) => s.setRecentItems);
   const notes = useNotesStore((s) => s.notes);
   const setNotes = useNotesStore((s) => s.setNotes);
   const upsertNote = useNotesStore((s) => s.upsertNote);
@@ -56,8 +66,10 @@ const FolderDetailScreen: React.FC = () => {
       ]);
       childrenFolders.forEach(upsertFolder);
       setNotes(folderNotes);
+      const pinned = await getPinnedItems();
+      setPinnedItems(pinned);
     })();
-  }, [folderId, setNotes, upsertFolder]);
+  }, [folderId, setNotes, setPinnedItems, upsertFolder]);
 
   const trailIds = useMemo(() => {
     if (routeTrail && routeTrail.length > 0) {
@@ -207,7 +219,13 @@ const FolderDetailScreen: React.FC = () => {
               onLongPress={() => setSelectedFolder(item)}
               delayLongPress={260}
               style={styles.row}
-              onPress={() => navigation.push("FolderDetail", { folderId: item.id, trail: [...trailIds, item.id] })}
+              onPress={() =>
+                (async () => {
+                  const nextRecent = await addRecentOpen("folder", item.id);
+                  setRecentItems(nextRecent);
+                  navigation.push("FolderDetail", { folderId: item.id, trail: [...trailIds, item.id] });
+                })()
+              }
             >
               <FolderIcon color={item.color} fallbackColor={theme.colors.primary} size={18} />
               <Text>{item.name}</Text>
@@ -232,10 +250,21 @@ const FolderDetailScreen: React.FC = () => {
               onLongPress={() => setSelectedNote(item)}
               delayLongPress={260}
               style={styles.row}
-              onPress={() => navigation.navigate("NoteEditor", { noteId: item.id })}
+              onPress={() =>
+                (async () => {
+                  const nextRecent = await addRecentOpen("note", item.id);
+                  setRecentItems(nextRecent);
+                  navigation.navigate("NoteEditor", { noteId: item.id });
+                })()
+              }
             >
               <View>
                 <Text>{item.title}</Text>
+                {!!firstLine(item.content) && (
+                  <Text muted variant="caption" numberOfLines={1}>
+                    {firstLine(item.content)}
+                  </Text>
+                )}
                 <Text muted variant="caption">
                   {new Date(item.updatedAt).toLocaleString()}
                 </Text>
@@ -266,6 +295,22 @@ const FolderDetailScreen: React.FC = () => {
         title={selectedFolder?.name}
         onClose={() => setSelectedFolder(null)}
         actions={[
+          {
+            key: "pin",
+            label:
+              selectedFolder && pinnedItems.some((x) => x.type === "folder" && x.id === selectedFolder.id)
+                ? "Unpin"
+                : "Pin",
+            icon:
+              selectedFolder && pinnedItems.some((x) => x.type === "folder" && x.id === selectedFolder.id)
+                ? "pin"
+                : "pin-outline",
+            onPress: async () => {
+              if (!selectedFolder) return;
+              const next = togglePinned("folder", selectedFolder.id);
+              await savePinnedItems(next);
+            }
+          },
           {
             key: "edit",
             label: "Edit",
@@ -311,6 +356,22 @@ const FolderDetailScreen: React.FC = () => {
         title={selectedNote?.title || "Note"}
         onClose={() => setSelectedNote(null)}
         actions={[
+          {
+            key: "pin",
+            label:
+              selectedNote && pinnedItems.some((x) => x.type === "note" && x.id === selectedNote.id)
+                ? "Unpin"
+                : "Pin",
+            icon:
+              selectedNote && pinnedItems.some((x) => x.type === "note" && x.id === selectedNote.id)
+                ? "pin"
+                : "pin-outline",
+            onPress: async () => {
+              if (!selectedNote) return;
+              const next = togglePinned("note", selectedNote.id);
+              await savePinnedItems(next);
+            }
+          },
           {
             key: "edit",
             label: "Edit",
