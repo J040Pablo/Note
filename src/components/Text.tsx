@@ -25,7 +25,7 @@ export const Text: React.FC<TextProps> = ({
       {...rest}
       style={[
         {
-          color: muted ? theme.colors.textMuted : theme.colors.text,
+          color: muted ? theme.colors.textSecondary : theme.colors.textPrimary,
           fontSize,
           fontWeight
         },

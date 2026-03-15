@@ -25,6 +25,26 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     database.withTransactionAsync
       ? database.withTransactionAsync(async () => {
           await database.execAsync?.(createTablesSQL);
+          try {
+            await database.execAsync?.("ALTER TABLE folders ADD COLUMN color TEXT;");
+          } catch {
+            // Column already exists.
+          }
+          try {
+            await database.execAsync?.("ALTER TABLE tasks ADD COLUMN scheduledDate TEXT;");
+          } catch {
+            // Column already exists.
+          }
+          try {
+            await database.execAsync?.("ALTER TABLE tasks ADD COLUMN repeatDays TEXT NOT NULL DEFAULT '[]';");
+          } catch {
+            // Column already exists.
+          }
+          try {
+            await database.execAsync?.("ALTER TABLE tasks ADD COLUMN completedDates TEXT NOT NULL DEFAULT '[]';");
+          } catch {
+            // Column already exists.
+          }
         })
           .then(() => setReady(true))
           .catch((e) => {

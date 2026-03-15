@@ -26,11 +26,11 @@ export const MarkdownEditor: React.FC<MarkdownEditorProps> = ({
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={theme.colors.textMuted}
+        placeholderTextColor={theme.colors.textSecondary}
         style={[
           styles.input,
           {
-            color: theme.colors.text
+            color: theme.colors.textPrimary
           }
         ]}
       />

@@ -24,7 +24,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({ label, onPress, st
         style
       ]}
     >
-      <Text style={styles.label}>{label}</Text>
+      <Text style={[styles.label, { color: theme.colors.onPrimary }]}>{label}</Text>
     </Pressable>
   );
 };
@@ -38,7 +38,6 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   label: {
-    color: "white",
     fontWeight: "600"
   }
 });
