@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Modal, View, StyleSheet, TextInput, Pressable } from "react-native";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { Text } from "./Text";
-import { getFolderColorHex } from "@utils/folderColors";
+import { FOLDER_COLOR_OPTIONS, getFolderColorHex } from "@utils/folderColors";
 
 interface FolderNameModalProps {
   visible: boolean;
@@ -26,15 +26,6 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
   const { theme } = useTheme();
   const [name, setName] = useState("");
   const [color, setColor] = useState<string | null>("blue");
-
-  const colorOptions: { key: string; label: string; value: string }[] = [
-    { key: "blue", label: "Blue", value: "blue" },
-    { key: "green", label: "Green", value: "green" },
-    { key: "purple", label: "Purple", value: "purple" },
-    { key: "orange", label: "Orange", value: "orange" },
-    { key: "red", label: "Red", value: "red" },
-    { key: "yellow", label: "Yellow", value: "yellow" }
-  ];
 
   useEffect(() => {
     if (visible) {
@@ -68,7 +59,7 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
 
           <Text style={{ marginTop: spacing.md, marginBottom: spacing.xs }}>Folder color</Text>
           <View style={styles.colorRow}>
-            {colorOptions.map((option) => {
+            {FOLDER_COLOR_OPTIONS.map((option) => {
               const isSelected = color === option.value;
               const swatchColor = getFolderColorHex(option.value, theme.colors.primary);
 
@@ -82,7 +73,7 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
                     styles.colorSwatch,
                     {
                       backgroundColor: swatchColor,
-                      borderColor: isSelected ? theme.colors.onPrimary : "transparent",
+                      borderColor: isSelected ? theme.colors.textPrimary : theme.colors.border,
                       transform: [{ scale: isSelected ? 1.05 : 1 }]
                     }
                   ]}

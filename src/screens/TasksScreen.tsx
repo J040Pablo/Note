@@ -24,11 +24,13 @@ import {
 import { getPinnedItems, savePinnedItems } from "@services/appMetaService";
 import { Ionicons } from "@expo/vector-icons";
 import type { Task } from "@models/types";
-import { useRoute } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 import type { TabsParamList } from "@navigation/RootNavigator";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 
 type TasksRoute = RouteProp<TabsParamList, "Tasks">;
+type TasksNav = BottomTabNavigationProp<TabsParamList, "Tasks">;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
@@ -50,6 +52,7 @@ const sameMonth = (a: Date, b: Date) =>
 const TasksScreen: React.FC = () => {
   const { theme } = useTheme();
   const route = useRoute<TasksRoute>();
+  const navigation = useNavigation<TasksNav>();
   const tasksMap = useTasksStore((s) => s.tasks);
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
@@ -81,6 +84,11 @@ const TasksScreen: React.FC = () => {
   useEffect(() => {
     const focusTaskId = route.params?.focusTaskId;
     const targetDate = route.params?.dateKey;
+    if (route.params?.openCreate) {
+      openCreateModal();
+      navigation.setParams({ openCreate: undefined });
+      return;
+    }
     if (targetDate) {
       setSelectedDate(targetDate);
       return;
@@ -93,7 +101,7 @@ const TasksScreen: React.FC = () => {
     } else {
       setSelectedDate(toDateKey(new Date()));
     }
-  }, [route.params?.dateKey, route.params?.focusTaskId, tasksMap]);
+  }, [navigation, route.params?.dateKey, route.params?.focusTaskId, route.params?.openCreate, tasksMap]);
 
   const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
 

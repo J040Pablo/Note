@@ -3,6 +3,7 @@
     "name": "Life Organizer",
     "slug": "life-organizer",
     "version": "0.1.0",
+    "scheme": "lifeorganizer",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "splash": {
@@ -17,7 +18,32 @@
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
       },
-      "package": "com.example.lifeorganizer"
+      "package": "com.example.lifeorganizer",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": false,
+          "category": ["BROWSABLE", "DEFAULT"],
+          "data": [
+            {
+              "scheme": "lifeorganizer",
+              "host": "import-file"
+            },
+            {
+              "mimeType": "application/pdf"
+            },
+            {
+              "mimeType": "image/*"
+            },
+            {
+              "mimeType": "application/msword"
+            },
+            {
+              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            }
+          ]
+        }
+      ]
     },
     "web": {
       "bundler": "metro"

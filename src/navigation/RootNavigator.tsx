@@ -3,16 +3,24 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import HomeScreen from "@screens/HomeScreen";
+import SearchScreen from "@screens/SearchScreen";
 import FoldersScreen from "@screens/FoldersScreen";
 import FolderDetailScreen from "@screens/FolderDetailScreen";
 import NoteEditorScreen from "@screens/NoteEditorScreen";
+import PdfViewerScreen from "@screens/PdfViewerScreen";
+import ImageViewerScreen from "@screens/ImageViewerScreen";
+import SaveSharedFileScreen from "@screens/SaveSharedFileScreen";
 import TasksScreen from "@screens/TasksScreen";
+import SettingsScreen from "@screens/SettingsScreen";
 import { useTheme } from "@hooks/useTheme";
 import { Ionicons } from "@expo/vector-icons";
 
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabsParamList> | undefined;
   NoteEditor: { noteId?: string; folderId?: string | null };
+  PdfViewer: { path: string; name: string };
+  ImageViewer: { path: string; name: string };
+  SaveSharedFile: { uri: string; name?: string; mimeType?: string | null };
 };
 
 export type FoldersStackParamList = {
@@ -22,8 +30,10 @@ export type FoldersStackParamList = {
 
 export type TabsParamList = {
   Home: undefined;
+  Search: undefined;
   Folders: NavigatorScreenParams<FoldersStackParamList> | undefined;
-  Tasks: { focusTaskId?: string; dateKey?: string } | undefined;
+  Tasks: { focusTaskId?: string; dateKey?: string; openCreate?: boolean } | undefined;
+  Settings: undefined;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -73,15 +83,19 @@ const TabsNavigator = () => {
         tabBarIcon: ({ color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = "home";
           if (route.name === "Home") iconName = "home";
+          if (route.name === "Search") iconName = "search";
           if (route.name === "Folders") iconName = "folder";
           if (route.name === "Tasks") iconName = "checkmark-done";
+          if (route.name === "Settings") iconName = "settings";
           return <Ionicons name={iconName} size={size} color={color} />;
         }
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Search" component={SearchScreen} />
       <Tab.Screen name="Folders" component={FoldersStackNavigator} />
       <Tab.Screen name="Tasks" component={TasksScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
 };
@@ -114,8 +128,24 @@ const RootNavigator = () => {
         component={NoteEditorScreen}
         options={{
           headerShown: false,
-          title: "Note"
+          title: "Note",
+          animation: "fade_from_bottom"
         }}
+      />
+      <RootStack.Screen
+        name="PdfViewer"
+        component={PdfViewerScreen}
+        options={{ title: "PDF", animation: "slide_from_right" }}
+      />
+      <RootStack.Screen
+        name="ImageViewer"
+        component={ImageViewerScreen}
+        options={{ title: "Image", animation: "fade" }}
+      />
+      <RootStack.Screen
+        name="SaveSharedFile"
+        component={SaveSharedFileScreen}
+        options={{ title: "Save File", animation: "slide_from_bottom" }}
       />
     </RootStack.Navigator>
   );

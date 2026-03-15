@@ -33,6 +33,17 @@ export interface Task {
   completedDates?: string[];
 }
 
+export type AppFileType = "pdf" | "image" | "document";
+
+export interface AppFile {
+  id: ID;
+  name: string;
+  type: AppFileType;
+  path: string;
+  createdAt: number;
+  parentFolderId: ID | null;
+}
+
 export type PinnedItemType = "folder" | "note" | "task";
 
 export interface PinnedItem {

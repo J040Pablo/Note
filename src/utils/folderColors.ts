@@ -1,11 +1,27 @@
-export const FOLDER_COLOR_HEX: Record<string, string> = {
-  blue: "#3B82F6",
-  green: "#22C55E",
-  purple: "#8B5CF6",
-  orange: "#F97316",
-  red: "#EF4444",
-  yellow: "#FACC15"
-};
+export interface FolderColorOption {
+  key: string;
+  label: string;
+  value: string;
+  hex: string;
+}
+
+export const FOLDER_COLOR_OPTIONS: FolderColorOption[] = [
+  { key: "blue", label: "Blue", value: "blue", hex: "#3B82F6" },
+  { key: "green", label: "Green", value: "green", hex: "#22C55E" },
+  { key: "purple", label: "Purple", value: "purple", hex: "#8B5CF6" },
+  { key: "orange", label: "Orange", value: "orange", hex: "#F97316" },
+  { key: "red", label: "Red", value: "red", hex: "#EF4444" },
+  { key: "yellow", label: "Yellow", value: "yellow", hex: "#FACC15" },
+  { key: "indigo", label: "Indigo", value: "indigo", hex: "#6366F1" },
+  { key: "pink", label: "Pink", value: "pink", hex: "#E879F9" },
+  { key: "sky", label: "Sky", value: "sky", hex: "#0EA5E9" },
+  { key: "white", label: "White", value: "white", hex: "#FFFFFF" },
+  { key: "black", label: "Black", value: "black", hex: "#000000" }
+];
+
+export const FOLDER_COLOR_HEX: Record<string, string> = Object.fromEntries(
+  FOLDER_COLOR_OPTIONS.map((option) => [option.value, option.hex])
+);
 
 export const getFolderColorHex = (color: string | null | undefined, fallback: string): string => {
   if (!color) return fallback;

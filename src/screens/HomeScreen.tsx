@@ -1,32 +1,27 @@
-import React, { memo, useCallback, useMemo, useState } from "react";
-import { View, StyleSheet, Pressable, FlatList, TextInput } from "react-native";
+import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, StyleSheet, Pressable, FlatList, Animated } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { Text } from "@components/Text";
 import { useTheme, spacing } from "@hooks/useTheme";
+import { FolderNameModal } from "@components/FolderNameModal";
 import { useNotesStore } from "@store/useNotesStore";
 import { useTasksStore } from "@store/useTasksStore";
 import { useAppStore } from "@store/useAppStore";
+import { useFilesStore } from "@store/useFilesStore";
 import { getAllTasks, isTaskCompletedForDate, shouldAppearOnDate, toDateKey, toggleTaskForDate } from "@services/tasksService";
 import { getAllNotes } from "@services/notesService";
-import { getAllFolders } from "@services/foldersService";
+import { createFolder, getAllFolders } from "@services/foldersService";
+import { getAllFiles } from "@services/filesService";
 import { getPinnedItems, getRecentItems, savePinnedItems, saveRecentItems } from "@services/appMetaService";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Task, Note, Folder, ID, PinnedItemType } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import { FolderIcon } from "@components/FolderIcon";
+import { ContextActionMenu } from "@components/ContextActionMenu";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
-
-type SearchResultType = "folder" | "note" | "task";
-
-type SearchResult = {
-  id: string;
-  type: SearchResultType;
-  title: string;
-  subtitle?: string;
-};
 
 const firstLine = (text: string): string => {
   const line = (text || "").split(/\r?\n/).find((x) => x.trim().length > 0) ?? "";
@@ -54,6 +49,7 @@ const HomeScreen: React.FC = () => {
 
   const foldersMap = useAppStore((s) => s.folders);
   const setFolders = useAppStore((s) => s.setFolders);
+  const upsertFolder = useAppStore((s) => s.upsertFolder);
   const pinnedItems = useAppStore((s) => s.pinnedItems);
   const recentItems = useAppStore((s) => s.recentItems);
   const setPinnedItems = useAppStore((s) => s.setPinnedItems);
@@ -63,27 +59,36 @@ const HomeScreen: React.FC = () => {
 
   const notesMap = useNotesStore((s) => s.notes);
   const setNotes = useNotesStore((s) => s.setNotes);
+  const filesMap = useFilesStore((s) => s.files);
+  const setFiles = useFilesStore((s) => s.setFiles);
 
   const tasksMap = useTasksStore((s) => s.tasks);
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
 
   const [search, setSearch] = useState("");
+  const [selectedPinned, setSelectedPinned] = useState<{ type: PinnedItemType; id: ID; label: string } | null>(null);
+  const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+  const [fabOpen, setFabOpen] = useState(false);
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const fabAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
-    const [folders, notes, tasks, pinned, recent] = await Promise.all([
+    const [folders, notes, tasks, files, pinned, recent] = await Promise.all([
       getAllFolders(),
       getAllNotes(),
       getAllTasks(),
+      getAllFiles(),
       getPinnedItems(),
       getRecentItems()
     ]);
     setFolders(folders);
     setNotes(notes);
     setTasks(tasks);
+    setFiles(files);
     setPinnedItems(pinned);
     setRecentItems(recent);
-  }, [setFolders, setNotes, setPinnedItems, setRecentItems, setTasks]);
+  }, [setFiles, setFolders, setNotes, setPinnedItems, setRecentItems, setTasks]);
 
   useFocusEffect(
     useCallback(() => {
@@ -94,6 +99,7 @@ const HomeScreen: React.FC = () => {
   const folders = useMemo(() => Object.values(foldersMap), [foldersMap]);
   const notes = useMemo(() => Object.values(notesMap), [notesMap]);
   const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
+  const files = useMemo(() => Object.values(filesMap), [filesMap]);
 
   const todayKey = toDateKey(new Date());
 
@@ -153,27 +159,54 @@ const HomeScreen: React.FC = () => {
       .filter(Boolean) as Array<{ type: "folder" | "note"; id: ID; openedAt: number; label: string; subtitle?: string }>;
   }, [foldersMap, notesMap, recentItems]);
 
-  const searchResults = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [] as SearchResult[];
 
-    const folderResults: SearchResult[] = folders
-      .filter((f) => f.name.toLowerCase().includes(q))
-      .slice(0, 6)
-      .map((f) => ({ id: f.id, type: "folder", title: f.name }));
+  const recurringCount = useMemo(
+    () => todaysTasks.filter((task) => (task.repeatDays?.length ?? 0) > 0).length,
+    [todaysTasks]
+  );
 
-    const noteResults: SearchResult[] = notes
-      .filter((n) => `${n.title}\n${n.content}`.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((n) => ({ id: n.id, type: "note", title: n.title || "Untitled", subtitle: firstLine(n.content) }));
+  const completedToday = useMemo(
+    () => todaysTasks.filter((task) => isTaskCompletedForDate(task, todayKey)).length,
+    [todaysTasks, todayKey]
+  );
 
-    const taskResults: SearchResult[] = tasks
-      .filter((t) => t.text.toLowerCase().includes(q))
-      .slice(0, 8)
-      .map((t) => ({ id: t.id, type: "task", title: t.text }));
+  const todayProgress = todaysTasks.length === 0 ? 0 : completedToday / todaysTasks.length;
 
-    return [...folderResults, ...noteResults, ...taskResults];
-  }, [folders, notes, search, tasks]);
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: todayProgress,
+      duration: 220,
+      useNativeDriver: false
+    }).start();
+  }, [progressAnim, todayProgress]);
+
+  const openFab = useCallback(() => {
+    setFabOpen(true);
+    Animated.spring(fabAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 24,
+      bounciness: 6
+    }).start();
+  }, [fabAnim]);
+
+  const closeFab = useCallback(() => {
+    Animated.timing(fabAnim, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: true
+    }).start(({ finished }) => {
+      if (finished) setFabOpen(false);
+    });
+  }, [fabAnim]);
+
+  const toggleFab = useCallback(() => {
+    if (fabOpen) {
+      closeFab();
+    } else {
+      openFab();
+    }
+  }, [closeFab, fabOpen, openFab]);
 
   const handleOpenFolder = useCallback(
     async (folderId: ID) => {
@@ -216,21 +249,6 @@ const HomeScreen: React.FC = () => {
     [navigation, tasksMap]
   );
 
-  const handleSearchPress = useCallback(
-    async (result: SearchResult) => {
-      if (result.type === "folder") {
-        await handleOpenFolder(result.id);
-        return;
-      }
-      if (result.type === "note") {
-        await handleOpenNote(result.id);
-        return;
-      }
-      handleOpenTask(result.id);
-    },
-    [handleOpenFolder, handleOpenNote, handleOpenTask]
-  );
-
   const handleTogglePin = useCallback(
     async (type: PinnedItemType, id: ID) => {
       const next = togglePinned(type, id);
@@ -243,6 +261,29 @@ const HomeScreen: React.FC = () => {
     () => ["pinned", "today", "recentNotes", "folders", "recent"],
     []
   );
+
+  const folderPreviewCounts = useMemo(() => {
+    const byFolder: Record<string, { subfolders: number; notes: number; files: number }> = {};
+    for (const folder of folders) {
+      byFolder[folder.id] = { subfolders: 0, notes: 0, files: 0 };
+    }
+    for (const folder of folders) {
+      if (folder.parentId && byFolder[folder.parentId]) {
+        byFolder[folder.parentId].subfolders += 1;
+      }
+    }
+    for (const note of notes) {
+      if (note.folderId && byFolder[note.folderId]) {
+        byFolder[note.folderId].notes += 1;
+      }
+    }
+    for (const file of files) {
+      if (file.parentFolderId && byFolder[file.parentFolderId]) {
+        byFolder[file.parentFolderId].files += 1;
+      }
+    }
+    return byFolder;
+  }, [files, folders, notes]);
 
   return (
     <SafeAreaView
@@ -257,61 +298,6 @@ const HomeScreen: React.FC = () => {
         ListHeaderComponent={
           <View style={hsStyles.header}>
             <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
-            <View style={[hsStyles.searchBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-              <Ionicons name="search-outline" size={18} color={theme.colors.textSecondary} />
-              <TextInput
-                value={search}
-                onChangeText={setSearch}
-                placeholder="Search folders, notes and tasks"
-                placeholderTextColor={theme.colors.textSecondary}
-                style={[hsStyles.searchInput, { color: theme.colors.textPrimary }]}
-              />
-              {!!search && (
-                <Pressable onPress={() => setSearch("")} hitSlop={8}>
-                  <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
-                </Pressable>
-              )}
-            </View>
-
-            {!!search.trim() && (
-              <View style={[hsStyles.searchResultsCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-                {searchResults.length === 0 ? (
-                  <Text muted>No results</Text>
-                ) : (
-                  searchResults.map((result, idx) => {
-                    const iconName =
-                      result.type === "folder"
-                        ? "folder-outline"
-                        : result.type === "note"
-                        ? "document-text-outline"
-                        : "checkmark-done-outline";
-                    return (
-                      <Pressable
-                        key={`${result.type}-${result.id}`}
-                        onPress={() => handleSearchPress(result)}
-                        style={[
-                          hsStyles.searchResultRow,
-                          idx !== searchResults.length - 1 && {
-                            borderBottomWidth: StyleSheet.hairlineWidth,
-                            borderBottomColor: theme.colors.border
-                          }
-                        ]}
-                      >
-                        <Ionicons name={iconName} size={16} color={theme.colors.textSecondary} />
-                        <View style={{ flex: 1 }}>
-                          <Text numberOfLines={1}>{result.title}</Text>
-                          {!!result.subtitle && (
-                            <Text muted variant="caption" numberOfLines={1}>
-                              {result.subtitle}
-                            </Text>
-                          )}
-                        </View>
-                      </Pressable>
-                    );
-                  })
-                )}
-              </View>
-            )}
           </View>
         }
         renderItem={({ item }) => {
@@ -335,7 +321,7 @@ const HomeScreen: React.FC = () => {
                           if (pin.type === "note") return handleOpenNote(pin.id);
                           return handleOpenTask(pin.id);
                         }}
-                        onLongPress={() => handleTogglePin(pin.type, pin.id)}
+                        onLongPress={() => setSelectedPinned({ type: pin.type, id: pin.id, label: pin.label })}
                         delayLongPress={260}
                         style={[hsStyles.pinnedCard, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.border }]}
                       >
@@ -363,6 +349,30 @@ const HomeScreen: React.FC = () => {
             return (
               <View style={[hsStyles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
                 <SectionHeader title="Today's tasks" icon="checkmark-done-outline" />
+                <View style={hsStyles.progressRow}>
+                  <Text muted variant="caption">
+                    {completedToday}/{todaysTasks.length} completed
+                  </Text>
+                  {!!recurringCount && (
+                    <Text variant="caption" style={{ color: theme.colors.primary }}>
+                      {recurringCount} recurring
+                    </Text>
+                  )}
+                </View>
+                <View style={[hsStyles.progressTrack, { backgroundColor: theme.colors.border }]}>
+                  <Animated.View
+                    style={[
+                      hsStyles.progressFill,
+                      {
+                        backgroundColor: theme.colors.primary,
+                        width: progressAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ["0%", "100%"]
+                        })
+                      }
+                    ]}
+                  />
+                </View>
                 {todaysTasks.length === 0 ? (
                   <Text muted>No tasks for today.</Text>
                 ) : (
@@ -394,6 +404,11 @@ const HomeScreen: React.FC = () => {
                       >
                         {task.text}
                       </Text>
+                      {!!task.repeatDays?.length && (
+                        <Text variant="caption" style={{ color: theme.colors.primary }}>
+                          Recurring • {task.repeatDays.length} day(s)
+                        </Text>
+                      )}
                       <Ionicons name="pin-outline" size={14} color={theme.colors.textSecondary} />
                     </Pressable>
                   ))
@@ -453,7 +468,12 @@ const HomeScreen: React.FC = () => {
                       delayLongPress={260}
                     >
                       <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={18} />
-                      <Text style={hsStyles.rowText} numberOfLines={1}>{folder.name}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={hsStyles.rowText} numberOfLines={1}>{folder.name}</Text>
+                        <Text muted variant="caption" numberOfLines={1}>
+                          {folderPreviewCounts[folder.id]?.subfolders ?? 0} folders • {folderPreviewCounts[folder.id]?.notes ?? 0} notes • {folderPreviewCounts[folder.id]?.files ?? 0} files
+                        </Text>
+                      </View>
                       <Ionicons
                         name={pinnedItems.some((x) => x.type === "folder" && x.id === folder.id) ? "pin" : "chevron-forward"}
                         size={14}
@@ -498,6 +518,167 @@ const HomeScreen: React.FC = () => {
           );
         }}
       />
+
+      <ContextActionMenu
+        visible={!!selectedPinned}
+        title={selectedPinned?.label}
+        onClose={() => setSelectedPinned(null)}
+        actions={[
+          {
+            key: "open",
+            label: "Open",
+            icon: "open-outline",
+            onPress: async () => {
+              if (!selectedPinned) return;
+              if (selectedPinned.type === "folder") {
+                await handleOpenFolder(selectedPinned.id);
+              } else if (selectedPinned.type === "note") {
+                await handleOpenNote(selectedPinned.id);
+              } else {
+                handleOpenTask(selectedPinned.id);
+              }
+            }
+          },
+          {
+            key: "edit",
+            label: "Edit",
+            icon: "pencil",
+            onPress: async () => {
+              if (!selectedPinned) return;
+              if (selectedPinned.type === "note") {
+                await handleOpenNote(selectedPinned.id);
+                return;
+              }
+              if (selectedPinned.type === "folder") {
+                await handleOpenFolder(selectedPinned.id);
+                return;
+              }
+              handleOpenTask(selectedPinned.id);
+            }
+          },
+          {
+            key: "unpin",
+            label: "Unpin",
+            icon: "pin",
+            destructive: true,
+            onPress: async () => {
+              if (!selectedPinned) return;
+              await handleTogglePin(selectedPinned.type, selectedPinned.id);
+            }
+          }
+        ]}
+      />
+
+      {fabOpen && <Pressable style={hsStyles.fabBackdrop} onPress={closeFab} />}
+
+      <View style={hsStyles.fabRoot} pointerEvents="box-none">
+        {([
+          {
+            key: "note",
+            label: "Create Note",
+            icon: "document-text-outline" as const,
+            onPress: () => {
+              closeFab();
+              navigation.navigate("NoteEditor", { folderId: null });
+            }
+          },
+          {
+            key: "folder",
+            label: "Create Folder",
+            icon: "folder-outline" as const,
+            onPress: () => {
+              closeFab();
+              setShowCreateFolderModal(true);
+            }
+          },
+          {
+            key: "task",
+            label: "Create Task",
+            icon: "checkmark-done-outline" as const,
+            onPress: () => {
+              closeFab();
+              navigation.navigate("Tabs", { screen: "Tasks", params: { openCreate: true } });
+            }
+          }
+        ] as const).map((item, index) => (
+          <Animated.View
+            key={item.key}
+            pointerEvents={fabOpen ? "auto" : "none"}
+            style={[
+              hsStyles.fabMenuItemWrap,
+              {
+                transform: [
+                  {
+                    translateY: fabAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -((index + 1) * 58)]
+                    })
+                  },
+                  {
+                    scale: fabAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.84, 1]
+                    })
+                  }
+                ],
+                opacity: fabAnim
+              }
+            ]}
+          >
+            <Pressable
+              onPress={item.onPress}
+              style={[
+                hsStyles.fabMenuItem,
+                {
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border
+                }
+              ]}
+            >
+              <Ionicons name={item.icon} size={16} color={theme.colors.primary} />
+              <Text style={[hsStyles.fabMenuLabel, { color: theme.colors.textPrimary }]}>
+                {item.label}
+              </Text>
+            </Pressable>
+          </Animated.View>
+        ))}
+
+        <Pressable
+          onPress={toggleFab}
+          style={[
+            hsStyles.fabMain,
+            {
+              backgroundColor: theme.colors.primary,
+              shadowColor: theme.colors.textPrimary
+            }
+          ]}
+        >
+          <Animated.View
+            style={{
+              transform: [
+                {
+                  rotate: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0deg", "45deg"]
+                  })
+                }
+              ]
+            }}
+          >
+            <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
+          </Animated.View>
+        </Pressable>
+      </View>
+
+      <FolderNameModal
+        visible={showCreateFolderModal}
+        onCancel={() => setShowCreateFolderModal(false)}
+        onConfirm={async (name, color) => {
+          const created = await createFolder(name, null, color);
+          upsertFolder(created);
+          setShowCreateFolderModal(false);
+        }}
+      />
     </SafeAreaView>
   );
 };
@@ -508,7 +689,7 @@ const hsStyles = StyleSheet.create({
   },
   scroll: {
     paddingHorizontal: spacing.md,
-    paddingBottom: spacing.lg * 2
+    paddingBottom: spacing.lg * 5
   },
   header: {
     paddingTop: spacing.md,
@@ -519,32 +700,6 @@ const hsStyles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: -0.5,
     marginBottom: spacing.md
-  },
-  searchBar: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    height: 44,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14
-  },
-  searchResultsCard: {
-    marginTop: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8
-  },
-  searchResultRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingVertical: 10
   },
   card: {
     borderRadius: 16,
@@ -589,6 +744,21 @@ const hsStyles = StyleSheet.create({
     gap: 8,
     paddingVertical: 9
   },
+  progressRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 6
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginBottom: 8
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999
+  },
   rowText: {
     flex: 1,
     fontSize: 14
@@ -609,6 +779,45 @@ const hsStyles = StyleSheet.create({
   notePreview: {
     marginTop: 2,
     fontSize: 12
+  },
+  fabBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.12)"
+  },
+  fabRoot: {
+    position: "absolute",
+    right: spacing.md,
+    bottom: spacing.lg
+  },
+  fabMenuItemWrap: {
+    position: "absolute",
+    right: 0,
+    bottom: 0
+  },
+  fabMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minWidth: 160
+  },
+  fabMenuLabel: {
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  fabMain: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6
   }
 });
 
