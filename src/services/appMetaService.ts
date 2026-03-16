@@ -1,8 +1,10 @@
-import { getDb } from "@database/db";
+import { getDB, runDbWrite } from "@db/database";
 import type { PinnedItem, PinnedItemType, RecentItem, RecentItemType, ID } from "@models/types";
 
 const PINNED_KEY = "pinned_items";
 const RECENT_KEY = "recent_items";
+const LIST_ORDER_PREFIX = "list_order:";
+const SORT_PREF_PREFIX = "sort_pref:";
 
 const safeParse = <T>(value: unknown, fallback: T): T => {
   if (typeof value !== "string") return fallback;
@@ -15,14 +17,13 @@ const safeParse = <T>(value: unknown, fallback: T): T => {
 };
 
 const readMeta = async <T>(key: string, fallback: T): Promise<T> => {
-  const db = await getDb();
+  const db = await getDB();
   const row = await db.getFirstAsync<{ value: string }>("SELECT value FROM app_meta WHERE key = ?", key);
   return safeParse<T>(row?.value, fallback);
 };
 
 const writeMeta = async <T>(key: string, value: T): Promise<void> => {
-  const db = await getDb();
-  await db.runAsync(
+  await runDbWrite(
     "INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     key,
     JSON.stringify(value)
@@ -68,4 +69,25 @@ export const addRecentOpen = async (type: RecentItemType, id: ID): Promise<Recen
   const next = [{ type, id, openedAt: Date.now() }, ...items.filter((x) => !(x.type === type && x.id === id))].slice(0, 10);
   await saveRecentItems(next);
   return next;
+};
+
+export const getListOrder = async (scope: string): Promise<ID[]> => {
+  const ids = await readMeta<ID[]>(`${LIST_ORDER_PREFIX}${scope}`, []);
+  return ids.filter(Boolean);
+};
+
+export const saveListOrder = async (scope: string, ids: ID[]): Promise<void> => {
+  await writeMeta(`${LIST_ORDER_PREFIX}${scope}`, ids);
+};
+
+export const getSortPreference = async <T extends string>(
+  scope: string,
+  fallback: T
+): Promise<T> => {
+  const value = await readMeta<T | null>(`${SORT_PREF_PREFIX}${scope}`, null);
+  return value ?? fallback;
+};
+
+export const saveSortPreference = async <T extends string>(scope: string, value: T): Promise<void> => {
+  await writeMeta(`${SORT_PREF_PREFIX}${scope}`, value);
 };

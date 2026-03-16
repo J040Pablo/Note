@@ -1,14 +1,29 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, FlatList, Pressable, ScrollView, Modal, TextInput, Alert, Share } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  View,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  ScrollView,
+  Modal,
+  TextInput,
+  Alert,
+  Share,
+  Image,
+  Animated,
+  LayoutAnimation
+} from "react-native";
+import * as FileSystem from "expo-file-system/legacy";
+import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
-import { PrimaryButton } from "@components/PrimaryButton";
 import { FolderNameModal } from "@components/FolderNameModal";
 import { FolderIcon } from "@components/FolderIcon";
 import { FileIcon } from "@components/FileIcon";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { NoteEditModal } from "@components/NoteEditModal";
+import { FileDetailsModal } from "@components/FileDetailsModal";
 import { useTheme } from "@hooks/useTheme";
 import type { CompositeNavigationProp, RouteProp } from "@react-navigation/native";
 import type { FoldersStackParamList, RootStackParamList } from "@navigation/RootNavigator";
@@ -18,7 +33,13 @@ import { useNotesStore } from "@store/useNotesStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
 import { deleteNote, getNotesByFolder, updateNote } from "@services/notesService";
-import { addRecentOpen, getPinnedItems, savePinnedItems } from "@services/appMetaService";
+import {
+  addRecentOpen,
+  getPinnedItems,
+  getSortPreference,
+  savePinnedItems,
+  saveSortPreference
+} from "@services/appMetaService";
 import {
   deleteFile,
   getFilesByFolder,
@@ -26,11 +47,13 @@ import {
   importFileFromDevice,
   moveFileToFolder,
   openExternalFile,
-  renameFile
+  reorderFiles,
+  updateFileDetails
 } from "@services/filesService";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { AppFile, Folder, Note } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
+import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 
 const firstLine = (text: string): string => {
   const line = (text || "").split(/\r?\n/).find((x) => x.trim().length > 0) ?? "";
@@ -43,15 +66,15 @@ type Nav = CompositeNavigationProp<
   NativeStackNavigationProp<RootStackParamList>
 >;
 
-type MixedItem =
-  | { id: string; kind: "folder"; folder: Folder }
-  | { id: string; kind: "note"; note: Note }
-  | { id: string; kind: "file"; file: AppFile };
+type FileSortMode = "custom" | "recent" | "name_asc" | "name_desc" | "size_asc" | "size_desc";
+
+const fileSortScopeForFolder = (folderId: string | null | undefined) => `files.sort.${folderId ?? "root"}`;
 
 const FolderDetailScreen: React.FC = () => {
   const { theme } = useTheme();
   const route = useRoute<FolderDetailRoute>();
   const navigation = useNavigation<Nav>();
+  const { showToast } = useFeedback();
   const { folderId, trail: routeTrail } = route.params;
 
   const folders = useAppStore((s) => s.folders);
@@ -74,15 +97,23 @@ const FolderDetailScreen: React.FC = () => {
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [showPathTree, setShowPathTree] = useState(true);
   const [selectedFile, setSelectedFile] = useState<AppFile | null>(null);
-  const [renamingFile, setRenamingFile] = useState<AppFile | null>(null);
+  const [editingFile, setEditingFile] = useState<AppFile | null>(null);
   const [movingFile, setMovingFile] = useState<AppFile | null>(null);
   const [movingFolder, setMovingFolder] = useState<Folder | null>(null);
   const [movingNote, setMovingNote] = useState<Note | null>(null);
-  const [fileNameInput, setFileNameInput] = useState("");
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ type: "folder" | "note" | "file"; id: string } | null>(null);
+  const [showAddFileMenu, setShowAddFileMenu] = useState(false);
+  const [showFileSortMenu, setShowFileSortMenu] = useState(false);
+  const [fileSortMode, setFileSortMode] = useState<FileSortMode>("custom");
+  const [fileSizes, setFileSizes] = useState<Record<string, number>>({});
+  const [fabOpen, setFabOpen] = useState(false);
+  const [folderSubmitting, setFolderSubmitting] = useState(false);
+  const [noteSubmitting, setNoteSubmitting] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const fabAnim = useRef(new Animated.Value(0)).current;
 
   const currentFolder = folderId ? folders[folderId] : undefined;
 
@@ -96,10 +127,31 @@ const FolderDetailScreen: React.FC = () => {
       childrenFolders.forEach(upsertFolder);
       setNotes(folderNotes);
       setFiles(folderFiles);
-      const pinned = await getPinnedItems();
+      const [pinned, savedSort] = await Promise.all([
+        getPinnedItems(),
+        getSortPreference<FileSortMode>(fileSortScopeForFolder(folderId), "custom")
+      ]);
       setPinnedItems(pinned);
+      setFileSortMode(savedSort);
     })();
   }, [folderId, setFiles, setNotes, setPinnedItems, upsertFolder]);
+
+  useEffect(() => {
+    (async () => {
+      const visible = Object.values(files).filter((f) => f.parentFolderId === folderId);
+      const pairs = await Promise.all(
+        visible.map(async (file) => {
+          try {
+            const info = await FileSystem.getInfoAsync(file.path);
+            return [file.id, info.exists && "size" in info ? Number(info.size || 0) : 0] as const;
+          } catch {
+            return [file.id, 0] as const;
+          }
+        })
+      );
+      setFileSizes(Object.fromEntries(pairs));
+    })();
+  }, [files, folderId]);
 
   const trailIds = useMemo(() => {
     if (routeTrail && routeTrail.length > 0) {
@@ -153,20 +205,14 @@ const FolderDetailScreen: React.FC = () => {
     [files, folderId]
   );
 
-  const mixedItems = useMemo<MixedItem[]>(
-    () => [
-      ...childFolders
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((folder) => ({ id: `folder-${folder.id}`, kind: "folder", folder })),
-      ...folderNotes
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .map((note) => ({ id: `note-${note.id}`, kind: "note", note })),
-      ...folderFiles
-        .sort((a, b) => b.createdAt - a.createdAt)
-        .map((file) => ({ id: `file-${file.id}`, kind: "file", file }))
-    ],
-    [childFolders, folderFiles, folderNotes]
-  );
+  const visibleFiles = useMemo(() => {
+    if (fileSortMode === "name_asc") return [...folderFiles].sort((a, b) => a.name.localeCompare(b.name));
+    if (fileSortMode === "name_desc") return [...folderFiles].sort((a, b) => b.name.localeCompare(a.name));
+    if (fileSortMode === "recent") return [...folderFiles].sort((a, b) => b.createdAt - a.createdAt);
+    if (fileSortMode === "size_asc") return [...folderFiles].sort((a, b) => (fileSizes[a.id] ?? 0) - (fileSizes[b.id] ?? 0));
+    if (fileSortMode === "size_desc") return [...folderFiles].sort((a, b) => (fileSizes[b.id] ?? 0) - (fileSizes[a.id] ?? 0));
+    return [...folderFiles].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  }, [fileSizes, fileSortMode, folderFiles]);
 
   const isDescendantOf = useCallback(
     (candidateParentId: string | null, sourceId: string): boolean => {
@@ -183,42 +229,44 @@ const FolderDetailScreen: React.FC = () => {
     [folders]
   );
 
+  const handleAddFile = useCallback(() => {
+    setShowAddFileMenu(true);
+  }, []);
+
+  const openFab = useCallback(() => {
+    setFabOpen(true);
+    Animated.spring(fabAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 24,
+      bounciness: 6
+    }).start();
+  }, [fabAnim]);
+
+  const closeFab = useCallback(() => {
+    Animated.timing(fabAnim, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: true
+    }).start(({ finished }) => {
+      if (finished) setFabOpen(false);
+    });
+  }, [fabAnim]);
+
+  const toggleFab = useCallback(() => {
+    if (fabOpen) {
+      closeFab();
+    } else {
+      openFab();
+    }
+  }, [closeFab, fabOpen, openFab]);
+
   return (
     <Screen>
       <View style={styles.headerRow}>
         <View>
           <Text variant="title">{currentFolder?.name ?? "Home"}</Text>
-          <Text muted>Subfolders and notes</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <PrimaryButton label="+ Folder" onPress={() => setShowCreateFolder(true)} />
-          <PrimaryButton
-            label="+ Note"
-            onPress={() =>
-              navigation.navigate("NoteEditor", {
-                folderId: folderId ?? null
-              })
-            }
-          />
-          <PrimaryButton
-            label="+ Add File"
-            onPress={() => {
-              Alert.alert("Add file", "Choose an option", [
-                {
-                  text: "Import from device",
-                  onPress: async () => {
-                    const created = await importFileFromDevice(folderId ?? null);
-                    if (created) upsertFile(created);
-                  }
-                },
-                {
-                  text: "Scan document",
-                  onPress: () => Alert.alert("Coming soon", "Document scanner will be available in a future update.")
-                },
-                { text: "Cancel", style: "cancel" }
-              ]);
-            }}
-          />
+          <Text muted>Subfolders, notes and files</Text>
         </View>
       </View>
 
@@ -309,105 +357,413 @@ const FolderDetailScreen: React.FC = () => {
       </View>
 
       <View style={[styles.section, { borderColor: theme.colors.border }]}>
-        <Text variant="subtitle">Items</Text>
-        <FlatList
-          data={mixedItems}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => {
-            if (item.kind === "folder") {
-              return (
-                <Pressable
-                  onLongPress={() => setSelectedFolder(item.folder)}
-                  delayLongPress={260}
-                  style={styles.row}
-                  onPress={() =>
-                    (async () => {
-                      const nextRecent = await addRecentOpen("folder", item.folder.id);
-                      setRecentItems(nextRecent);
-                      navigation.push("FolderDetail", {
-                        folderId: item.folder.id,
-                        trail: [...trailIds, item.folder.id]
-                      });
-                    })()
+        <View style={styles.sectionHeaderRow}>
+          <Text variant="subtitle">Items</Text>
+          <Pressable
+            onPress={() => setShowFileSortMenu(true)}
+            style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+          >
+            <Ionicons name="funnel-outline" size={15} color={theme.colors.textPrimary} />
+          </Pressable>
+        </View>
+        <View style={styles.sectionListContent}>
+          {childFolders
+            .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+            .map((folder) => (
+              <Pressable
+                key={folder.id}
+                onLongPress={() => setSelectedFolder(folder)}
+                delayLongPress={260}
+                style={({ pressed }) => [
+                  styles.itemCard,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.card,
+                    shadowColor: theme.colors.textPrimary,
+                    transform: [{ scale: pressed ? 0.992 : 1 }],
+                    opacity: pressed ? 0.96 : 1
                   }
-                >
-                  <FolderIcon color={item.folder.color} fallbackColor={theme.colors.primary} size={18} />
-                  <Text style={styles.rowTitle}>{item.folder.name}</Text>
-                </Pressable>
-              );
-            }
-
-            if (item.kind === "note") {
-              return (
-                <Pressable
-                  onLongPress={() => setSelectedNote(item.note)}
-                  delayLongPress={260}
-                  style={styles.row}
-                  onPress={() =>
-                    (async () => {
-                      const nextRecent = await addRecentOpen("note", item.note.id);
-                      setRecentItems(nextRecent);
-                      navigation.navigate("NoteEditor", { noteId: item.note.id });
-                    })()
-                  }
-                >
-                  <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
+                ]}
+                onPress={() =>
+                  (async () => {
+                    const nextRecent = await addRecentOpen("folder", folder.id);
+                    setRecentItems(nextRecent);
+                    navigation.push("FolderDetail", {
+                      folderId: folder.id,
+                      trail: [...trailIds, folder.id]
+                    });
+                  })()
+                }
+              >
+                {!!folder.bannerPath && (
+                  <Image source={{ uri: folder.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
+                )}
+                <View style={styles.cardBody}>
+                  {folder.photoPath ? (
+                    <Image source={{ uri: folder.photoPath }} style={styles.cardAvatar} resizeMode="cover" />
+                  ) : (
+                    <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} />
+                  )}
                   <View style={styles.rowContent}>
-                    <Text style={styles.rowTitle}>{item.note.title}</Text>
-                    {!!firstLine(item.note.content) && (
-                      <Text muted variant="caption" numberOfLines={1}>
-                        {firstLine(item.note.content)}
+                    <Text style={styles.rowTitle}>{folder.name}</Text>
+                    {!!folder.description && (
+                      <Text muted variant="caption" numberOfLines={2}>
+                        {folder.description}
                       </Text>
                     )}
                   </View>
-                </Pressable>
-              );
-            }
+                </View>
+              </Pressable>
+            ))}
 
-            return (
+          {folderNotes
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .map((note) => (
               <Pressable
-                onLongPress={() => setSelectedFile(item.file)}
+                key={note.id}
+                onLongPress={() => setSelectedNote(note)}
                 delayLongPress={260}
-                style={styles.row}
+                style={({ pressed }) => [
+                  styles.itemCard,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.card,
+                    shadowColor: theme.colors.textPrimary,
+                    transform: [{ scale: pressed ? 0.992 : 1 }],
+                    opacity: pressed ? 0.96 : 1
+                  }
+                ]}
+                onPress={() =>
+                  (async () => {
+                    const nextRecent = await addRecentOpen("note", note.id);
+                    setRecentItems(nextRecent);
+                    navigation.navigate("NoteEditor", { noteId: note.id });
+                  })()
+                }
+              >
+                <View style={styles.cardBody}>
+                  <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
+                    <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
+                  </View>
+                  <View style={styles.rowContent}>
+                    <Text style={styles.rowTitle}>{note.title}</Text>
+                    {!!firstLine(note.content) && (
+                      <Text muted variant="caption" numberOfLines={2}>
+                        {firstLine(note.content)}
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </Pressable>
+            ))}
+
+          <DraggableFlatList
+            data={visibleFiles}
+            keyExtractor={(item) => item.id}
+            initialNumToRender={12}
+            maxToRenderPerBatch={10}
+            windowSize={9}
+            removeClippedSubviews
+            activationDistance={12}
+            scrollEnabled={false}
+            onDragEnd={async ({ data }) => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setFileSortMode("custom");
+              await saveSortPreference(fileSortScopeForFolder(folderId), "custom");
+              await reorderFiles(folderId ?? null, data.map((x) => x.id));
+              const refreshedFiles = await getFilesByFolder(folderId ?? null);
+              setFiles(refreshedFiles);
+            }}
+            renderItem={({ item, drag, isActive }: RenderItemParams<AppFile>) => (
+              <Pressable
+                onLongPress={() => setSelectedFile(item)}
+                delayLongPress={260}
+                style={({ pressed }) => [
+                  styles.itemCard,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.card,
+                    shadowColor: theme.colors.textPrimary,
+                    transform: [{ scale: isActive ? 1.01 : pressed ? 0.992 : 1 }],
+                    opacity: pressed ? 0.96 : 1,
+                    elevation: isActive ? 8 : 2,
+                    shadowOpacity: isActive ? 0.24 : 0.08
+                  }
+                ]}
                 onPress={async () => {
-                  if (item.file.type === "pdf") {
-                    navigation.navigate("PdfViewer", { path: item.file.path, name: item.file.name });
+                  if (item.type === "pdf") {
+                    navigation.navigate("PdfViewer", { path: item.path, name: item.name });
                     return;
                   }
-                  if (item.file.type === "image") {
-                    navigation.navigate("ImageViewer", { path: item.file.path, name: item.file.name });
+                  if (item.type === "image") {
+                    navigation.navigate("ImageViewer", { path: item.path, name: item.name });
                     return;
                   }
-                  await openExternalFile(item.file.path);
+                  await openExternalFile(item.path);
                 }}
               >
-                <FileIcon type={item.file.type} size={18} />
-                <View style={styles.rowContent}>
-                  <Text style={styles.rowTitle}>{item.file.name}</Text>
-                  <Text muted variant="caption">
-                    {item.file.type.toUpperCase()} • {new Date(item.file.createdAt).toLocaleDateString()}
-                  </Text>
+                {!!item.bannerPath && (
+                  <Image source={{ uri: item.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
+                )}
+                <View style={styles.cardBody}>
+                  {item.thumbnailPath ? (
+                    <Image source={{ uri: item.thumbnailPath }} style={styles.cardAvatar} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}>
+                      <FileIcon type={item.type} size={18} />
+                    </View>
+                  )}
+                  <View style={styles.rowContent}>
+                    <Text style={styles.rowTitle}>{item.name}</Text>
+                    {!!item.description && (
+                      <Text muted variant="caption" numberOfLines={2}>
+                        {item.description}
+                      </Text>
+                    )}
+                    <Text muted variant="caption">
+                      {item.type.toUpperCase()} • {new Date(item.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                  <Pressable
+                    onPressIn={(event) => event.stopPropagation()}
+                    onLongPress={(event) => {
+                      event.stopPropagation();
+                      drag();
+                    }}
+                    delayLongPress={220}
+                    hitSlop={8}
+                    style={styles.dragHandle}
+                  >
+                    <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
+                  </Pressable>
+                  <Ionicons name={getFileTypeIcon(item.type)} size={16} color={theme.colors.textSecondary} />
                 </View>
-                <Ionicons name={getFileTypeIcon(item.file.type)} size={16} color={theme.colors.textSecondary} />
               </Pressable>
-            );
-          }}
-          contentContainerStyle={styles.sectionListContent}
-          ListEmptyComponent={
-            <Text muted style={styles.emptyText}>
-              No items yet.
-            </Text>
+            )}
+            ListEmptyComponent={
+              childFolders.length === 0 && folderNotes.length === 0 ? (
+                <Text muted style={styles.emptyText}>
+                  No items yet.
+                </Text>
+              ) : null
+            }
+          />
+        </View>
+      </View>
+
+      <ContextActionMenu
+        visible={showAddFileMenu}
+        title="Add file"
+        onClose={() => setShowAddFileMenu(false)}
+        actions={[
+          {
+            key: "import",
+            label: "Import from device",
+            icon: "download-outline",
+            onPress: async () => {
+              const created = await importFileFromDevice(folderId ?? null);
+              if (created) upsertFile(created);
+            }
+          },
+          {
+            key: "scan",
+            label: "Scan document",
+            icon: "scan-outline",
+            onPress: () => Alert.alert("Coming soon", "Document scanner will be available in a future update.")
           }
-        />
+        ]}
+      />
+
+      <ContextActionMenu
+        visible={showFileSortMenu}
+        title="Sort files"
+        onClose={() => setShowFileSortMenu(false)}
+        actions={[
+          {
+            key: "custom",
+            label: "Custom order",
+            icon: "reorder-three-outline",
+            onPress: async () => {
+              setFileSortMode("custom");
+              await saveSortPreference(fileSortScopeForFolder(folderId), "custom");
+            }
+          },
+          {
+            key: "recent",
+            label: "Most recent",
+            icon: "time-outline",
+            onPress: async () => {
+              setFileSortMode("recent");
+              await saveSortPreference(fileSortScopeForFolder(folderId), "recent");
+            }
+          },
+          {
+            key: "az",
+            label: "Name (A-Z)",
+            icon: "text-outline",
+            onPress: async () => {
+              setFileSortMode("name_asc");
+              await saveSortPreference(fileSortScopeForFolder(folderId), "name_asc");
+            }
+          },
+          {
+            key: "za",
+            label: "Name (Z-A)",
+            icon: "text-outline",
+            onPress: async () => {
+              setFileSortMode("name_desc");
+              await saveSortPreference(fileSortScopeForFolder(folderId), "name_desc");
+            }
+          },
+          {
+            key: "sizeAsc",
+            label: "Size (ascending)",
+            icon: "stats-chart-outline",
+            onPress: async () => {
+              setFileSortMode("size_asc");
+              await saveSortPreference(fileSortScopeForFolder(folderId), "size_asc");
+            }
+          },
+          {
+            key: "sizeDesc",
+            label: "Size (descending)",
+            icon: "stats-chart",
+            onPress: async () => {
+              setFileSortMode("size_desc");
+              await saveSortPreference(fileSortScopeForFolder(folderId), "size_desc");
+            }
+          }
+        ]}
+      />
+
+      {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
+
+      <View style={styles.fabRoot} pointerEvents="box-none">
+        {([
+          {
+            key: "folder",
+            label: "Create Folder",
+            icon: "folder-outline" as const,
+            onPress: () => {
+              closeFab();
+              setShowCreateFolder(true);
+            }
+          },
+          {
+            key: "note",
+            label: "Create Note",
+            icon: "document-text-outline" as const,
+            onPress: () => {
+              closeFab();
+              navigation.navigate("NoteEditor", { folderId: folderId ?? null });
+            }
+          },
+          {
+            key: "file",
+            label: "Add File",
+            icon: "attach-outline" as const,
+            onPress: () => {
+              closeFab();
+              handleAddFile();
+            }
+          }
+        ] as const).map((item, index) => (
+          <Animated.View
+            key={item.key}
+            pointerEvents={fabOpen ? "auto" : "none"}
+            style={[
+              styles.fabMenuItemWrap,
+              {
+                transform: [
+                  {
+                    translateY: fabAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -((index + 1) * 58)]
+                    })
+                  },
+                  {
+                    scale: fabAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.84, 1]
+                    })
+                  }
+                ],
+                opacity: fabAnim
+              }
+            ]}
+          >
+            <Pressable
+              onPress={item.onPress}
+              style={[
+                styles.fabMenuItem,
+                {
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border
+                }
+              ]}
+            >
+              <Ionicons name={item.icon} size={16} color={theme.colors.primary} />
+              <Text style={[styles.fabMenuLabel, { color: theme.colors.textPrimary }]}>{item.label}</Text>
+            </Pressable>
+          </Animated.View>
+        ))}
+
+        <Pressable
+          onPress={toggleFab}
+          style={[
+            styles.fabMain,
+            {
+              backgroundColor: theme.colors.primary,
+              shadowColor: theme.colors.textPrimary
+            }
+          ]}
+        >
+          <Animated.View
+            style={{
+              transform: [
+                {
+                  rotate: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0deg", "45deg"]
+                  })
+                }
+              ]
+            }}
+          >
+            <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
+          </Animated.View>
+        </Pressable>
       </View>
 
       <FolderNameModal
         visible={showCreateFolder}
-        onCancel={() => setShowCreateFolder(false)}
-        onConfirm={async (name, color) => {
-          const created = await createFolder(name, folderId ?? null, color);
-          upsertFolder(created);
+        onCancel={() => {
+          if (folderSubmitting) return;
           setShowCreateFolder(false);
+        }}
+        submitting={folderSubmitting}
+        onConfirm={async (payload) => {
+          if (folderSubmitting) return;
+          setFolderSubmitting(true);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          try {
+            const created = await createFolder(
+              payload.name,
+              folderId ?? null,
+              payload.color,
+              payload.description,
+              payload.photoPath,
+              payload.bannerPath
+            );
+            upsertFolder(created);
+            setShowCreateFolder(false);
+            showToast("Folder saved ✓");
+          } catch (error) {
+            console.error("[folder] create failed", error);
+            showToast("Could not save folder", "error");
+          } finally {
+            setFolderSubmitting(false);
+          }
         }}
       />
 
@@ -579,13 +935,12 @@ const FolderDetailScreen: React.FC = () => {
             }
           },
           {
-            key: "rename",
-            label: "Rename",
-            icon: "create-outline",
+            key: "edit",
+            label: "Edit details",
+            icon: "pencil",
             onPress: () => {
               if (!selectedFile) return;
-              setFileNameInput(selectedFile.name);
-              setRenamingFile(selectedFile);
+              setEditingFile(selectedFile);
             }
           },
           {
@@ -628,14 +983,38 @@ const FolderDetailScreen: React.FC = () => {
         visible={!!editingFolder}
         initialName={editingFolder?.name}
         initialColor={editingFolder?.color}
+        initialDescription={editingFolder?.description}
+        initialPhotoPath={editingFolder?.photoPath}
+        initialBannerPath={editingFolder?.bannerPath}
         title="Edit folder"
         confirmLabel="Save"
-        onCancel={() => setEditingFolder(null)}
-        onConfirm={async (name, color) => {
-          if (!editingFolder) return;
-          const updated = await updateFolder({ ...editingFolder, name, color });
-          upsertFolder(updated);
+        onCancel={() => {
+          if (folderSubmitting) return;
           setEditingFolder(null);
+        }}
+        submitting={folderSubmitting}
+        onConfirm={async (payload) => {
+          if (!editingFolder || folderSubmitting) return;
+          setFolderSubmitting(true);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          try {
+            const updated = await updateFolder({
+              ...editingFolder,
+              name: payload.name,
+              color: payload.color,
+              description: payload.description,
+              photoPath: payload.photoPath,
+              bannerPath: payload.bannerPath
+            });
+            upsertFolder(updated);
+            setEditingFolder(null);
+            showToast("Folder saved ✓");
+          } catch (error) {
+            console.error("[folder] update failed", error);
+            showToast("Could not save folder", "error");
+          } finally {
+            setFolderSubmitting(false);
+          }
         }}
       />
 
@@ -643,52 +1022,53 @@ const FolderDetailScreen: React.FC = () => {
         visible={!!editingNote}
         initialTitle={editingNote?.title ?? ""}
         initialContent={editingNote?.content ?? ""}
-        onCancel={() => setEditingNote(null)}
-        onConfirm={async (title, content) => {
-          if (!editingNote) return;
-          const updated = await updateNote({
-            ...editingNote,
-            title,
-            content
-          });
-          upsertNote(updated);
+        submitting={noteSubmitting}
+        onCancel={() => {
+          if (noteSubmitting) return;
           setEditingNote(null);
+        }}
+        onConfirm={async (title, content) => {
+          if (!editingNote || noteSubmitting) return;
+          setNoteSubmitting(true);
+          try {
+            const updated = await updateNote({
+              ...editingNote,
+              title,
+              content
+            });
+            upsertNote(updated);
+            setEditingNote(null);
+            showToast("Note saved ✓");
+          } catch (error) {
+            console.error("[note] update failed", error);
+            showToast("Could not save note", "error");
+          } finally {
+            setNoteSubmitting(false);
+          }
         }}
       />
 
-      <Modal transparent visible={!!renamingFile} animationType="fade">
-        <View style={styles.backdrop}>
-          <View style={[styles.modalCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-            <Text variant="subtitle">Rename file</Text>
-            <TextInput
-              value={fileNameInput}
-              onChangeText={setFileNameInput}
-              placeholder="File name"
-              placeholderTextColor={theme.colors.textSecondary}
-              style={[styles.modalInput, { borderColor: theme.colors.border, color: theme.colors.textPrimary }]}
-            />
-
-            <View style={styles.modalActions}>
-              <Pressable onPress={() => setRenamingFile(null)} style={styles.secondaryButton}>
-                <Text muted>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={async () => {
-                  if (!renamingFile) return;
-                  const nextName = fileNameInput.trim();
-                  if (!nextName) return;
-                  await renameFile(renamingFile.id, nextName);
-                  upsertFile({ ...renamingFile, name: nextName });
-                  setRenamingFile(null);
-                }}
-                style={[styles.primaryButton, { backgroundColor: theme.colors.primary }]}
-              >
-                <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>Save</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <FileDetailsModal
+        visible={!!editingFile}
+        initialName={editingFile?.name}
+        initialDescription={editingFile?.description}
+        initialThumbnailPath={editingFile?.thumbnailPath}
+        initialBannerPath={editingFile?.bannerPath}
+        onCancel={() => setEditingFile(null)}
+        onConfirm={async (payload) => {
+          if (!editingFile) return;
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          const updated = await updateFileDetails({
+            ...editingFile,
+            name: payload.name,
+            description: payload.description,
+            thumbnailPath: payload.thumbnailPath,
+            bannerPath: payload.bannerPath
+          });
+          upsertFile(updated);
+          setEditingFile(null);
+        }}
+      />
 
       <Modal transparent visible={!!movingFile} animationType="fade">
         <View style={styles.backdrop}>
@@ -726,6 +1106,7 @@ const FolderDetailScreen: React.FC = () => {
                 onPress={async () => {
                   if (!movingFile) return;
                   await moveFileToFolder(movingFile.id, targetFolderId ?? null);
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                   upsertFile({ ...movingFile, parentFolderId: targetFolderId ?? null });
                   setMovingFile(null);
                 }}
@@ -784,6 +1165,7 @@ const FolderDetailScreen: React.FC = () => {
                     return;
                   }
                   const updated = await updateFolder({ ...movingFolder, parentId: targetFolderId ?? null });
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                   upsertFolder(updated);
                   setMovingFolder(null);
                 }}
@@ -832,6 +1214,7 @@ const FolderDetailScreen: React.FC = () => {
                 onPress={async () => {
                   if (!movingNote) return;
                   const updated = await updateNote({ ...movingNote, folderId: targetFolderId ?? null });
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                   upsertNote(updated);
                   setMovingNote(null);
                 }}
@@ -847,23 +1230,37 @@ const FolderDetailScreen: React.FC = () => {
       <DeleteConfirmModal
         visible={!!pendingDelete}
         itemLabel={pendingDelete?.type ?? "item"}
-        onCancel={() => setPendingDelete(null)}
-        onConfirm={async () => {
-          if (!pendingDelete) return;
-          if (pendingDelete.type === "folder") {
-            await deleteFolder(pendingDelete.id);
-            removeFolder(pendingDelete.id);
-          } else if (pendingDelete.type === "note") {
-            await deleteNote(pendingDelete.id);
-            removeNote(pendingDelete.id);
-          } else {
-            const target = files[pendingDelete.id];
-            if (target) {
-              await deleteFile(target);
-              removeFile(target.id);
-            }
-          }
+        loading={deleteSubmitting}
+        onCancel={() => {
+          if (deleteSubmitting) return;
           setPendingDelete(null);
+        }}
+        onConfirm={async () => {
+          if (!pendingDelete || deleteSubmitting) return;
+          setDeleteSubmitting(true);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          try {
+            if (pendingDelete.type === "folder") {
+              await deleteFolder(pendingDelete.id);
+              removeFolder(pendingDelete.id);
+            } else if (pendingDelete.type === "note") {
+              await deleteNote(pendingDelete.id);
+              removeNote(pendingDelete.id);
+            } else {
+              const target = files[pendingDelete.id];
+              if (target) {
+                await deleteFile(target);
+                removeFile(target.id);
+              }
+            }
+            setPendingDelete(null);
+            showToast("Deleted ✓");
+          } catch (error) {
+            console.error("[item] delete failed", error);
+            showToast("Could not delete item", "error");
+          } finally {
+            setDeleteSubmitting(false);
+          }
         }}
       />
     </Screen>
@@ -874,13 +1271,7 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
     marginBottom: 12
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
   },
   pathCard: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -942,18 +1333,64 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 16
   },
-  row: {
+  sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    gap: 8
+    justifyContent: "space-between",
+    marginBottom: 8
+  },
+  sortButton: {
+    width: 30,
+    height: 30,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  itemCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2
+  },
+  cardBanner: {
+    width: "100%",
+    height: 86
+  },
+  cardBody: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12
+  },
+  cardAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 12
+  },
+  noteIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center"
   },
   rowContent: {
     flex: 1
   },
   rowTitle: {
-    flex: 1
+    flex: 1,
+    fontWeight: "600",
+    marginBottom: 2
+  },
+  dragHandle: {
+    paddingHorizontal: 2,
+    paddingVertical: 4,
+    marginRight: 2
   },
   sectionListContent: {
     paddingBottom: 8,
@@ -975,13 +1412,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
     maxHeight: "80%"
-  },
-  modalInput: {
-    marginTop: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8
   },
   moveList: {
     marginTop: 10,
@@ -1010,6 +1440,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999
+  },
+  fabBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.12)"
+  },
+  fabRoot: {
+    position: "absolute",
+    right: 16,
+    bottom: 24
+  },
+  fabMenuItemWrap: {
+    position: "absolute",
+    right: 0,
+    bottom: 0
+  },
+  fabMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minWidth: 156
+  },
+  fabMenuLabel: {
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  fabMain: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6
   }
 });
 

@@ -4,8 +4,12 @@ export interface Folder {
   id: ID;
   name: string;
   parentId: ID | null;
+  orderIndex: number;
   /** Optional display color for the folder (e.g. "blue", "green", "#FF9900") */
   color?: string | null;
+  description?: string | null;
+  photoPath?: string | null;
+  bannerPath?: string | null;
   createdAt: number;
 }
 
@@ -22,6 +26,7 @@ export interface Task {
   id: ID;
   text: string;
   completed: boolean;
+  orderIndex: number;
   /** 0 = low, 1 = medium, 2 = high */
   priority: number;
   noteId: ID | null;
@@ -41,7 +46,11 @@ export interface AppFile {
   type: AppFileType;
   path: string;
   createdAt: number;
+  orderIndex: number;
   parentFolderId: ID | null;
+  description?: string | null;
+  thumbnailPath?: string | null;
+  bannerPath?: string | null;
 }
 
 export type PinnedItemType = "folder" | "note" | "task";

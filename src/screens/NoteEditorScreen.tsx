@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, TextInput, ScrollView, Pressable, Modal } from "react-native";
+import { View, StyleSheet, TextInput, ScrollView, Pressable, Modal, ActivityIndicator } from "react-native";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
 import { MarkdownEditor } from "@components/MarkdownEditor";
+import { useFeedback } from "@components/FeedbackProvider";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { NavigationAction, RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "@navigation/RootNavigator";
@@ -22,6 +23,7 @@ const NoteEditorScreen: React.FC = () => {
   const notes = useNotesStore((s) => s.notes);
   const upsertNote = useNotesStore((s) => s.upsertNote);
   const { theme } = useTheme();
+  const { showToast } = useFeedback();
 
   const existing = noteId ? notes[noteId] : undefined;
 
@@ -32,25 +34,30 @@ const NoteEditorScreen: React.FC = () => {
   const [showUnsavedModal, setShowUnsavedModal] = useState(false);
   const [pendingAction, setPendingAction] = useState<NavigationAction | null>(null);
   const [bypassUnsavedCheck, setBypassUnsavedCheck] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const hasUnsavedChanges = useMemo(
     () => title !== originalTitle || content !== originalContent,
     [content, originalContent, originalTitle, title]
   );
 
-  const handleSave = useCallback(async () => {
+  const persistNote = useCallback(async () => {
+    if (saving) return null;
+    setSaving(true);
     const normalizedTitle = title || "Untitled";
+    try {
+      if (existing) {
+        const saved = await updateNote({
+          ...existing,
+          title: normalizedTitle,
+          content
+        });
+        upsertNote(saved);
+        setOriginalTitle(saved.title);
+        setOriginalContent(saved.content);
+        return saved;
+      }
 
-    if (existing) {
-      const saved = await updateNote({
-        ...existing,
-        title: normalizedTitle,
-        content
-      });
-      upsertNote(saved);
-      setOriginalTitle(saved.title);
-      setOriginalContent(saved.content);
-    } else {
       const saved = await createNote({
         title: normalizedTitle,
         content,
@@ -59,8 +66,23 @@ const NoteEditorScreen: React.FC = () => {
       upsertNote(saved);
       setOriginalTitle(saved.title);
       setOriginalContent(saved.content);
+      return saved;
+    } catch (error) {
+      console.error("[note] save failed", error);
+      showToast("Could not save note", "error");
+      return null;
+    } finally {
+      setSaving(false);
     }
-  }, [content, existing, folderId, title, upsertNote]);
+  }, [content, existing, folderId, saving, showToast, title, upsertNote]);
+
+  const handleSave = useCallback(async () => {
+    const saved = await persistNote();
+    if (!saved) return;
+    showToast("Note saved ✓");
+    setBypassUnsavedCheck(true);
+    navigation.goBack();
+  }, [navigation, persistNote, showToast]);
 
   const continueLeaving = useCallback(() => {
     if (!pendingAction) return;
@@ -78,6 +100,11 @@ const NoteEditorScreen: React.FC = () => {
         return;
       }
 
+      if (saving) {
+        e.preventDefault();
+        return;
+      }
+
       if (!hasUnsavedChanges) {
         return;
       }
@@ -89,7 +116,7 @@ const NoteEditorScreen: React.FC = () => {
     });
 
     return unsub;
-  }, [bypassUnsavedCheck, hasUnsavedChanges, navigation]);
+  }, [bypassUnsavedCheck, hasUnsavedChanges, navigation, saving]);
 
   const displayFileName = title.trim() || existing?.title || "Untitled";
 
@@ -98,9 +125,10 @@ const NoteEditorScreen: React.FC = () => {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.headerRow}>
           <Pressable
+            disabled={saving}
             onPress={() => navigation.goBack()}
             hitSlop={8}
-            style={styles.backButton}
+            style={[styles.backButton, saving && styles.disabledButton]}
           >
             <Ionicons name="arrow-back" size={22} color={theme.colors.textPrimary} />
           </Pressable>
@@ -110,11 +138,16 @@ const NoteEditorScreen: React.FC = () => {
           </Text>
 
           <Pressable
+            disabled={saving}
             onPress={handleSave}
             hitSlop={8}
-            style={[styles.saveButton, { backgroundColor: theme.colors.primary + "22" }]}
+            style={[styles.saveButton, { backgroundColor: theme.colors.primary + "22" }, saving && styles.disabledButton]}
           >
-            <Ionicons name="save-outline" size={18} color={theme.colors.primary} />
+            {saving ? (
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+            ) : (
+              <Ionicons name="save-outline" size={18} color={theme.colors.primary} />
+            )}
           </Pressable>
         </View>
 
@@ -155,18 +188,21 @@ Write your thoughts in markdown..."
 
             <View style={styles.modalActionsRow}>
               <Pressable
+                disabled={saving}
                 onPress={() => {
+                  if (saving) return;
                   setShowUnsavedModal(false);
                   setPendingAction(null);
                 }}
-                style={[styles.modalButton, styles.modalButtonGhost, { borderColor: theme.colors.border }]}
+                style={[styles.modalButton, styles.modalButtonGhost, { borderColor: theme.colors.border }, saving && styles.disabledButton]}
               >
                 <Text muted>Cancel</Text>
               </Pressable>
 
               <Pressable
+                disabled={saving}
                 onPress={continueLeaving}
-                style={[styles.modalButton, styles.modalButtonDanger, { backgroundColor: theme.colors.danger + "22" }]}
+                style={[styles.modalButton, styles.modalButtonDanger, { backgroundColor: theme.colors.danger + "22" }, saving && styles.disabledButton]}
               >
                 <Text style={{ color: theme.colors.danger, fontWeight: "600" }}>Discard</Text>
               </Pressable>
@@ -174,12 +210,22 @@ Write your thoughts in markdown..."
 
             <Pressable
               onPress={async () => {
-                await handleSave();
+                const saved = await persistNote();
+                if (!saved) return;
+                showToast("Note saved ✓");
                 continueLeaving();
               }}
-              style={[styles.modalSaveButton, { backgroundColor: theme.colors.primary }]}
+              disabled={saving}
+              style={[styles.modalSaveButton, { backgroundColor: theme.colors.primary }, saving && styles.disabledButton]}
             >
-              <Text style={{ color: theme.colors.onPrimary, fontWeight: "700" }}>Save and leave</Text>
+              {saving ? (
+                <>
+                  <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                  <Text style={{ color: theme.colors.onPrimary, fontWeight: "700" }}>Saving...</Text>
+                </>
+              ) : (
+                <Text style={{ color: theme.colors.onPrimary, fontWeight: "700" }}>Save and leave</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -218,6 +264,9 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     alignItems: "center",
     justifyContent: "center"
+  },
+  disabledButton: {
+    opacity: 0.6
   },
   titleInput: {
     fontSize: 20,
@@ -270,7 +319,10 @@ const styles = StyleSheet.create({
   modalSaveButton: {
     borderRadius: 10,
     paddingVertical: 12,
-    alignItems: "center"
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8
   }
 });
 

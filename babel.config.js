@@ -13,13 +13,15 @@ module.exports = function (api) {
             "@navigation": "./src/navigation",
             "@store": "./src/store",
             "@database": "./src/database",
+            "@db": "./src/db",
             "@models": "./src/models",
             "@services": "./src/services",
             "@hooks": "./src/hooks",
             "@utils": "./src/utils"
           }
         }
-      ]
+      ],
+      "react-native-reanimated/plugin"
     ]
   };
 };

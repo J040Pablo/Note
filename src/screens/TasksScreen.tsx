@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, FlatList, Pressable, TextInput, Modal, ScrollView } from "react-native";
+import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator } from "react-native";
+import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
 import { PrimaryButton } from "@components/PrimaryButton";
@@ -13,6 +14,7 @@ import {
   deleteTask,
   getAllTasks,
   isTaskCompletedForDate,
+  reorderTasks,
   shouldAppearOnDate,
   toDateKey,
   toggleTaskForDate,
@@ -21,13 +23,19 @@ import {
   weekdayFromDateKey,
   TaskPriority
 } from "@services/tasksService";
-import { getPinnedItems, savePinnedItems } from "@services/appMetaService";
+import {
+  getPinnedItems,
+  getSortPreference,
+  savePinnedItems,
+  saveSortPreference
+} from "@services/appMetaService";
 import { Ionicons } from "@expo/vector-icons";
 import type { Task } from "@models/types";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 import type { TabsParamList } from "@navigation/RootNavigator";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 
 type TasksRoute = RouteProp<TabsParamList, "Tasks">;
 type TasksNav = BottomTabNavigationProp<TabsParamList, "Tasks">;
@@ -49,10 +57,14 @@ const buildMonthCells = (monthDate: Date): Date[] => {
 const sameMonth = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
 
+type TaskSortMode = "custom" | "recent" | "name_asc" | "name_desc";
+const TASK_SORT_SCOPE = "tasks.sort";
+
 const TasksScreen: React.FC = () => {
   const { theme } = useTheme();
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation<TasksNav>();
+  const { showToast } = useFeedback();
   const tasksMap = useTasksStore((s) => s.tasks);
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
@@ -71,13 +83,21 @@ const TasksScreen: React.FC = () => {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [sortMode, setSortMode] = useState<TaskSortMode>("custom");
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const [taskDeleting, setTaskDeleting] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const all = await getAllTasks();
+      const [all, pinned, savedSort] = await Promise.all([
+        getAllTasks(),
+        getPinnedItems(),
+        getSortPreference<TaskSortMode>(TASK_SORT_SCOPE, "custom")
+      ]);
       setTasks(all);
-      const pinned = await getPinnedItems();
       setPinnedItems(pinned);
+      setSortMode(savedSort);
     })();
   }, [setPinnedItems, setTasks]);
 
@@ -111,6 +131,20 @@ const TasksScreen: React.FC = () => {
     () => tasks.filter((task) => shouldAppearOnDate(task, selectedDate)),
     [selectedDate, tasks]
   );
+
+  const sortedTasksForSelectedDate = useMemo(() => {
+    if (sortMode === "name_asc") return [...tasksForSelectedDate].sort((a, b) => a.text.localeCompare(b.text));
+    if (sortMode === "name_desc") return [...tasksForSelectedDate].sort((a, b) => b.text.localeCompare(a.text));
+    if (sortMode === "recent") {
+      return [...tasksForSelectedDate].sort((a, b) => {
+        const ad = a.scheduledDate ? Number(a.scheduledDate.replace(/-/g, "")) : 0;
+        const bd = b.scheduledDate ? Number(b.scheduledDate.replace(/-/g, "")) : 0;
+        if (bd !== ad) return bd - ad;
+        return Number(b.id) - Number(a.id);
+      });
+    }
+    return [...tasksForSelectedDate].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  }, [sortMode, tasksForSelectedDate]);
 
   const completedToday = useMemo(
     () => tasksForSelectedDate.filter((task) => isTaskCompletedForDate(task, selectedDate)).length,
@@ -156,10 +190,18 @@ const TasksScreen: React.FC = () => {
           <Text variant="title">Tasks</Text>
           <Text muted>Daily productivity</Text>
         </View>
-        <PrimaryButton
-          label="+ Task"
-          onPress={openCreateModal}
-        />
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => setShowSortMenu(true)}
+            style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+          >
+            <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
+          </Pressable>
+          <PrimaryButton
+            label="+ Task"
+            onPress={openCreateModal}
+          />
+        </View>
       </View>
 
       <View style={[styles.progressCard, { backgroundColor: theme.colors.card }]}> 
@@ -255,17 +297,40 @@ const TasksScreen: React.FC = () => {
         <Text variant="subtitle">{selectedDate === toDateKey(new Date()) ? "Today’s Tasks" : `Tasks • ${selectedDate}`}</Text>
       </View>
 
-      <FlatList
-        data={tasksForSelectedDate}
+      <DraggableFlatList
+        data={sortedTasksForSelectedDate}
         keyExtractor={(item) => item.id}
+        activationDistance={12}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={9}
+        removeClippedSubviews
+        onDragEnd={async ({ data }) => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setSortMode("custom");
+          await saveSortPreference(TASK_SORT_SCOPE, "custom");
+          await reorderTasks(data.map((x) => x.id));
+          const refreshed = await getAllTasks();
+          setTasks(refreshed);
+        }}
         ItemSeparatorComponent={() => (
           <View
             style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border }}
           />
         )}
-        renderItem={({ item }) => (
+        renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => (
           <Pressable
-            style={styles.taskRow}
+            style={[
+              styles.taskRow,
+              isActive && {
+                backgroundColor: theme.colors.card,
+                elevation: 6,
+                shadowColor: theme.colors.textPrimary,
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 4 }
+              }
+            ]}
             onLongPress={() => setSelectedTask(item)}
             delayLongPress={260}
           >
@@ -334,6 +399,18 @@ const TasksScreen: React.FC = () => {
                 </Text>
               </View>
             </Pressable>
+            <Pressable
+              onPressIn={(event) => event.stopPropagation()}
+              onLongPress={(event) => {
+                event.stopPropagation();
+                drag();
+              }}
+              delayLongPress={220}
+              hitSlop={8}
+              style={styles.dragHandle}
+            >
+              <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
+            </Pressable>
           </Pressable>
         )}
         ListEmptyComponent={
@@ -341,6 +418,30 @@ const TasksScreen: React.FC = () => {
             No tasks for this day.
           </Text>
         }
+      />
+
+      <ContextActionMenu
+        visible={showSortMenu}
+        title="Sort tasks"
+        onClose={() => setShowSortMenu(false)}
+        actions={[
+          { key: "custom", label: "Custom order", icon: "reorder-three-outline", onPress: async () => {
+            setSortMode("custom");
+            await saveSortPreference(TASK_SORT_SCOPE, "custom");
+          } },
+          { key: "recent", label: "Most recent", icon: "time-outline", onPress: async () => {
+            setSortMode("recent");
+            await saveSortPreference(TASK_SORT_SCOPE, "recent");
+          } },
+          { key: "az", label: "Name (A-Z)", icon: "text-outline", onPress: async () => {
+            setSortMode("name_asc");
+            await saveSortPreference(TASK_SORT_SCOPE, "name_asc");
+          } },
+          { key: "za", label: "Name (Z-A)", icon: "text-outline", onPress: async () => {
+            setSortMode("name_desc");
+            await saveSortPreference(TASK_SORT_SCOPE, "name_desc");
+          } }
+        ]}
       />
 
       <ContextActionMenu
@@ -389,12 +490,25 @@ const TasksScreen: React.FC = () => {
       <DeleteConfirmModal
         visible={!!pendingDeleteTask}
         itemLabel="task"
-        onCancel={() => setPendingDeleteTask(null)}
-        onConfirm={async () => {
-          if (!pendingDeleteTask) return;
-          await deleteTask(pendingDeleteTask.id);
-          removeTask(pendingDeleteTask.id);
+        loading={taskDeleting}
+        onCancel={() => {
+          if (taskDeleting) return;
           setPendingDeleteTask(null);
+        }}
+        onConfirm={async () => {
+          if (!pendingDeleteTask || taskDeleting) return;
+          setTaskDeleting(true);
+          try {
+            await deleteTask(pendingDeleteTask.id);
+            removeTask(pendingDeleteTask.id);
+            setPendingDeleteTask(null);
+            showToast("Deleted ✓");
+          } catch (error) {
+            console.error("[task] delete failed", error);
+            showToast("Could not delete task", "error");
+          } finally {
+            setTaskDeleting(false);
+          }
         }}
       />
 
@@ -506,38 +620,62 @@ const TasksScreen: React.FC = () => {
             </ScrollView>
 
             <View style={styles.actions}>
-              <Pressable onPress={() => setShowModal(false)} style={styles.secondaryButton}>
+              <Pressable
+                disabled={taskSubmitting}
+                onPress={() => {
+                  if (taskSubmitting) return;
+                  setShowModal(false);
+                }}
+                style={[styles.secondaryButton, taskSubmitting && styles.disabledButton]}
+              >
                 <Text muted>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={async () => {
-                  if (!newText.trim()) return;
-                  if (editingTask) {
-                    const updated = await updateTask({
-                      ...editingTask,
-                      text: newText.trim(),
-                      priority,
-                      scheduledDate: repeatDays.length ? null : scheduledDate || null,
-                      repeatDays
-                    });
-                    upsertTask(updated);
-                    setEditingTask(null);
-                  } else {
-                    const created = await createTask({
-                      text: newText.trim(),
-                      priority,
-                      scheduledDate: repeatDays.length ? null : scheduledDate || null,
-                      repeatDays
-                    });
-                    upsertTask(created);
+                  if (!newText.trim() || taskSubmitting) return;
+                  setTaskSubmitting(true);
+                  try {
+                    if (editingTask) {
+                      const updated = await updateTask({
+                        ...editingTask,
+                        text: newText.trim(),
+                        priority,
+                        scheduledDate: repeatDays.length ? null : scheduledDate || null,
+                        repeatDays
+                      });
+                      upsertTask(updated);
+                      setEditingTask(null);
+                    } else {
+                      const created = await createTask({
+                        text: newText.trim(),
+                        priority,
+                        scheduledDate: repeatDays.length ? null : scheduledDate || null,
+                        repeatDays
+                      });
+                      upsertTask(created);
+                    }
+                    setShowModal(false);
+                    showToast("Task saved ✓");
+                  } catch (error) {
+                    console.error("[task] save failed", error);
+                    showToast("Could not save task", "error");
+                  } finally {
+                    setTaskSubmitting(false);
                   }
-                  setShowModal(false);
                 }}
-                style={[styles.primaryButton, { backgroundColor: theme.colors.primary }]}
+                disabled={taskSubmitting}
+                style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, taskSubmitting && styles.disabledButton]}
               >
-                <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>
-                  {editingTask ? "Save" : "Add"}
-                </Text>
+                {taskSubmitting ? (
+                  <>
+                    <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                    <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>Saving...</Text>
+                  </>
+                ) : (
+                  <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>
+                    {editingTask ? "Save" : "Add"}
+                  </Text>
+                )}
               </Pressable>
             </View>
           </View>
@@ -553,6 +691,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  sortButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center"
   },
   progressCard: {
     borderRadius: 12,
@@ -645,6 +796,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
     paddingVertical: 2
   },
+  dragHandle: {
+    marginLeft: 6,
+    paddingHorizontal: 2,
+    paddingVertical: 4
+  },
   priorityBadge: {
     borderRadius: 999,
     paddingHorizontal: 6,
@@ -724,7 +880,13 @@ const styles = StyleSheet.create({
   primaryButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 999
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  disabledButton: {
+    opacity: 0.7
   }
 });
 

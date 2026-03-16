@@ -108,12 +108,10 @@ const RootNavigator = () => {
         animation: "slide_from_right",
         fullScreenGestureEnabled: true,
         animationTypeForReplace: "push",
-        detachPreviousScreen: true,
         presentation: "card",
         headerStyle: { backgroundColor: theme.colors.surface },
         headerShadowVisible: false,
         headerTintColor: theme.colors.textPrimary,
-        headerBackTitleVisible: false,
         headerBackVisible: true,
         contentStyle: { backgroundColor: theme.colors.background }
       }}

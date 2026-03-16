@@ -2,9 +2,11 @@ import React from "react";
 import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
 import { useColorScheme, Linking as RNLinking } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import RootNavigator from "@navigation/RootNavigator";
 import { ThemeProvider, useTheme } from "@hooks/useTheme";
 import { DatabaseProvider } from "@database/DatabaseProvider";
+import { FeedbackProvider } from "@components/FeedbackProvider";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 
 const navRef = createNavigationContainerRef<RootStackParamList>();
@@ -91,11 +93,15 @@ const ThemedNavigation: React.FC = () => {
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <DatabaseProvider>
-        <ThemedNavigation />
-      </DatabaseProvider>
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <ThemeProvider>
+        <FeedbackProvider>
+          <DatabaseProvider>
+            <ThemedNavigation />
+          </DatabaseProvider>
+        </FeedbackProvider>
+      </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 

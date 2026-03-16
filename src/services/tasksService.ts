@@ -1,4 +1,4 @@
-import { getDb } from "@database/db";
+import { getDB, runDbWrite, withDbWriteTransaction } from "@db/database";
 import type { Task, ID } from "@models/types";
 
 export type TaskPriority = 0 | 1 | 2; // 0 = low, 1 = medium, 2 = high
@@ -70,45 +70,50 @@ export const createTask = async (payload: {
   scheduledDate?: string | null;
   repeatDays?: number[];
 }): Promise<Task> => {
-  const db = await getDb();
-  const id = String(Date.now());
-  const repeatDays = payload.repeatDays ?? [];
-  const completedDates: string[] = [];
+  return withDbWriteTransaction("createTask", async (db) => {
+    const id = String(Date.now());
+    const repeatDays = payload.repeatDays ?? [];
+    const completedDates: string[] = [];
+    const nextOrderRow = await db.getFirstAsync<{ next: number }>(
+      "SELECT COALESCE(MAX(orderIndex), 0) + 1 AS next FROM tasks"
+    );
+    const orderIndex = Number(nextOrderRow?.next ?? 1);
 
-  await db.runAsync(
-    "INSERT INTO tasks (id, text, completed, priority, noteId, scheduledDate, repeatDays, completedDates) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    id,
-    payload.text,
-    0,
-    payload.priority,
-    payload.noteId ?? null,
-    payload.scheduledDate ?? null,
-    JSON.stringify(repeatDays),
-    JSON.stringify(completedDates)
-  );
+    await db.runAsync(
+      "INSERT INTO tasks (id, text, completed, orderIndex, priority, noteId, scheduledDate, repeatDays, completedDates) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      id,
+      payload.text,
+      0,
+      orderIndex,
+      payload.priority,
+      payload.noteId ?? null,
+      payload.scheduledDate ?? null,
+      JSON.stringify(repeatDays),
+      JSON.stringify(completedDates)
+    );
 
-  return {
-    id,
-    text: payload.text,
-    completed: false,
-    priority: payload.priority,
-    noteId: payload.noteId ?? null,
-    scheduledDate: payload.scheduledDate ?? null,
-    repeatDays,
-    completedDates
-  };
+    return {
+      id,
+      text: payload.text,
+      completed: false,
+      orderIndex,
+      priority: payload.priority,
+      noteId: payload.noteId ?? null,
+      scheduledDate: payload.scheduledDate ?? null,
+      repeatDays,
+      completedDates
+    };
+  });
 };
 
 export const toggleTask = async (task: Task): Promise<Task> => {
-  const db = await getDb();
   const updated = { ...task, completed: !task.completed };
 
-  await db.runAsync("UPDATE tasks SET completed = ? WHERE id = ?", updated.completed ? 1 : 0, task.id);
+  await runDbWrite("UPDATE tasks SET completed = ? WHERE id = ?", updated.completed ? 1 : 0, task.id);
   return updated;
 };
 
 export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Task> => {
-  const db = await getDb();
   const repeats = task.repeatDays ?? [];
   const isRecurringOrScheduled = repeats.length > 0 || !!task.scheduledDate;
 
@@ -128,7 +133,7 @@ export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Ta
     completedDates: Array.from(completedDates)
   };
 
-  await db.runAsync(
+  await runDbWrite(
     "UPDATE tasks SET completedDates = ? WHERE id = ?",
     JSON.stringify(updated.completedDates),
     task.id
@@ -138,19 +143,18 @@ export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Ta
 };
 
 export const updateTaskPriority = async (task: Task, priority: TaskPriority): Promise<Task> => {
-  const db = await getDb();
   const updated = { ...task, priority };
 
-  await db.runAsync("UPDATE tasks SET priority = ? WHERE id = ?", priority, task.id);
+  await runDbWrite("UPDATE tasks SET priority = ? WHERE id = ?", priority, task.id);
   return updated;
 };
 
 export const updateTask = async (task: Task): Promise<Task> => {
-  const db = await getDb();
-  await db.runAsync(
-    "UPDATE tasks SET text = ?, completed = ?, priority = ?, noteId = ?, scheduledDate = ?, repeatDays = ?, completedDates = ? WHERE id = ?",
+  await runDbWrite(
+    "UPDATE tasks SET text = ?, completed = ?, orderIndex = ?, priority = ?, noteId = ?, scheduledDate = ?, repeatDays = ?, completedDates = ? WHERE id = ?",
     task.text,
     task.completed ? 1 : 0,
+    task.orderIndex,
     task.priority,
     task.noteId ?? null,
     task.scheduledDate ?? null,
@@ -162,16 +166,27 @@ export const updateTask = async (task: Task): Promise<Task> => {
 };
 
 export const deleteTask = async (taskId: ID): Promise<void> => {
-  const db = await getDb();
-  await db.runAsync("DELETE FROM tasks WHERE id = ?", taskId);
+  await runDbWrite("DELETE FROM tasks WHERE id = ?", taskId);
 };
 
 export const getAllTasks = async (): Promise<Task[]> => {
-  const db = await getDb();
+  const db = await getDB();
   const rows = await db.getAllAsync<Task & { repeatDays?: string; completedDates?: string }>(
-    "SELECT * FROM tasks"
+    "SELECT * FROM tasks ORDER BY orderIndex ASC, id DESC"
   );
   return rows.map(parseTask);
+};
+
+export const reorderTasks = async (orderedIds: ID[]): Promise<void> => {
+  await withDbWriteTransaction("reorderTasks", async (db) => {
+    const existing = await db.getAllAsync<{ id: ID }>("SELECT id FROM tasks ORDER BY orderIndex ASC, id DESC");
+    const remainingIds = existing.map((x) => x.id).filter((id) => !orderedIds.includes(id));
+    const nextIds = [...orderedIds, ...remainingIds];
+
+    for (let i = 0; i < nextIds.length; i += 1) {
+      await db.runAsync("UPDATE tasks SET orderIndex = ? WHERE id = ?", i + 1, nextIds[i]);
+    }
+  });
 };
 
 export const getTasksForDate = async (dateKey: string): Promise<Task[]> => {
@@ -180,7 +195,7 @@ export const getTasksForDate = async (dateKey: string): Promise<Task[]> => {
 };
 
 export const getPriorityTasks = async (minPriority: TaskPriority = 2, limit = 5): Promise<Task[]> => {
-  const db = await getDb();
+  const db = await getDB();
   const rows = await db.getAllAsync<Task & { repeatDays?: string; completedDates?: string }>(
     "SELECT * FROM tasks WHERE priority >= ? ORDER BY priority DESC LIMIT ?",
     minPriority,

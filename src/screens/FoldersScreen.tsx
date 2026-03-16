@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { View, StyleSheet, FlatList, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, Image, LayoutAnimation } from "react-native";
+import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
 import { PrimaryButton } from "@components/PrimaryButton";
@@ -8,19 +9,31 @@ import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { useTheme } from "@hooks/useTheme";
 import { useAppStore } from "@store/useAppStore";
-import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
-import { addRecentOpen, getPinnedItems, savePinnedItems } from "@services/appMetaService";
+import { createFolder, deleteFolder, getFoldersByParent, reorderFolders, updateFolder } from "@services/foldersService";
+import {
+  addRecentOpen,
+  getPinnedItems,
+  getSortPreference,
+  savePinnedItems,
+  saveSortPreference
+} from "@services/appMetaService";
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { FoldersStackParamList } from "@navigation/RootNavigator";
 import { FolderNameModal } from "@components/FolderNameModal";
 import type { Folder } from "@models/types";
+import { Ionicons } from "@expo/vector-icons";
+import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 
 type Nav = NativeStackNavigationProp<FoldersStackParamList, "FoldersRoot">;
+type FolderSortMode = "custom" | "recent" | "name_asc" | "name_desc";
+const FOLDER_ORDER_SCOPE = "folders.root";
+const FOLDER_SORT_SCOPE = "folders.root.sort";
 
 const FoldersScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<Nav>();
+  const { showToast } = useFeedback();
   const folders = useAppStore((s) => s.folders);
   const setFolders = useAppStore((s) => s.setFolders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);
@@ -34,19 +47,39 @@ const FoldersScreen: React.FC = () => {
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<Folder | null>(null);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [sortMode, setSortMode] = useState<FolderSortMode>("custom");
+  const [folderSubmitting, setFolderSubmitting] = useState(false);
+  const [folderDeleting, setFolderDeleting] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const rootFolders = await getFoldersByParent(null);
+      const [rootFolders, pinned, savedSort] = await Promise.all([
+        getFoldersByParent(null),
+        getPinnedItems(),
+        getSortPreference<FolderSortMode>(FOLDER_SORT_SCOPE, "custom")
+      ]);
       setFolders(rootFolders);
-      const pinned = await getPinnedItems();
       setPinnedItems(pinned);
+      setSortMode(savedSort);
     })();
   }, [setFolders, setPinnedItems]);
 
   const rootFolders = Object.values(folders)
     .filter((f) => f.parentId == null)
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+
+  const visibleFolders = (() => {
+    if (sortMode === "name_asc") return [...rootFolders].sort((a, b) => a.name.localeCompare(b.name));
+    if (sortMode === "name_desc") return [...rootFolders].sort((a, b) => b.name.localeCompare(a.name));
+    if (sortMode === "recent") return [...rootFolders].sort((a, b) => b.createdAt - a.createdAt);
+    return [...rootFolders].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  })();
+
+  const onChangeSort = async (mode: FolderSortMode) => {
+    setSortMode(mode);
+    await saveSortPreference(FOLDER_SORT_SCOPE, mode);
+  };
 
   return (
     <Screen>
@@ -55,18 +88,52 @@ const FoldersScreen: React.FC = () => {
           <Text variant="title">Folders</Text>
           <Text muted>Root folders</Text>
         </View>
-        <PrimaryButton label="+ Folder" onPress={() => setShowCreateModal(true)} />
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => setShowSortMenu(true)}
+            style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+          >
+            <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
+          </Pressable>
+          <PrimaryButton label="+ Folder" onPress={() => setShowCreateModal(true)} />
+        </View>
       </View>
 
-      <FlatList
+      <DraggableFlatList
         contentContainerStyle={styles.listContent}
-        data={rootFolders}
+        data={visibleFolders}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
+        initialNumToRender={10}
+        maxToRenderPerBatch={8}
+        windowSize={9}
+        removeClippedSubviews
+        activationDistance={12}
+        onDragEnd={async ({ data }) => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setSortMode("custom");
+          await saveSortPreference(FOLDER_SORT_SCOPE, "custom");
+          const nextOrder = data.map((x) => x.id);
+          await reorderFolders(null, nextOrder);
+          const refreshed = await getFoldersByParent(null);
+          setFolders(refreshed);
+        }}
+        renderItem={({ item, drag, isActive }: RenderItemParams<Folder>) => {
           return (
             <Pressable
               onLongPress={() => setSelectedFolder(item)}
               delayLongPress={260}
+              style={({ pressed }) => [
+                styles.folderCard,
+                {
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border,
+                  shadowColor: theme.colors.textPrimary,
+                  transform: [{ scale: pressed ? 0.992 : 1 }],
+                  opacity: pressed ? 0.96 : 1,
+                  elevation: isActive ? 8 : 2,
+                  shadowOpacity: isActive ? 0.24 : 0.08
+                }
+              ]}
               onPress={() =>
                 (async () => {
                   const nextRecent = await addRecentOpen("folder", item.id);
@@ -74,11 +141,34 @@ const FoldersScreen: React.FC = () => {
                   navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
                 })()
               }
-              style={[styles.folderRow, { backgroundColor: theme.colors.card }]}
             >
-              <FolderIcon color={item.color} fallbackColor={theme.colors.primary} size={18} />
-              <View style={{ flex: 1 }}>
-                <Text>{item.name}</Text>
+              {!!item.bannerPath && <Image source={{ uri: item.bannerPath }} style={styles.banner} resizeMode="cover" />}
+              <View style={styles.folderBody}>
+                {item.photoPath ? (
+                  <Image source={{ uri: item.photoPath }} style={styles.avatar} resizeMode="cover" />
+                ) : (
+                  <FolderIcon color={item.color} fallbackColor={theme.colors.primary} size={20} />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.folderTitle}>{item.name}</Text>
+                  {!!item.description && (
+                    <Text muted variant="caption" numberOfLines={2}>
+                      {item.description}
+                    </Text>
+                  )}
+                </View>
+                <Pressable
+                  onPressIn={(event) => event.stopPropagation()}
+                  onLongPress={(event) => {
+                    event.stopPropagation();
+                    drag();
+                  }}
+                  delayLongPress={220}
+                  hitSlop={8}
+                  style={styles.dragHandle}
+                >
+                  <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
+                </Pressable>
               </View>
             </Pressable>
           );
@@ -88,6 +178,18 @@ const FoldersScreen: React.FC = () => {
             No folders here yet.
           </Text>
         }
+      />
+
+      <ContextActionMenu
+        visible={showSortMenu}
+        title="Sort folders"
+        onClose={() => setShowSortMenu(false)}
+        actions={[
+          { key: "custom", label: "Custom order", icon: "reorder-three-outline", onPress: () => onChangeSort("custom") },
+          { key: "recent", label: "Most recent", icon: "time-outline", onPress: () => onChangeSort("recent") },
+          { key: "az", label: "Name (A-Z)", icon: "text-outline", onPress: () => onChangeSort("name_asc") },
+          { key: "za", label: "Name (Z-A)", icon: "text-outline", onPress: () => onChangeSort("name_desc") }
+        ]}
       />
 
       <ContextActionMenu
@@ -153,11 +255,33 @@ const FoldersScreen: React.FC = () => {
 
       <FolderNameModal
         visible={showCreateModal}
-        onCancel={() => setShowCreateModal(false)}
-        onConfirm={async (name, color) => {
-          const folder = await createFolder(name, null, color);
-          upsertFolder(folder);
+        onCancel={() => {
+          if (folderSubmitting) return;
           setShowCreateModal(false);
+        }}
+        submitting={folderSubmitting}
+        onConfirm={async (payload) => {
+          if (folderSubmitting) return;
+          setFolderSubmitting(true);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          try {
+            const folder = await createFolder(
+              payload.name,
+              null,
+              payload.color,
+              payload.description,
+              payload.photoPath,
+              payload.bannerPath
+            );
+            upsertFolder(folder);
+            setShowCreateModal(false);
+            showToast("Folder saved ✓");
+          } catch (error) {
+            console.error("[folder] create failed", error);
+            showToast("Could not save folder", "error");
+          } finally {
+            setFolderSubmitting(false);
+          }
         }}
       />
 
@@ -165,26 +289,64 @@ const FoldersScreen: React.FC = () => {
         visible={!!editingFolder}
         initialName={editingFolder?.name}
         initialColor={editingFolder?.color}
+        initialDescription={editingFolder?.description}
+        initialPhotoPath={editingFolder?.photoPath}
+        initialBannerPath={editingFolder?.bannerPath}
         title="Edit folder"
         confirmLabel="Save"
-        onCancel={() => setEditingFolder(null)}
-        onConfirm={async (name, color) => {
-          if (!editingFolder) return;
-          const updated = await updateFolder({ ...editingFolder, name, color });
-          upsertFolder(updated);
+        onCancel={() => {
+          if (folderSubmitting) return;
           setEditingFolder(null);
+        }}
+        submitting={folderSubmitting}
+        onConfirm={async (payload) => {
+          if (!editingFolder || folderSubmitting) return;
+          setFolderSubmitting(true);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          try {
+            const updated = await updateFolder({
+              ...editingFolder,
+              name: payload.name,
+              color: payload.color,
+              description: payload.description,
+              photoPath: payload.photoPath,
+              bannerPath: payload.bannerPath
+            });
+            upsertFolder(updated);
+            setEditingFolder(null);
+            showToast("Folder saved ✓");
+          } catch (error) {
+            console.error("[folder] update failed", error);
+            showToast("Could not save folder", "error");
+          } finally {
+            setFolderSubmitting(false);
+          }
         }}
       />
 
       <DeleteConfirmModal
         visible={!!pendingDeleteFolder}
         itemLabel="folder"
-        onCancel={() => setPendingDeleteFolder(null)}
-        onConfirm={async () => {
-          if (!pendingDeleteFolder) return;
-          await deleteFolder(pendingDeleteFolder.id);
-          removeFolder(pendingDeleteFolder.id);
+        loading={folderDeleting}
+        onCancel={() => {
+          if (folderDeleting) return;
           setPendingDeleteFolder(null);
+        }}
+        onConfirm={async () => {
+          if (!pendingDeleteFolder || folderDeleting) return;
+          setFolderDeleting(true);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          try {
+            await deleteFolder(pendingDeleteFolder.id);
+            removeFolder(pendingDeleteFolder.id);
+            setPendingDeleteFolder(null);
+            showToast("Deleted ✓");
+          } catch (error) {
+            console.error("[folder] delete failed", error);
+            showToast("Could not delete folder", "error");
+          } finally {
+            setFolderDeleting(false);
+          }
         }}
       />
     </Screen>
@@ -198,12 +360,51 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     marginBottom: 12
   },
-  folderRow: {
+  headerActions: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 8
+  },
+  sortButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  folderCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
+    overflow: "hidden",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2
+  },
+  banner: {
+    width: "100%",
+    height: 86
+  },
+  folderBody: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     paddingVertical: 14,
-    paddingHorizontal: 12,
-    borderRadius: 12
+    paddingHorizontal: 12
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 11
+  },
+  folderTitle: {
+    fontWeight: "600",
+    marginBottom: 2
+  },
+  dragHandle: {
+    paddingHorizontal: 2,
+    paddingVertical: 4
   },
   emptyText: {
     marginTop: 24,

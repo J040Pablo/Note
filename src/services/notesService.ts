@@ -1,4 +1,4 @@
-import { getDb } from "@database/db";
+import { getDB, runDbWrite } from "@db/database";
 import type { Note, ID } from "@models/types";
 
 export const createNote = async (payload: {
@@ -6,11 +6,10 @@ export const createNote = async (payload: {
   content: string;
   folderId: ID | null;
 }): Promise<Note> => {
-  const db = await getDb();
   const now = Date.now();
   const id = String(now);
 
-  await db.runAsync(
+  await runDbWrite(
     "INSERT INTO notes (id, title, content, folderId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
     id,
     payload.title,
@@ -31,10 +30,9 @@ export const createNote = async (payload: {
 };
 
 export const updateNote = async (note: Note): Promise<Note> => {
-  const db = await getDb();
   const updatedAt = Date.now();
 
-  await db.runAsync(
+  await runDbWrite(
     "UPDATE notes SET title = ?, content = ?, folderId = ?, updatedAt = ? WHERE id = ?",
     note.title,
     note.content,
@@ -47,7 +45,7 @@ export const updateNote = async (note: Note): Promise<Note> => {
 };
 
 export const getNotesByFolder = async (folderId: ID | null): Promise<Note[]> => {
-  const db = await getDb();
+  const db = await getDB();
 
   const rows =
     folderId === null
@@ -63,7 +61,7 @@ export const getNotesByFolder = async (folderId: ID | null): Promise<Note[]> => 
 };
 
 export const getRecentNotes = async (limit = 5): Promise<Note[]> => {
-  const db = await getDb();
+  const db = await getDB();
   const rows = await db.getAllAsync<Note>(
     "SELECT * FROM notes ORDER BY updatedAt DESC LIMIT ?",
     limit
@@ -72,12 +70,11 @@ export const getRecentNotes = async (limit = 5): Promise<Note[]> => {
 };
 
 export const getAllNotes = async (): Promise<Note[]> => {
-  const db = await getDb();
+  const db = await getDB();
   return db.getAllAsync<Note>("SELECT * FROM notes ORDER BY updatedAt DESC");
 };
 
 export const deleteNote = async (noteId: ID): Promise<void> => {
-  const db = await getDb();
-  await db.runAsync("DELETE FROM notes WHERE id = ?", noteId);
+  await runDbWrite("DELETE FROM notes WHERE id = ?", noteId);
 };
 

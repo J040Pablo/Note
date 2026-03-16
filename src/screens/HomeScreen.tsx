@@ -2,6 +2,7 @@ import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "
 import { View, StyleSheet, Pressable, FlatList, Animated } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useFeedback } from "@components/FeedbackProvider";
 import { Text } from "@components/Text";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { FolderNameModal } from "@components/FolderNameModal";
@@ -46,6 +47,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = memo(({ title, icon }) => {
 const HomeScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<Nav>();
+  const { showToast } = useFeedback();
 
   const foldersMap = useAppStore((s) => s.folders);
   const setFolders = useAppStore((s) => s.setFolders);
@@ -69,6 +71,7 @@ const HomeScreen: React.FC = () => {
   const [search, setSearch] = useState("");
   const [selectedPinned, setSelectedPinned] = useState<{ type: PinnedItemType; id: ID; label: string } | null>(null);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+  const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fabAnim = useRef(new Animated.Value(0)).current;
@@ -672,11 +675,32 @@ const HomeScreen: React.FC = () => {
 
       <FolderNameModal
         visible={showCreateFolderModal}
-        onCancel={() => setShowCreateFolderModal(false)}
-        onConfirm={async (name, color) => {
-          const created = await createFolder(name, null, color);
-          upsertFolder(created);
+        onCancel={() => {
+          if (folderSubmitting) return;
           setShowCreateFolderModal(false);
+        }}
+        submitting={folderSubmitting}
+        onConfirm={async (payload) => {
+          if (folderSubmitting) return;
+          setFolderSubmitting(true);
+          try {
+            const created = await createFolder(
+              payload.name,
+              null,
+              payload.color,
+              payload.description,
+              payload.photoPath,
+              payload.bannerPath
+            );
+            upsertFolder(created);
+            setShowCreateFolderModal(false);
+            showToast("Folder saved ✓");
+          } catch (error) {
+            console.error("[folder] create failed", error);
+            showToast("Could not save folder", "error");
+          } finally {
+            setFolderSubmitting(false);
+          }
         }}
       />
     </SafeAreaView>

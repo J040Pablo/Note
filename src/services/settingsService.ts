@@ -1,4 +1,4 @@
-import { getDb } from "@database/db";
+import { getDB, runDbWrite } from "@db/database";
 
 const TASK_PREFS_KEY = "task_preferences";
 
@@ -29,7 +29,7 @@ const parsePrefs = (value: unknown): TaskPreferences => {
 };
 
 export const getTaskPreferences = async (): Promise<TaskPreferences> => {
-  const db = await getDb();
+  const db = await getDB();
   const row = await db.getFirstAsync<{ value: string }>(
     "SELECT value FROM app_meta WHERE key = ?",
     TASK_PREFS_KEY
@@ -38,8 +38,7 @@ export const getTaskPreferences = async (): Promise<TaskPreferences> => {
 };
 
 export const saveTaskPreferences = async (prefs: TaskPreferences): Promise<void> => {
-  const db = await getDb();
-  await db.runAsync(
+  await runDbWrite(
     "INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     TASK_PREFS_KEY,
     JSON.stringify(prefs)

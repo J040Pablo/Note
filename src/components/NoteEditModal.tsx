@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Modal, View, StyleSheet, TextInput, Pressable } from "react-native";
+import { Modal, View, StyleSheet, TextInput, Pressable, ActivityIndicator } from "react-native";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { Text } from "./Text";
 
@@ -9,6 +9,7 @@ interface NoteEditModalProps {
   initialContent: string;
   onCancel: () => void;
   onConfirm: (title: string, content: string) => void;
+  submitting?: boolean;
 }
 
 export const NoteEditModal: React.FC<NoteEditModalProps> = ({
@@ -16,7 +17,8 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
   initialTitle,
   initialContent,
   onCancel,
-  onConfirm
+  onConfirm,
+  submitting = false
 }) => {
   const { theme } = useTheme();
   const [title, setTitle] = useState("");
@@ -63,14 +65,25 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
           />
 
           <View style={styles.actions}>
-            <Pressable onPress={onCancel} style={styles.secondaryButton}>
+            <Pressable disabled={submitting} onPress={onCancel} style={[styles.secondaryButton, submitting && styles.disabledButton]}>
               <Text muted>Cancel</Text>
             </Pressable>
             <Pressable
-              onPress={() => onConfirm(title.trim(), content)}
-              style={[styles.primaryButton, { backgroundColor: theme.colors.primary }]}
+              disabled={submitting}
+              onPress={() => {
+                if (submitting) return;
+                onConfirm(title.trim(), content);
+              }}
+              style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, submitting && styles.disabledButton]}
             >
-              <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>Save</Text>
+              {submitting ? (
+                <>
+                  <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                  <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>Saving...</Text>
+                </>
+              ) : (
+                <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>Save</Text>
+              )}
             </Pressable>
           </View>
         </View>
@@ -121,6 +134,12 @@ const styles = StyleSheet.create({
   primaryButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderRadius: 999
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm
+  },
+  disabledButton: {
+    opacity: 0.7
   }
 });
