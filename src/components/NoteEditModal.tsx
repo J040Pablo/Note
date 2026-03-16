@@ -6,36 +6,32 @@ import { Text } from "./Text";
 interface NoteEditModalProps {
   visible: boolean;
   initialTitle: string;
-  initialContent: string;
   onCancel: () => void;
-  onConfirm: (title: string, content: string) => void;
+  onConfirm: (title: string) => void;
   submitting?: boolean;
 }
 
 export const NoteEditModal: React.FC<NoteEditModalProps> = ({
   visible,
   initialTitle,
-  initialContent,
   onCancel,
   onConfirm,
   submitting = false
 }) => {
   const { theme } = useTheme();
   const [title, setTitle] = useState("");
-  const [content, setContent] = useState("");
 
   useEffect(() => {
     if (visible) {
       setTitle(initialTitle);
-      setContent(initialContent);
     }
-  }, [initialContent, initialTitle, visible]);
+  }, [initialTitle, visible]);
 
   return (
     <Modal transparent visible={visible} animationType="fade">
       <View style={styles.backdrop}>
         <View style={[styles.card, { backgroundColor: theme.colors.card }]}> 
-          <Text variant="subtitle">Edit note</Text>
+          <Text variant="subtitle">Rename note</Text>
           <TextInput
             value={title}
             onChangeText={setTitle}
@@ -43,20 +39,6 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
             placeholderTextColor={theme.colors.textSecondary}
             style={[
               styles.input,
-              {
-                borderColor: theme.colors.border,
-                color: theme.colors.textPrimary
-              }
-            ]}
-          />
-          <TextInput
-            value={content}
-            onChangeText={setContent}
-            placeholder="Content"
-            placeholderTextColor={theme.colors.textSecondary}
-            multiline
-            style={[
-              styles.textArea,
               {
                 borderColor: theme.colors.border,
                 color: theme.colors.textPrimary
@@ -72,7 +54,7 @@ export const NoteEditModal: React.FC<NoteEditModalProps> = ({
               disabled={submitting}
               onPress={() => {
                 if (submitting) return;
-                onConfirm(title.trim(), content);
+                onConfirm(title.trim());
               }}
               style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, submitting && styles.disabledButton]}
             >
@@ -107,15 +89,6 @@ const styles = StyleSheet.create({
   },
   input: {
     marginTop: spacing.md,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth
-  },
-  textArea: {
-    marginTop: spacing.sm,
-    minHeight: 120,
-    textAlignVertical: "top",
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     borderRadius: 10,

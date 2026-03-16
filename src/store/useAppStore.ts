@@ -15,6 +15,7 @@ interface AppActions {
   setFolders: (list: Folder[]) => void;
   upsertFolder: (folder: Folder) => void;
   removeFolder: (folderId: ID) => void;
+  reorderFoldersInStore: (orderedIds: ID[]) => void;
   setPinnedItems: (items: PinnedItem[]) => void;
   setRecentItems: (items: RecentItem[]) => void;
   togglePinned: (type: PinnedItemType, id: ID) => PinnedItem[];
@@ -54,6 +55,17 @@ export const useAppStore = create<AppState & AppActions>()(
     removeFolder: (folderId) =>
       set((state) => {
         delete state.folders[folderId];
+      }),
+
+    // Surgically updates only orderIndex for the reordered IDs.
+    // Never replaces the map, so only mutated folder objects re-render.
+    reorderFoldersInStore: (orderedIds) =>
+      set((state) => {
+        orderedIds.forEach((id, index) => {
+          if (state.folders[id]) {
+            state.folders[id].orderIndex = index + 1;
+          }
+        });
       }),
 
     setPinnedItems: (items) =>

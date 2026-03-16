@@ -47,6 +47,9 @@ const FoldersStackNavigator = () => {
     <FolderStack.Navigator
       screenOptions={{
         animation: "slide_from_right",
+        animationDuration: 160,
+        fullScreenGestureEnabled: true,
+        gestureEnabled: true,
         headerStyle: { backgroundColor: theme.colors.surface },
         headerShadowVisible: false,
         headerTintColor: theme.colors.textPrimary,
@@ -61,7 +64,11 @@ const FoldersStackNavigator = () => {
       <FolderStack.Screen
         name="FolderDetail"
         component={FolderDetailScreen}
-        options={{ title: "Folder" }}
+        options={{
+          title: "Folder",
+          animation: "slide_from_right",
+          animationDuration: 85
+        }}
       />
     </FolderStack.Navigator>
   );
@@ -106,7 +113,9 @@ const RootNavigator = () => {
     <RootStack.Navigator
       screenOptions={{
         animation: "slide_from_right",
+        animationDuration: 160,
         fullScreenGestureEnabled: true,
+        gestureEnabled: true,
         animationTypeForReplace: "push",
         presentation: "card",
         headerStyle: { backgroundColor: theme.colors.surface },
@@ -127,7 +136,8 @@ const RootNavigator = () => {
         options={{
           headerShown: false,
           title: "Note",
-          animation: "fade_from_bottom"
+          animation: "slide_from_right",
+          animationDuration: 140
         }}
       />
       <RootStack.Screen
@@ -138,7 +148,7 @@ const RootNavigator = () => {
       <RootStack.Screen
         name="ImageViewer"
         component={ImageViewerScreen}
-        options={{ title: "Image", animation: "fade" }}
+          options={{ title: "Image", animation: "slide_from_right" }}
       />
       <RootStack.Screen
         name="SaveSharedFile"

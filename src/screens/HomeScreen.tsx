@@ -21,13 +21,12 @@ import type { Task, Note, Folder, ID, PinnedItemType } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import { FolderIcon } from "@components/FolderIcon";
 import { ContextActionMenu } from "@components/ContextActionMenu";
+import { useNavigationLock } from "@hooks/useNavigationLock";
+import { getRichNotePreviewLine } from "@utils/noteContent";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
 
-const firstLine = (text: string): string => {
-  const line = (text || "").split(/\r?\n/).find((x) => x.trim().length > 0) ?? "";
-  return line.length > 90 ? line.slice(0, 87).trimEnd() + "…" : line;
-};
+const firstLine = (text: string): string => getRichNotePreviewLine(text, 90);
 
 interface SectionHeaderProps {
   title: string;
@@ -47,6 +46,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = memo(({ title, icon }) => {
 const HomeScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<Nav>();
+  const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
 
   const foldersMap = useAppStore((s) => s.folders);
@@ -212,30 +212,33 @@ const HomeScreen: React.FC = () => {
   }, [closeFab, fabOpen, openFab]);
 
   const handleOpenFolder = useCallback(
-    async (folderId: ID) => {
-      const next = pushRecent("folder", folderId);
-      setRecentItems(next);
-      await saveRecentItems(next);
-
-      navigation.navigate("Tabs", {
-        screen: "Folders",
-        params: {
-          screen: "FolderDetail",
-          params: { folderId, trail: [folderId] }
-        }
+    (folderId: ID) => {
+      withLock(() => {
+        const next = pushRecent("folder", folderId);
+        setRecentItems(next);
+        navigation.navigate("Tabs", {
+          screen: "Folders",
+          params: {
+            screen: "FolderDetail",
+            params: { folderId, trail: [folderId] }
+          }
+        });
+        saveRecentItems(next); // fire-and-forget — does not delay navigation
       });
     },
-    [navigation, pushRecent, setRecentItems]
+    [navigation, pushRecent, setRecentItems, withLock]
   );
 
   const handleOpenNote = useCallback(
-    async (noteId: ID) => {
-      const next = pushRecent("note", noteId);
-      setRecentItems(next);
-      await saveRecentItems(next);
-      navigation.navigate("NoteEditor", { noteId });
+    (noteId: ID) => {
+      withLock(() => {
+        const next = pushRecent("note", noteId);
+        setRecentItems(next);
+        navigation.navigate("NoteEditor", { noteId });
+        saveRecentItems(next); // fire-and-forget — does not delay navigation
+      });
     },
-    [navigation, pushRecent, setRecentItems]
+    [navigation, pushRecent, setRecentItems, withLock]
   );
 
   const handleOpenTask = useCallback(

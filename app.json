@@ -10,49 +10,29 @@
       "resizeMode": "contain",
       "backgroundColor": "#0f172a"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.lifeorganizer"
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
       },
-      "package": "com.example.lifeorganizer",
-      "intentFilters": [
-        {
-          "action": "VIEW",
-          "autoVerify": false,
-          "category": ["BROWSABLE", "DEFAULT"],
-          "data": [
-            {
-              "scheme": "lifeorganizer",
-              "host": "import-file"
-            },
-            {
-              "mimeType": "application/pdf"
-            },
-            {
-              "mimeType": "image/*"
-            },
-            {
-              "mimeType": "application/msword"
-            },
-            {
-              "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            }
-          ]
-        }
-      ]
+      "package": "com.example.lifeorganizer"
     },
     "web": {
       "bundler": "metro"
     },
     "extra": {
       "eas": {
-        "projectId": "00000000-0000-0000-0000-000000000000"
+        "projectId": "7f97a7d5-adfc-4d42-9320-1ddd6bd69eb8"
       }
-    }
+    },
+    "plugins": [
+      "expo-font"
+    ]
   }
 }
-

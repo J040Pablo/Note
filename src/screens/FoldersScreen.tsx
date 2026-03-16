@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { View, StyleSheet, Pressable, Image, LayoutAnimation } from "react-native";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
@@ -20,6 +20,7 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { FoldersStackParamList } from "@navigation/RootNavigator";
+import { useNavigationLock } from "@hooks/useNavigationLock";
 import { FolderNameModal } from "@components/FolderNameModal";
 import type { Folder } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
@@ -33,11 +34,13 @@ const FOLDER_SORT_SCOPE = "folders.root.sort";
 const FoldersScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<Nav>();
+  const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
   const folders = useAppStore((s) => s.folders);
   const setFolders = useAppStore((s) => s.setFolders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);
   const removeFolder = useAppStore((s) => s.removeFolder);
+  const reorderFoldersInStore = useAppStore((s) => s.reorderFoldersInStore);
   const pinnedItems = useAppStore((s) => s.pinnedItems);
   const togglePinned = useAppStore((s) => s.togglePinned);
   const setPinnedItems = useAppStore((s) => s.setPinnedItems);
@@ -51,6 +54,10 @@ const FoldersScreen: React.FC = () => {
   const [sortMode, setSortMode] = useState<FolderSortMode>("custom");
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [folderDeleting, setFolderDeleting] = useState(false);
+
+  // Debounce refs — ensure rapid drags only trigger one DB write (last-wins).
+  const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestOrderRef = useRef<string[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -108,15 +115,23 @@ const FoldersScreen: React.FC = () => {
         windowSize={9}
         removeClippedSubviews
         activationDistance={12}
-        onDragEnd={async ({ data }) => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        onDragEnd={useCallback(({ data }: { data: typeof visibleFolders }) => {
+          const orderedIds = data.map((x) => x.id);
+
+          // 1. Optimistic UI: update orderIndex in-place — no full map replace, no flicker.
+          reorderFoldersInStore(orderedIds);
           setSortMode("custom");
-          await saveSortPreference(FOLDER_SORT_SCOPE, "custom");
-          const nextOrder = data.map((x) => x.id);
-          await reorderFolders(null, nextOrder);
-          const refreshed = await getFoldersByParent(null);
-          setFolders(refreshed);
-        }}
+
+          // 2. Debounced persist: last-wins so rapid drags never race.
+          latestOrderRef.current = orderedIds;
+          if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
+          reorderTimerRef.current = setTimeout(() => {
+            reorderTimerRef.current = null;
+            const ids = latestOrderRef.current;
+            saveSortPreference(FOLDER_SORT_SCOPE, "custom");
+            reorderFolders(null, ids);
+          }, 300);
+        }, [reorderFoldersInStore])}
         renderItem={({ item, drag, isActive }: RenderItemParams<Folder>) => {
           return (
             <Pressable
@@ -135,11 +150,10 @@ const FoldersScreen: React.FC = () => {
                 }
               ]}
               onPress={() =>
-                (async () => {
-                  const nextRecent = await addRecentOpen("folder", item.id);
-                  setRecentItems(nextRecent);
+                withLock(() => {
                   navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
-                })()
+                  addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
+                })
               }
             >
               {!!item.bannerPath && <Image source={{ uri: item.bannerPath }} style={styles.banner} resizeMode="cover" />}

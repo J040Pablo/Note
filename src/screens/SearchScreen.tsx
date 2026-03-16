@@ -13,6 +13,7 @@ import { useTasksStore } from "@store/useTasksStore";
 import { getAllFolders } from "@services/foldersService";
 import { getAllNotes } from "@services/notesService";
 import { getAllTasks } from "@services/tasksService";
+import { getPlainTextFromRichNoteContent, getRichNotePreviewLine } from "@utils/noteContent";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
 type SearchFilter = "all" | "folder" | "note" | "task";
@@ -24,10 +25,7 @@ type SearchResult = {
   subtitle?: string;
 };
 
-const firstLine = (text: string) => {
-  const line = (text || "").split(/\r?\n/).find((x) => x.trim().length > 0) ?? "";
-  return line.length > 110 ? line.slice(0, 107).trimEnd() + "…" : line;
-};
+const firstLine = (text: string) => getRichNotePreviewLine(text, 110);
 
 const SearchScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
@@ -69,7 +67,7 @@ const SearchScreen: React.FC = () => {
       .map((f) => ({ id: f.id, type: "folder", title: f.name }));
 
     const noteResults: SearchResult[] = notes
-      .filter((n) => `${n.title}\n${n.content}`.toLowerCase().includes(q))
+      .filter((n) => `${n.title}\n${getPlainTextFromRichNoteContent(n.content)}`.toLowerCase().includes(q))
       .map((n) => ({ id: n.id, type: "note", title: n.title || "Untitled", subtitle: firstLine(n.content) }));
 
     const taskResults: SearchResult[] = tasks

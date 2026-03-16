@@ -29,6 +29,8 @@ import type { CompositeNavigationProp, RouteProp } from "@react-navigation/nativ
 import type { FoldersStackParamList, RootStackParamList } from "@navigation/RootNavigator";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { useAppStore } from "@store/useAppStore";
+import { useNavigationLock } from "@hooks/useNavigationLock";
+import { getRichNotePreviewLine } from "@utils/noteContent";
 import { useNotesStore } from "@store/useNotesStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
@@ -55,10 +57,7 @@ import type { AppFile, Folder, Note } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 
-const firstLine = (text: string): string => {
-  const line = (text || "").split(/\r?\n/).find((x) => x.trim().length > 0) ?? "";
-  return line.length > 80 ? line.slice(0, 77).trimEnd() + "…" : line;
-};
+const firstLine = (text: string): string => getRichNotePreviewLine(text, 80);
 
 type FolderDetailRoute = RouteProp<FoldersStackParamList, "FolderDetail">;
 type Nav = CompositeNavigationProp<
@@ -74,6 +73,7 @@ const FolderDetailScreen: React.FC = () => {
   const { theme } = useTheme();
   const route = useRoute<FolderDetailRoute>();
   const navigation = useNavigation<Nav>();
+  const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
   const { folderId, trail: routeTrail } = route.params;
 
@@ -92,6 +92,7 @@ const FolderDetailScreen: React.FC = () => {
   const setFiles = useFilesStore((s) => s.setFiles);
   const upsertFile = useFilesStore((s) => s.upsertFile);
   const removeFile = useFilesStore((s) => s.removeFile);
+  const reorderFilesInStore = useFilesStore((s) => s.reorderFilesInStore);
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
@@ -114,6 +115,10 @@ const FolderDetailScreen: React.FC = () => {
   const [noteSubmitting, setNoteSubmitting] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
+
+  // Debounce refs — ensure rapid drags only trigger one DB write (last-wins).
+  const fileReorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestFileOrderRef = useRef<string[]>([]);
 
   const currentFolder = folderId ? folders[folderId] : undefined;
 
@@ -385,14 +390,13 @@ const FolderDetailScreen: React.FC = () => {
                   }
                 ]}
                 onPress={() =>
-                  (async () => {
-                    const nextRecent = await addRecentOpen("folder", folder.id);
-                    setRecentItems(nextRecent);
+                  withLock(() => {
                     navigation.push("FolderDetail", {
                       folderId: folder.id,
                       trail: [...trailIds, folder.id]
                     });
-                  })()
+                    addRecentOpen("folder", folder.id).then((nextRecent) => setRecentItems(nextRecent));
+                  })
                 }
               >
                 {!!folder.bannerPath && (
@@ -434,11 +438,10 @@ const FolderDetailScreen: React.FC = () => {
                   }
                 ]}
                 onPress={() =>
-                  (async () => {
-                    const nextRecent = await addRecentOpen("note", note.id);
-                    setRecentItems(nextRecent);
+                  withLock(() => {
                     navigation.navigate("NoteEditor", { noteId: note.id });
-                  })()
+                    addRecentOpen("note", note.id).then((nextRecent) => setRecentItems(nextRecent));
+                  })
                 }
               >
                 <View style={styles.cardBody}>
@@ -466,13 +469,22 @@ const FolderDetailScreen: React.FC = () => {
             removeClippedSubviews
             activationDistance={12}
             scrollEnabled={false}
-            onDragEnd={async ({ data }) => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            onDragEnd={({ data }) => {
+              const orderedIds = data.map((x) => x.id);
+
+              // 1. Optimistic UI: update orderIndex in-place — no full map replace, no flicker.
+              reorderFilesInStore(orderedIds);
               setFileSortMode("custom");
-              await saveSortPreference(fileSortScopeForFolder(folderId), "custom");
-              await reorderFiles(folderId ?? null, data.map((x) => x.id));
-              const refreshedFiles = await getFilesByFolder(folderId ?? null);
-              setFiles(refreshedFiles);
+
+              // 2. Debounced persist: last-wins so rapid drags never race.
+              latestFileOrderRef.current = orderedIds;
+              if (fileReorderTimerRef.current) clearTimeout(fileReorderTimerRef.current);
+              fileReorderTimerRef.current = setTimeout(() => {
+                fileReorderTimerRef.current = null;
+                const ids = latestFileOrderRef.current;
+                saveSortPreference(fileSortScopeForFolder(folderId), "custom");
+                reorderFiles(folderId ?? null, ids);
+              }, 300);
             }}
             renderItem={({ item, drag, isActive }: RenderItemParams<AppFile>) => (
               <Pressable
@@ -490,17 +502,19 @@ const FolderDetailScreen: React.FC = () => {
                     shadowOpacity: isActive ? 0.24 : 0.08
                   }
                 ]}
-                onPress={async () => {
-                  if (item.type === "pdf") {
-                    navigation.navigate("PdfViewer", { path: item.path, name: item.name });
-                    return;
-                  }
-                  if (item.type === "image") {
-                    navigation.navigate("ImageViewer", { path: item.path, name: item.name });
-                    return;
-                  }
-                  await openExternalFile(item.path);
-                }}
+                onPress={() =>
+                  withLock(() => {
+                    if (item.type === "pdf") {
+                      navigation.navigate("PdfViewer", { path: item.path, name: item.name });
+                      return;
+                    }
+                    if (item.type === "image") {
+                      navigation.navigate("ImageViewer", { path: item.path, name: item.name });
+                      return;
+                    }
+                    openExternalFile(item.path);
+                  })
+                }
               >
                 {!!item.bannerPath && (
                   <Image source={{ uri: item.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
@@ -641,21 +655,21 @@ const FolderDetailScreen: React.FC = () => {
       <View style={styles.fabRoot} pointerEvents="box-none">
         {([
           {
-            key: "folder",
-            label: "Create Folder",
-            icon: "folder-outline" as const,
-            onPress: () => {
-              closeFab();
-              setShowCreateFolder(true);
-            }
-          },
-          {
             key: "note",
             label: "Create Note",
             icon: "document-text-outline" as const,
             onPress: () => {
               closeFab();
               navigation.navigate("NoteEditor", { folderId: folderId ?? null });
+            }
+          },
+          {
+            key: "folder",
+            label: "Create Folder",
+            icon: "folder-outline" as const,
+            onPress: () => {
+              closeFab();
+              setShowCreateFolder(true);
             }
           },
           {
@@ -1021,20 +1035,19 @@ const FolderDetailScreen: React.FC = () => {
       <NoteEditModal
         visible={!!editingNote}
         initialTitle={editingNote?.title ?? ""}
-        initialContent={editingNote?.content ?? ""}
         submitting={noteSubmitting}
         onCancel={() => {
           if (noteSubmitting) return;
           setEditingNote(null);
         }}
-        onConfirm={async (title, content) => {
+        onConfirm={async (title) => {
           if (!editingNote || noteSubmitting) return;
           setNoteSubmitting(true);
           try {
             const updated = await updateNote({
               ...editingNote,
               title,
-              content
+              content: editingNote.content
             });
             upsertNote(updated);
             setEditingNote(null);
