@@ -29,7 +29,7 @@ import {
   type PanResponderGestureState,
   Image
 } from "react-native";
-import Svg, { Polyline } from "react-native-svg";
+import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
@@ -59,9 +59,12 @@ const TEXT_COLORS = ["#111827", "#FFFFFF", "#EF4444", "#3B82F6", "#22C55E", "#EA
 const TEXT_SIZE_PRESETS = [12, 14, 16, 18, 21, 24, 28, 32, 40, 48];
 const DRAW_COLORS = ["#F9FAFB", "#A78BFA", "#F472B6", "#60A5FA", "#34D399", "#FBBF24", "#FB7185"];
 const DRAW_SIZES = [2, 4, 6, 8, 12];
+const DRAW_OPACITIES = [0.35, 0.55, 0.75, 1];
+const DRAW_SMOOTH_LEVELS = [0, 0.25, 0.45, 0.65, 0.82];
 
 type InteractionMode = "move" | "resize";
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+type DrawingToolMode = "brush" | "eraser" | null;
 
 interface CanvasNoteEditorProps {
   value: string;
@@ -95,6 +98,26 @@ interface DrawingDraft {
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const getMaxZ = (els: CanvasElement[]) => els.reduce((acc, el) => Math.max(acc, el.zIndex ?? 0), 0);
+
+const buildSmoothPath = (points: Array<{ x: number; y: number }>) => {
+  if (!points.length) return "";
+  if (points.length === 1) {
+    const p = points[0];
+    return `M ${p.x} ${p.y} L ${p.x + 0.1} ${p.y + 0.1}`;
+  }
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const current = points[i];
+    const next = points[i + 1];
+    const midX = (current.x + next.x) / 2;
+    const midY = (current.y + next.y) / 2;
+    d += ` Q ${current.x} ${current.y}, ${midX} ${midY}`;
+  }
+  const last = points[points.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
+};
+
 const cloneDoc = (doc: CanvasNoteDocument): CanvasNoteDocument => JSON.parse(JSON.stringify(doc)) as CanvasNoteDocument;
 const touchDist = (a: { pageX: number; pageY: number }, b: { pageX: number; pageY: number }) =>
   Math.sqrt((a.pageX - b.pageX) ** 2 + (a.pageY - b.pageY) ** 2);
@@ -342,7 +365,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const [showAlignMenu, setShowAlignMenu] = useState(false);
   const [showShapeMenu, setShowShapeMenu] = useState(false);
   const [pendingFocusTextId, setPendingFocusTextId] = useState<string | null>(null);
-  const [drawingMode, setDrawingMode] = useState(false);
+  const [drawingMode, setDrawingMode] = useState<DrawingToolMode>(null);
+  const [drawingOpacity, setDrawingOpacity] = useState(1);
+  const [drawingSmoothness, setDrawingSmoothness] = useState(0.45);
   const [drawingColor, setDrawingColor] = useState(DRAW_COLORS[1]);
   const [drawingSize, setDrawingSize] = useState(4);
   const [drawingDraft, setDrawingDraft] = useState<DrawingDraft | null>(null);
@@ -725,10 +750,17 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       const y = clamp(rawY, 0, page.height);
       setDrawingDraft((prev) => {
         if (!prev || prev.pageId !== pageId) return prev;
-        return { ...prev, points: [...prev.points, { x, y }] };
+        const last = prev.points[prev.points.length - 1];
+        if (!last) return { ...prev, points: [...prev.points, { x, y }] };
+        const filteredX = last.x + (x - last.x) * (1 - drawingSmoothness);
+        const filteredY = last.y + (y - last.y) * (1 - drawingSmoothness);
+        const dx = filteredX - last.x;
+        const dy = filteredY - last.y;
+        if (Math.sqrt(dx * dx + dy * dy) < 0.8) return prev;
+        return { ...prev, points: [...prev.points, { x: filteredX, y: filteredY }] };
       });
     },
-    [pagesById]
+    [drawingSmoothness, pagesById]
   );
 
   const endDrawing = useCallback(() => {
@@ -740,10 +772,36 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         id: `${Date.now()}-${Math.floor(Math.random() * 100000)}`,
         color: drawingColor,
         size: drawingSize,
-        points
+        opacity: drawingOpacity,
+        points,
+        isEraser: drawingMode === "eraser"
       };
 
       setDoc((prev) => {
+        if (drawingMode === "eraser") {
+          return {
+            ...prev,
+            elements: prev.elements.map((el) => {
+              if (el.type !== "drawing" || el.pageId !== draft.pageId) return el;
+              return {
+                ...el,
+                strokes: el.strokes.filter((s) => {
+                  for (const ePt of stroke.points) {
+                    for (const sPt of s.points) {
+                      const dx = ePt.x - sPt.x;
+                      const dy = ePt.y - sPt.y;
+                      if (Math.sqrt(dx * dx + dy * dy) < Math.max(8, drawingSize * 1.6)) {
+                        return false;
+                      }
+                    }
+                  }
+                  return true;
+                })
+              };
+            })
+          };
+        }
+
         const existing = prev.elements.find((el) => el.type === "drawing" && el.pageId === draft.pageId);
         if (existing && existing.type === "drawing") {
           return {
@@ -780,25 +838,27 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
       return null;
     });
-  }, [drawingColor, drawingSize]);
+  }, [drawingColor, drawingMode, drawingOpacity, drawingSize]);
 
   // ── PanResponder ───────────────────────────────────────────────────────────
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => false,
-        onStartShouldSetPanResponderCapture: (evt) => (evt.nativeEvent.touches?.length ?? 0) >= 2,
+        onStartShouldSetPanResponderCapture: (evt) => !drawingMode && (evt.nativeEvent.touches?.length ?? 0) >= 2,
         onMoveShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponderCapture: (evt, gs) => {
+          if (drawingMode) return false;
           const touches = evt.nativeEvent.touches?.length ?? 0;
           if (touches >= 2) return true;
-          if (!drawingMode && !selectedId && touches === 1 && Math.abs(gs.dx) > 10 && Math.abs(gs.dy) < 14) {
+          if (!selectedId && touches === 1 && Math.abs(gs.dx) > 10 && Math.abs(gs.dy) < 14) {
             return true;
           }
           return (Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1) && !!elementInteractionRef.current;
         },
 
         onPanResponderGrant: (evt) => {
+          if (drawingMode) return;
           const touches = evt.nativeEvent.touches ?? [];
           if (touches.length >= 2) {
             const scale = displayScaleRef.current || 1;
@@ -820,6 +880,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         },
 
         onPanResponderMove: (evt, gs: PanResponderGestureState) => {
+          if (drawingMode) return;
           const touches = evt.nativeEvent.touches ?? [];
           if (touches.length >= 2 && pinchStateRef.current) {
             const dist = touchDist(touches[0], touches[1]);
@@ -932,7 +993,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           setScrollEnabled(true);
         }
       }),
-    [baseFitScale, drawingMode, pagesById, scrollAreaY, scrollY, selectedId]
+    [baseFitScale, drawingMode, pagesById, scrollAreaY, scrollY, selectedId, drawingSmoothness]
   );
 
   // ── Toolbar add helpers ────────────────────────────────────────────────────
@@ -1119,14 +1180,11 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   }, []);
 
   const toggleDrawingMode = useCallback(() => {
-    setDrawingMode((prev) => {
-      const next = !prev;
-      setShowShapeMenu(false);
-      setShowStylePanel(false);
-      setShowAlignMenu(false);
-      if (next) clearSelection();
-      return next;
-    });
+    setDrawingMode((prev) => (prev === "brush" ? null : "brush"));
+    setShowShapeMenu(false);
+    setShowStylePanel(false);
+    setShowAlignMenu(false);
+    clearSelection();
   }, [clearSelection]);
 
   const renderPage = useCallback(
@@ -1176,27 +1234,29 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
                   {pageDrawingEls.map((drawingEl) =>
                     drawingEl.type === "drawing"
                       ? drawingEl.strokes.map((stroke) => (
-                          <Polyline
-                            key={stroke.id}
-                            points={stroke.points.map((p) => `${p.x},${p.y}`).join(" ")}
-                            stroke={stroke.color}
-                            strokeWidth={stroke.size}
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            fill="none"
-                          />
+                            <Path
+                              key={stroke.id}
+                              d={buildSmoothPath(stroke.points)}
+                              stroke={stroke.color}
+                              strokeWidth={stroke.size}
+                              strokeOpacity={stroke.opacity ?? 1}
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              fill="none"
+                            />
                         ))
                       : null
                   )}
 
                   {drawingDraft?.pageId === page.id && drawingDraft.points.length > 1 && (
-                    <Polyline
-                      points={drawingDraft.points.map((p) => `${p.x},${p.y}`).join(" ")}
-                      stroke={drawingColor}
-                      strokeWidth={drawingSize}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      fill="none"
+                      <Path
+                        d={buildSmoothPath(drawingDraft.points)}
+                        stroke={drawingColor}
+                        strokeWidth={drawingSize}
+                        strokeOpacity={drawingOpacity}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        fill="none"
                     />
                   )}
                 </Svg>
@@ -1205,8 +1265,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
               <View
                 pointerEvents={drawingMode ? "auto" : "none"}
                 style={[StyleSheet.absoluteFillObject, styles.drawingTouchLayer]}
-                onStartShouldSetResponderCapture={(evt) => drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
-                onMoveShouldSetResponderCapture={(evt) => drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
+                onStartShouldSetResponderCapture={(evt) => !!drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
+                onMoveShouldSetResponderCapture={(evt) => !!drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
                 onResponderGrant={(evt) => {
                   const x = evt.nativeEvent.locationX;
                   const y = evt.nativeEvent.locationY;
@@ -1222,10 +1282,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
               />
             </View>
           </View>
-
-          <Text muted variant="caption" style={styles.pageLabel}>
-            Page {index + 1}
-          </Text>
         </View>
       );
     },
@@ -1293,13 +1349,24 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         )}
 
         <Pressable
-          style={[tb(), drawingMode && styles.activeToolBtn]}
-          onPress={toggleDrawingMode}
-          accessibilityLabel="Drawing mode"
+          style={[tb(), drawingMode === "brush" && styles.activeToolBtn]}
+          onPress={() => toggleDrawingMode()}
+          accessibilityLabel="Brush tool"
           accessibilityHint="Toggle freehand brush mode"
         >
-          <Ionicons name="brush-outline" size={16} color={drawingMode ? "#A78BFA" : colors.textPrimary} />
+          <Ionicons name="brush-outline" size={16} color={drawingMode === "brush" ? "#A78BFA" : colors.textPrimary} />
         </Pressable>
+
+        {!!drawingMode && (
+          <Pressable
+            style={[tb(), drawingMode === "eraser" && styles.activeToolBtn]}
+            onPress={() => setDrawingMode("eraser")}
+            accessibilityLabel="Eraser tool"
+            accessibilityHint="Switch to eraser mode"
+          >
+            <Ionicons name="close-circle-outline" size={16} color={drawingMode === "eraser" ? "#EF4444" : colors.textPrimary} />
+          </Pressable>
+        )}
 
         <Pressable
           style={[tb(), overviewMode && styles.activeToolBtn]}
@@ -1345,7 +1412,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           <Ionicons name="chevron-forward" size={16} color={currentPageIndex >= pageCount - 1 ? colors.textSecondary : colors.textPrimary} />
         </Pressable>
 
-        {drawingMode && (
+        {drawingMode === "brush" && (
           <>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <View style={styles.drawControlsRow}>
@@ -1377,6 +1444,56 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
                 onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.min(DRAW_SIZES.length - 1, DRAW_SIZES.indexOf(s) + 1)] ?? s)}
               >
                 <Ionicons name="add" size={16} color={colors.textPrimary} />
+              </Pressable>
+
+              <Pressable
+                style={styles.menuBtnSmall}
+                onPress={() => {
+                  const idx = DRAW_OPACITIES.findIndex((x) => Math.abs(x - drawingOpacity) < 0.001);
+                  setDrawingOpacity(DRAW_OPACITIES[(idx + 1) % DRAW_OPACITIES.length] ?? drawingOpacity);
+                }}
+              >
+                <Text style={{ color: colors.textPrimary, fontSize: 11 }}>{Math.round(drawingOpacity * 100)}%</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.menuBtnSmall}
+                onPress={() => {
+                  const idx = DRAW_SMOOTH_LEVELS.findIndex((x) => Math.abs(x - drawingSmoothness) < 0.001);
+                  setDrawingSmoothness(DRAW_SMOOTH_LEVELS[(idx + 1) % DRAW_SMOOTH_LEVELS.length] ?? drawingSmoothness);
+                }}
+              >
+                <Text style={{ color: colors.textPrimary, fontSize: 11 }}>S {Math.round(drawingSmoothness * 100)}</Text>
+              </Pressable>
+
+              <Pressable style={styles.menuBtnSmall} onPress={() => setDrawingMode("eraser")}>
+                <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
+              </Pressable>
+            </View>
+          </>
+        )}
+
+        {drawingMode === "eraser" && (
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <View style={styles.drawControlsRow}>
+              <Pressable
+                style={[styles.menuBtnSmall, drawingSize <= DRAW_SIZES[0] && styles.disabledBtn]}
+                onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.max(0, DRAW_SIZES.indexOf(s) - 1)] ?? s)}
+              >
+                <Ionicons name="remove" size={16} color={colors.textPrimary} />
+              </Pressable>
+              <View style={[styles.textSizeChip, styles.textSizeChipPassive]}>
+                <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{drawingSize}px</Text>
+              </View>
+              <Pressable
+                style={[styles.menuBtnSmall, drawingSize >= DRAW_SIZES[DRAW_SIZES.length - 1] && styles.disabledBtn]}
+                onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.min(DRAW_SIZES.length - 1, DRAW_SIZES.indexOf(s) + 1)] ?? s)}
+              >
+                <Ionicons name="add" size={16} color={colors.textPrimary} />
+              </Pressable>
+              <Pressable style={styles.menuBtnSmall} onPress={() => setDrawingMode("brush")}>
+                <Ionicons name="brush-outline" size={16} color={colors.textPrimary} />
               </Pressable>
             </View>
           </>

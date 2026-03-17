@@ -58,6 +58,8 @@ export interface DrawingStroke {
   id: ID;
   color: string;
   size: number;
+  opacity?: number;
+  isEraser?: boolean;
   points: DrawingPoint[];
 }
 
