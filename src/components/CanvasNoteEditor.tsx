@@ -29,12 +29,14 @@ import {
   type PanResponderGestureState,
   Image
 } from "react-native";
+import Svg, { Polyline } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
 import type { CanvasElement, CanvasNoteDocument, CanvasPage, ID } from "@models/types";
 import { pickAndStoreImage } from "@utils/mediaPicker";
 import {
+  createCanvasDrawingElement,
   createCanvasImageElement,
   createCanvasShapeElement,
   createCanvasTextElement,
@@ -52,9 +54,11 @@ const ZOOM_MAX = 2.5;
 const PAGE_GAP = 18;
 const HISTORY_LIMIT = 80;
 const FLOATING_TOOLBAR_H = 46;
-const FONT_FAMILIES = ["System", "sans-serif", "serif", "monospace"] as const;
+const FONT_FAMILIES = ["System", "sans-serif", "serif", "monospace", "cursive"] as const;
 const TEXT_COLORS = ["#111827", "#FFFFFF", "#EF4444", "#3B82F6", "#22C55E", "#EAB308", "#EC4899"];
 const TEXT_SIZE_PRESETS = [12, 14, 16, 18, 21, 24, 28, 32, 40, 48];
+const DRAW_COLORS = ["#F9FAFB", "#A78BFA", "#F472B6", "#60A5FA", "#34D399", "#FBBF24", "#FB7185"];
+const DRAW_SIZES = [2, 4, 6, 8, 12];
 
 type InteractionMode = "move" | "resize";
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
@@ -81,6 +85,12 @@ interface PinchState {
   startZoom: number;
   anchorX: number;
   anchorY: number;
+  overviewTriggered?: boolean;
+}
+
+interface DrawingDraft {
+  pageId: ID;
+  points: Array<{ x: number; y: number }>;
 }
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
@@ -310,8 +320,7 @@ const CanvasElementView = memo(
 
 export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onChangeText }) => {
   const { theme } = useTheme();
-  const isDark = !!(theme as { dark?: boolean }).dark;
-  const defaultTextColor = isDark ? "#FFFFFF" : "#111827";
+  const defaultTextColor = "#F3F4F6";
 
   // ── Document state ─────────────────────────────────────────────────────────
   const [doc, setDoc] = useState<CanvasNoteDocument>(() => {
@@ -333,6 +342,12 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const [showAlignMenu, setShowAlignMenu] = useState(false);
   const [showShapeMenu, setShowShapeMenu] = useState(false);
   const [pendingFocusTextId, setPendingFocusTextId] = useState<string | null>(null);
+  const [drawingMode, setDrawingMode] = useState(false);
+  const [drawingColor, setDrawingColor] = useState(DRAW_COLORS[1]);
+  const [drawingSize, setDrawingSize] = useState(4);
+  const [drawingDraft, setDrawingDraft] = useState<DrawingDraft | null>(null);
+  const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [overviewMode, setOverviewMode] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const docRef = useRef(doc);
@@ -395,16 +410,23 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
   // Sync external value
   useEffect(() => {
-    const norm = serializeCanvasNoteContent(parseCanvasNoteContent(value));
-    if (norm !== lastSerializedRef.current) {
-      const parsed = parseCanvasNoteContent(value);
-      // Always normalize to zoom = 1 when loading from storage
-      setDoc({ ...parsed, zoom: 1, offsetX: parsed.offsetX ?? 0, offsetY: parsed.offsetY ?? 0 });
-      lastSerializedRef.current = norm;
-      undoStackRef.current = [];
-      redoStackRef.current = [];
-      notifyHistoryChanged();
+    const incoming = serializeCanvasNoteContent(parseCanvasNoteContent(value));
+    const current = serializeCanvasNoteContent(docRef.current);
+
+    if (incoming === current) {
+      lastSerializedRef.current = incoming;
+      return;
     }
+
+    if (incoming === lastSerializedRef.current) return;
+
+    const parsed = parseCanvasNoteContent(value);
+    // Always normalize to zoom = 1 when loading from storage
+    setDoc({ ...parsed, zoom: 1, offsetX: parsed.offsetX ?? 0, offsetY: parsed.offsetY ?? 0 });
+    lastSerializedRef.current = incoming;
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    notifyHistoryChanged();
   }, [notifyHistoryChanged, value]);
 
   useEffect(() => {
@@ -525,6 +547,11 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     });
   }, [doc.zoom, doc.offsetX, doc.offsetY, rootLayout.height, rootLayout.width, scrollY, selectedTextElement]);
 
+  useEffect(() => {
+    const max = Math.max(0, (doc.pages?.length ?? 1) - 1);
+    setCurrentPageIndex((prev) => clamp(prev, 0, max));
+  }, [doc.pages]);
+
   const getDefaultTargetPageId = useCallback((): ID | null => {
     if (selectedElement) return selectedElement.pageId;
     return doc.pages?.[doc.pages.length - 1]?.id ?? doc.pages?.[0]?.id ?? null;
@@ -560,14 +587,16 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   // ── Element callbacks ──────────────────────────────────────────────────────
   const handleSelect = useCallback(
     (id: string) => {
+      if (drawingMode) return;
       setSelectedId(id);
       bringToFront(id);
     },
-    [bringToFront]
+    [bringToFront, drawingMode]
   );
 
   const beginInteraction = useCallback(
     (el: CanvasElement, mode: InteractionMode, evt: GestureResponderEvent, handle?: ResizeHandle) => {
+      if (drawingMode) return;
       pushUndoSnapshot();
       setSelectedId(el.id);
       bringToFront(el.id);
@@ -583,7 +612,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         startPageY: evt.nativeEvent.pageY
       };
     },
-    [bringToFront, pushUndoSnapshot]
+    [bringToFront, drawingMode, pushUndoSnapshot]
   );
 
   const handleElementMovePressIn = useCallback(
@@ -674,6 +703,85 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     [updateSelectedTextStyle]
   );
 
+  const beginDrawing = useCallback(
+    (pageId: ID, rawX: number, rawY: number) => {
+      const page = pagesById.get(pageId);
+      if (!page) return;
+      const x = clamp(rawX, 0, page.width);
+      const y = clamp(rawY, 0, page.height);
+      clearSelection();
+      pushUndoSnapshot();
+      setScrollEnabled(false);
+      setDrawingDraft({ pageId, points: [{ x, y }] });
+    },
+    [clearSelection, pagesById, pushUndoSnapshot]
+  );
+
+  const updateDrawing = useCallback(
+    (pageId: ID, rawX: number, rawY: number) => {
+      const page = pagesById.get(pageId);
+      if (!page) return;
+      const x = clamp(rawX, 0, page.width);
+      const y = clamp(rawY, 0, page.height);
+      setDrawingDraft((prev) => {
+        if (!prev || prev.pageId !== pageId) return prev;
+        return { ...prev, points: [...prev.points, { x, y }] };
+      });
+    },
+    [pagesById]
+  );
+
+  const endDrawing = useCallback(() => {
+    setScrollEnabled(true);
+    setDrawingDraft((draft) => {
+      if (!draft || draft.points.length < 1) return null;
+      const points = draft.points.length === 1 ? [draft.points[0], { ...draft.points[0], x: draft.points[0].x + 0.1 }] : draft.points;
+      const stroke = {
+        id: `${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+        color: drawingColor,
+        size: drawingSize,
+        points
+      };
+
+      setDoc((prev) => {
+        const existing = prev.elements.find((el) => el.type === "drawing" && el.pageId === draft.pageId);
+        if (existing && existing.type === "drawing") {
+          return {
+            ...prev,
+            elements: prev.elements.map((el) =>
+              el.id === existing.id && el.type === "drawing"
+                ? { ...el, strokes: [...el.strokes, stroke], color: drawingColor, strokeWidth: drawingSize }
+                : el
+            )
+          };
+        }
+
+        const page = prev.pages.find((p) => p.id === draft.pageId);
+        const pageW = page?.width ?? prev.pageWidth;
+        const pageH = page?.height ?? prev.pageHeight;
+        const drawingEl = createCanvasDrawingElement(0, 0, draft.pageId);
+        const maxZ = getMaxZ(prev.elements);
+        return {
+          ...prev,
+          elements: [
+            ...prev.elements,
+            {
+              ...drawingEl,
+              width: pageW,
+              height: pageH,
+              zIndex: maxZ + 1,
+              color: drawingColor,
+              strokeWidth: drawingSize,
+              strokes: [stroke]
+            }
+          ]
+        };
+      });
+
+      return null;
+    });
+  }, [drawingColor, drawingSize]);
+
   // ── PanResponder ───────────────────────────────────────────────────────────
   const panResponder = useMemo(
     () =>
@@ -684,6 +792,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         onMoveShouldSetPanResponderCapture: (evt, gs) => {
           const touches = evt.nativeEvent.touches?.length ?? 0;
           if (touches >= 2) return true;
+          if (!drawingMode && !selectedId && touches === 1 && Math.abs(gs.dx) > 10 && Math.abs(gs.dy) < 14) {
+            return true;
+          }
           return (Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1) && !!elementInteractionRef.current;
         },
 
@@ -713,6 +824,12 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           if (touches.length >= 2 && pinchStateRef.current) {
             const dist = touchDist(touches[0], touches[1]);
             const ratio = dist / Math.max(1, pinchStateRef.current.startDist);
+            if (!pinchStateRef.current.overviewTriggered && ratio < 0.72) {
+              pinchStateRef.current = { ...pinchStateRef.current, overviewTriggered: true };
+              setOverviewMode(true);
+              setDoc((prev) => ({ ...prev, zoom: 1, offsetX: 0, offsetY: 0 }));
+              return;
+            }
             const nextZoom = clamp(pinchStateRef.current.startZoom * ratio, ZOOM_MIN, ZOOM_MAX);
             const nextScale = clamp(baseFitScale * nextZoom, 0.2, 4);
             const midX = (touches[0].pageX + touches[1].pageX) / 2;
@@ -797,7 +914,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           });
         },
 
-        onPanResponderRelease: () => {
+        onPanResponderRelease: (_, gs) => {
+          if (!drawingMode && !selectedId && !elementInteractionRef.current && Math.abs(gs.dx) > 52 && Math.abs(gs.dy) < 24) {
+            setCurrentPageIndex((prev) => {
+              const max = Math.max(0, (docRef.current.pages?.length ?? 1) - 1);
+              return clamp(prev + (gs.dx < 0 ? 1 : -1), 0, max);
+            });
+          }
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
           setScrollEnabled(true);
@@ -809,7 +932,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           setScrollEnabled(true);
         }
       }),
-    [baseFitScale, pagesById, scrollAreaY, scrollY]
+    [baseFitScale, drawingMode, pagesById, scrollAreaY, scrollY, selectedId]
   );
 
   // ── Toolbar add helpers ────────────────────────────────────────────────────
@@ -827,6 +950,29 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     addElement({ ...el, style: { ...el.style, textColor: defaultTextColor } });
     setPendingFocusTextId(el.id);
   }, [addElement, defaultTextColor, doc.pageHeight, doc.pageWidth, getDefaultTargetPageId, pagesById]);
+
+  const addHeading = useCallback(() => {
+    const pageId = getDefaultTargetPageId();
+    if (!pageId) return;
+    const page = pagesById.get(pageId);
+    const baseWidth = 360;
+    const pageW = page?.width ?? doc.pageWidth;
+    const y = Math.max(28, (page?.height ?? doc.pageHeight) * 0.12);
+    const x = Math.max(16, (pageW - baseWidth) / 2);
+    const el = createCanvasTextElement("Heading", x, y, pageId);
+    addElement({
+      ...el,
+      width: baseWidth,
+      height: 72,
+      style: {
+        ...el.style,
+        fontSize: 36,
+        bold: true,
+        textColor: "#F3F4F6"
+      }
+    });
+    setPendingFocusTextId(el.id);
+  }, [addElement, doc.pageHeight, doc.pageWidth, getDefaultTargetPageId, pagesById]);
 
   const addImage = useCallback(async () => {
     const uri = await pickAndStoreImage("canvas-note");
@@ -914,22 +1060,46 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  const { colors } = theme;
+  const colors = useMemo(
+    () => ({
+      ...theme.colors,
+      primary: "#A78BFA",
+      textPrimary: "#E5E7EB",
+      textSecondary: "#9BA3B3",
+      border: "#2A3244",
+      surface: "#111622",
+      surfaceElevated: "#1A2233"
+    }),
+    [theme.colors]
+  );
   const sortedElements = useMemo(
-    () => [...doc.elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0)),
+    () => [...doc.elements].filter((el) => el.type !== "drawing").sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0)),
     [doc.elements]
   );
+  const drawingsByPage = useMemo(() => {
+    const map = new Map<ID, CanvasElement[]>();
+    doc.elements
+      .filter((el) => el.type === "drawing")
+      .forEach((el) => {
+        const list = map.get(el.pageId) ?? [];
+        list.push(el);
+        map.set(el.pageId, list);
+      });
+    return map;
+  }, [doc.elements]);
 
   const tb = () => styles.toolBtn;
   const canUndo = useMemo(() => undoStackRef.current.length > 0, [historyTick]);
   const canRedo = useMemo(() => redoStackRef.current.length > 0, [historyTick]);
   const isTextMode = !!selectedTextElement;
-  const showTextToolbar = !!selectedTextElement;
+  const showTextToolbar = !!selectedTextElement && !drawingMode;
   const selectedTextStyle = selectedTextElement?.style ?? {};
   const selectedTextColor = selectedTextStyle.textColor ?? defaultTextColor;
   const selectedFontFamily = selectedTextStyle.fontFamily ?? "System";
   const selectedFontSize = selectedTextStyle.fontSize ?? 18;
   const showSelectionDelete = !!selectedId;
+  const pageCount = doc.pages?.length ?? 0;
+  const currentPage = pageCount > 0 ? doc.pages[currentPageIndex] ?? doc.pages[0] : null;
   const overlayWidth = rootLayout.width || rootWindowFrame.width;
   const overlayHeight = rootLayout.height || rootWindowFrame.height;
   const toolbarWidth = Math.min(textToolbarLayout.width || 320, Math.max(220, overlayWidth - 16));
@@ -948,63 +1118,40 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, []);
 
+  const toggleDrawingMode = useCallback(() => {
+    setDrawingMode((prev) => {
+      const next = !prev;
+      setShowShapeMenu(false);
+      setShowStylePanel(false);
+      setShowAlignMenu(false);
+      if (next) clearSelection();
+      return next;
+    });
+  }, [clearSelection]);
+
   const renderPage = useCallback(
     (page: CanvasPage, index: number) => {
       const pageEls = sortedElements.filter((el) => el.pageId === page.id);
+      const pageDrawingEls = drawingsByPage.get(page.id) ?? [];
       const scaledW = page.width * displayScale;
       const scaledH = page.height * displayScale;
-      const isFirst = index === 0;
-      const isLast = index === (doc.pages?.length ?? 1) - 1;
-      const canDeletePage = (doc.pages?.length ?? 0) > 1;
       return (
         <View key={page.id} style={{ alignItems: "center", marginBottom: PAGE_GAP, width: scaledW }}>
-          <View style={[styles.pageActions, { borderColor: colors.border, backgroundColor: colors.surfaceElevated }]}> 
-            <Pressable
-              style={[styles.pageActionBtn, isFirst && styles.disabledBtn]}
-              onPress={() => movePage(page.id, -1)}
-              disabled={isFirst}
-            >
-              <Ionicons name="arrow-up-outline" size={14} color={isFirst ? colors.textSecondary : colors.textPrimary} />
-            </Pressable>
-            <Pressable
-              style={[styles.pageActionBtn, isLast && styles.disabledBtn]}
-              onPress={() => movePage(page.id, 1)}
-              disabled={isLast}
-            >
-              <Ionicons name="arrow-down-outline" size={14} color={isLast ? colors.textSecondary : colors.textPrimary} />
-            </Pressable>
-            <Pressable
-              style={[styles.pageActionBtn, !canDeletePage && styles.disabledBtn]}
-              onPress={() => deletePage(page.id)}
-              disabled={!canDeletePage}
-            >
-              <Ionicons name="trash-outline" size={14} color={canDeletePage ? "#EF4444" : colors.textSecondary} />
-            </Pressable>
-          </View>
-
-          <View
-            style={[
-              styles.page,
-              {
-                width: scaledW,
-                height: scaledH,
-                backgroundColor: page.backgroundColor ?? (isDark ? "#0b1220" : "#FFFFFF"),
-                borderColor: colors.border
-              }
-            ]}
-          >
-            <Pressable style={StyleSheet.absoluteFillObject} onPress={clearSelection} />
-
+          <View style={{ width: scaledW, height: scaledH, alignItems: "center", justifyContent: "center" }}>
             <View
-              style={{
-                position: "absolute",
-                left: -((page.width * (1 - displayScale)) / 2),
-                top: -((page.height * (1 - displayScale)) / 2),
-                width: page.width,
-                height: page.height,
-                transform: [{ scale: displayScale }]
-              }}
+              style={[
+                styles.page,
+                {
+                  width: page.width,
+                  height: page.height,
+                  backgroundColor: page.backgroundColor ?? "#171923",
+                  borderColor: drawingMode ? "#6D5BD0" : "#282D3A",
+                  transform: [{ scale: displayScale }]
+                }
+              ]}
             >
+              <Pressable style={StyleSheet.absoluteFillObject} onPress={clearSelection} />
+
               {pageEls.map((element) => (
                 <CanvasElementView
                   key={element.id}
@@ -1023,6 +1170,56 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
                   onTextSizeChange={handleTextSizeChange}
                 />
               ))}
+
+              <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+                <Svg width={page.width} height={page.height}>
+                  {pageDrawingEls.map((drawingEl) =>
+                    drawingEl.type === "drawing"
+                      ? drawingEl.strokes.map((stroke) => (
+                          <Polyline
+                            key={stroke.id}
+                            points={stroke.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                            stroke={stroke.color}
+                            strokeWidth={stroke.size}
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            fill="none"
+                          />
+                        ))
+                      : null
+                  )}
+
+                  {drawingDraft?.pageId === page.id && drawingDraft.points.length > 1 && (
+                    <Polyline
+                      points={drawingDraft.points.map((p) => `${p.x},${p.y}`).join(" ")}
+                      stroke={drawingColor}
+                      strokeWidth={drawingSize}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      fill="none"
+                    />
+                  )}
+                </Svg>
+              </View>
+
+              <View
+                pointerEvents={drawingMode ? "auto" : "none"}
+                style={[StyleSheet.absoluteFillObject, styles.drawingTouchLayer]}
+                onStartShouldSetResponderCapture={(evt) => drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
+                onMoveShouldSetResponderCapture={(evt) => drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
+                onResponderGrant={(evt) => {
+                  const x = evt.nativeEvent.locationX;
+                  const y = evt.nativeEvent.locationY;
+                  beginDrawing(page.id, x, y);
+                }}
+                onResponderMove={(evt) => {
+                  const x = evt.nativeEvent.locationX;
+                  const y = evt.nativeEvent.locationY;
+                  updateDrawing(page.id, x, y);
+                }}
+                onResponderRelease={endDrawing}
+                onResponderTerminate={endDrawing}
+              />
             </View>
           </View>
 
@@ -1038,8 +1235,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       colors.surfaceElevated,
       defaultTextColor,
       displayScale,
-      doc.pages,
-      deletePage,
+      drawingColor,
+      drawingDraft,
+      drawingMode,
+      drawingSize,
+      drawingsByPage,
+      beginDrawing,
+      endDrawing,
       clearSelection,
       handleElementMovePressIn,
       handleElementResizePressIn,
@@ -1047,19 +1249,18 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       handleTextChange,
       handleTextSizeChange,
       handleTextFocused,
-      isDark,
-      movePage,
       setElementRef,
       setInputRef,
       selectedId,
-      sortedElements
+      sortedElements,
+      updateDrawing
     ]
   );
 
   return (
     <View
       ref={rootRef}
-      style={styles.root}
+      style={[styles.root, { backgroundColor: "#0D0F14" }]}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         setRootLayout((prev) =>
@@ -1075,6 +1276,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             <Pressable style={tb()} onPress={addText}>
               <Ionicons name="text-outline" size={16} color={colors.textPrimary} />
             </Pressable>
+            <Pressable style={tb()} onPress={addHeading}>
+              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: "700" }}>H</Text>
+            </Pressable>
             <Pressable style={tb()} onPress={addImage}>
               <Ionicons name="image-outline" size={16} color={colors.textPrimary} />
             </Pressable>
@@ -1087,6 +1291,26 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
           </>
         )}
+
+        <Pressable
+          style={[tb(), drawingMode && styles.activeToolBtn]}
+          onPress={toggleDrawingMode}
+          accessibilityLabel="Drawing mode"
+          accessibilityHint="Toggle freehand brush mode"
+        >
+          <Ionicons name="brush-outline" size={16} color={drawingMode ? "#A78BFA" : colors.textPrimary} />
+        </Pressable>
+
+        <Pressable
+          style={[tb(), overviewMode && styles.activeToolBtn]}
+          onPress={() => setOverviewMode(true)}
+          accessibilityLabel="Pages overview"
+          accessibilityHint="Open grid view with all pages"
+        >
+          <Ionicons name="grid-outline" size={16} color={colors.textPrimary} />
+        </Pressable>
+
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
         <Pressable style={[tb(), !canUndo && styles.disabledBtn]} onPress={handleUndo} disabled={!canUndo}>
           <Ionicons name="arrow-undo-outline" size={16} color={canUndo ? colors.textPrimary : colors.textSecondary} />
@@ -1101,6 +1325,62 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             {Math.round(doc.zoom * 100)}%
           </Text>
         </Pressable>
+
+        <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <Pressable
+          style={[tb(), currentPageIndex <= 0 && styles.disabledBtn]}
+          onPress={() => setCurrentPageIndex((prev) => Math.max(0, prev - 1))}
+          disabled={currentPageIndex <= 0}
+        >
+          <Ionicons name="chevron-back" size={16} color={currentPageIndex <= 0 ? colors.textSecondary : colors.textPrimary} />
+        </Pressable>
+        <View style={styles.pagePill}>
+          <Text muted variant="caption">{Math.min(pageCount, currentPageIndex + 1)}/{Math.max(1, pageCount)}</Text>
+        </View>
+        <Pressable
+          style={[tb(), currentPageIndex >= pageCount - 1 && styles.disabledBtn]}
+          onPress={() => setCurrentPageIndex((prev) => Math.min(Math.max(0, pageCount - 1), prev + 1))}
+          disabled={currentPageIndex >= pageCount - 1}
+        >
+          <Ionicons name="chevron-forward" size={16} color={currentPageIndex >= pageCount - 1 ? colors.textSecondary : colors.textPrimary} />
+        </Pressable>
+
+        {drawingMode && (
+          <>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <View style={styles.drawControlsRow}>
+              {DRAW_COLORS.map((color) => {
+                const active = drawingColor.toLowerCase() === color.toLowerCase();
+                return (
+                  <Pressable
+                    key={color}
+                    style={[
+                      styles.drawColor,
+                      { backgroundColor: color, borderColor: color === "#F9FAFB" ? "#9CA3AF" : color },
+                      active && styles.drawColorActive
+                    ]}
+                    onPress={() => setDrawingColor(color)}
+                  />
+                );
+              })}
+              <Pressable
+                style={[styles.menuBtnSmall, drawingSize <= DRAW_SIZES[0] && styles.disabledBtn]}
+                onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.max(0, DRAW_SIZES.indexOf(s) - 1)] ?? s)}
+              >
+                <Ionicons name="remove" size={16} color={colors.textPrimary} />
+              </Pressable>
+              <View style={[styles.textSizeChip, styles.textSizeChipPassive]}>
+                <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{drawingSize}px</Text>
+              </View>
+              <Pressable
+                style={[styles.menuBtnSmall, drawingSize >= DRAW_SIZES[DRAW_SIZES.length - 1] && styles.disabledBtn]}
+                onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.min(DRAW_SIZES.length - 1, DRAW_SIZES.indexOf(s) + 1)] ?? s)}
+              >
+                <Ionicons name="add" size={16} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+          </>
+        )}
 
         {showSelectionDelete && (
           <>
@@ -1125,7 +1405,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         ref={(n) => {
           scrollRef.current = n;
         }}
-        scrollEnabled={scrollEnabled}
+        scrollEnabled={scrollEnabled && !drawingMode && !overviewMode}
         contentContainerStyle={styles.pagesContent}
         keyboardShouldPersistTaps="handled"
         onLayout={(e: LayoutChangeEvent) => {
@@ -1144,7 +1424,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             transform: [{ translateX: doc.offsetX ?? 0 }, { translateY: doc.offsetY ?? 0 }]
           }}
         >
-          {(doc.pages ?? []).map(renderPage)}
+          {currentPage ? renderPage(currentPage, currentPageIndex) : null}
         </View>
       </ScrollView>
 
@@ -1171,6 +1451,40 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
                 <Text muted variant="caption">Seta</Text>
               </Pressable>
             </View>
+          </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={overviewMode} transparent animationType="fade" onRequestClose={() => setOverviewMode(false)}>
+        <Pressable style={styles.overviewBackdrop} onPress={() => setOverviewMode(false)}>
+          <View style={[styles.overviewCard, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
+            <View style={styles.overviewHeader}>
+              <Text variant="subtitle">Pages overview</Text>
+              <Pressable style={styles.menuBtnSmall} onPress={() => setOverviewMode(false)}>
+                <Ionicons name="close" size={18} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.overviewGrid}>
+              {(doc.pages ?? []).map((page, idx) => {
+                const isActive = idx === currentPageIndex;
+                return (
+                  <Pressable
+                    key={page.id}
+                    style={[styles.overviewThumbWrap, { borderColor: isActive ? colors.primary : colors.border }]}
+                    onPress={() => {
+                      setCurrentPageIndex(idx);
+                      setOverviewMode(false);
+                    }}
+                  >
+                    <View style={styles.overviewThumbInner}>
+                      <View style={styles.overviewThumbPage} />
+                    </View>
+                    <Text muted variant="caption">Page {idx + 1}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
         </Pressable>
       </Modal>
@@ -1413,6 +1727,13 @@ const styles = StyleSheet.create({
   },
   divider: { width: 1, height: 20, marginHorizontal: 2 },
   zoomLabel: { minWidth: 34, textAlign: "center", fontSize: 11 },
+  pagePill: {
+    minWidth: 62,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center"
+  },
   pagesContent: {
     paddingTop: 6,
     paddingBottom: 24,
@@ -1421,7 +1742,12 @@ const styles = StyleSheet.create({
   page: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
-    overflow: "hidden"
+    overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOpacity: 0.28,
+    shadowRadius: 20,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 8
   },
   pageActions: {
     flexDirection: "row",
@@ -1440,6 +1766,74 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center"
+  },
+  drawControlsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap"
+  },
+  drawColor: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1.5
+  },
+  drawColorActive: {
+    transform: [{ scale: 1.15 }],
+    borderWidth: 2.5
+  },
+  drawingTouchLayer: {
+    zIndex: 120
+  },
+  overviewBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 28
+  },
+  overviewCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 18,
+    maxHeight: "80%",
+    padding: 12,
+    gap: 10
+  },
+  overviewHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  overviewGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    paddingBottom: 6
+  },
+  overviewThumbWrap: {
+    width: "31%",
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 8,
+    alignItems: "center",
+    gap: 6
+  },
+  overviewThumbInner: {
+    width: "100%",
+    aspectRatio: 0.75,
+    borderRadius: 8,
+    backgroundColor: "#121722",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  overviewThumbPage: {
+    width: "78%",
+    height: "82%",
+    borderRadius: 8,
+    backgroundColor: "#1D2535",
+    borderWidth: 1,
+    borderColor: "#2F3B54"
   },
   shapeModalBackdrop: {
     flex: 1,
