@@ -155,11 +155,7 @@ export const parseRichNoteContent = (content: string): RichNoteDocument => {
 
 export const parseCanvasNoteContent = (content: string): CanvasNoteDocument => {
   if (!content?.trim()) {
-    const base = createEmptyCanvasNote();
-    return {
-      ...base,
-      elements: base.pages.length ? [createCanvasTextElement("", 120, 120, base.pages[0].id)] : []
-    };
+    return createEmptyCanvasNote();
   }
 
   try {
@@ -277,11 +273,7 @@ export const parseCanvasNoteContent = (content: string): CanvasNoteDocument => {
     // Legacy plain-text note.
   }
 
-  const base = createEmptyCanvasNote();
-  return {
-    ...base,
-    elements: base.pages.length ? [createCanvasTextElement(content, 120, 120, base.pages[0].id)] : []
-  };
+  return createEmptyCanvasNote();
 };
 
 export const serializeRichNoteContent = (doc: RichNoteDocument): string => {

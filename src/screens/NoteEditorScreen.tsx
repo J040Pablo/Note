@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, TextInput, Pressable, ActivityIndicator } from "react-native";
 import { Screen } from "@components/Layout";
-import { Text } from "@components/Text";
 import { CanvasNoteEditor } from "@components/CanvasNoteEditor";
 import { useFeedback } from "@components/FeedbackProvider";
 import { useNavigation, useRoute } from "@react-navigation/native";
@@ -131,8 +130,6 @@ const NoteEditorScreen: React.FC = () => {
     return unsub;
   }, [hasPendingChanges, navigation, persistNote]);
 
-  const displayFileName = title.trim() || currentNote?.title || "Untitled";
-
   return (
     <Screen style={styles.screen}>
       <View style={styles.content}>
@@ -146,9 +143,14 @@ const NoteEditorScreen: React.FC = () => {
             <Ionicons name="arrow-back" size={22} color={theme.colors.textPrimary} />
           </Pressable>
 
-          <Text variant="subtitle" numberOfLines={1} style={styles.headerTitle}>
-            {displayFileName}
-          </Text>
+          <TextInput
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Title"
+            placeholderTextColor={theme.colors.textSecondary}
+            style={[styles.headerTitleInput, { color: theme.colors.textPrimary }]}
+            numberOfLines={1}
+          />
 
           <Pressable
             disabled={saving}
@@ -163,19 +165,6 @@ const NoteEditorScreen: React.FC = () => {
             )}
           </Pressable>
         </View>
-
-        <TextInput
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Title"
-          placeholderTextColor={theme.colors.textSecondary}
-          style={[
-            styles.titleInput,
-            {
-              color: theme.colors.textPrimary
-            }
-          ]}
-        />
 
         <CanvasNoteEditor value={content} onChangeText={setContent} />
       </View>
@@ -204,9 +193,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  headerTitle: {
+  headerTitleInput: {
     flex: 1,
-    marginHorizontal: 8
+    marginHorizontal: 8,
+    fontSize: 24,
+    fontWeight: "700",
+    paddingVertical: 0
   },
   saveButton: {
     width: 36,
@@ -217,11 +209,6 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.6
-  },
-  titleInput: {
-    fontSize: 20,
-    fontWeight: "600",
-    marginBottom: 8
   },
   spacer: {
     height: 8

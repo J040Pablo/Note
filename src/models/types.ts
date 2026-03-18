@@ -85,6 +85,8 @@ export interface CanvasPage {
   id: ID;
   width: number;
   height: number;
+  /** Optional user-defined page title */
+  title?: string;
   /** Optional page background color (defaults handled by UI) */
   backgroundColor?: string | null;
 }

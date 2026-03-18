@@ -14,6 +14,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Alert,
+  Animated,
   Keyboard,
   Modal,
   PanResponder,
@@ -29,6 +30,7 @@ import {
 } from "react-native";
 import Svg, { Path } from "react-native-svg";
 import { Ionicons } from "@expo/vector-icons";
+import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
 import type { CanvasElement, CanvasNoteDocument, CanvasPage, ID } from "@models/types";
@@ -60,6 +62,7 @@ const DRAW_SIZES = [2, 4, 6, 8, 12];
 const DRAW_OPACITIES = [0.35, 0.55, 0.75, 1];
 const DRAW_SMOOTH_LEVELS = [0, 0.25, 0.45, 0.65, 0.82];
 const CENTER_X_BIAS = 104;
+const makeLocalId = (): ID => `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
 type InteractionMode = "move" | "resize";
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
@@ -403,6 +406,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const [drawingDraft, setDrawingDraft] = useState<DrawingDraft | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [overviewMode, setOverviewMode] = useState(false);
+  const [selectedPageId, setSelectedPageId] = useState<ID | null>(null);
+  const [isDraggingPage, setIsDraggingPage] = useState(false);
+  const [showRenamePageModal, setShowRenamePageModal] = useState(false);
+  const [renamePageDraft, setRenamePageDraft] = useState("");
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const docRef = useRef(doc);
@@ -423,6 +430,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const redoStackRef = useRef<CanvasNoteDocument[]>([]);
   const displayScaleRef = useRef(1);
   const pendingInitialCenterRef = useRef(true);
+  const pageToolbarAnim = useRef(new Animated.Value(0)).current;
 
   const lastSerializedRef = useRef(serializeCanvasNoteContent(parseCanvasNoteContent(value)));
   const serializeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -629,17 +637,33 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         });
       });
     });
-  }, [zoom, canvasPosition.x, canvasPosition.y, rootLayout.height, rootLayout.width, selectedTextElement]);
+  }, [rootLayout.height, rootLayout.width, selectedTextElement]);
 
   useEffect(() => {
     const max = Math.max(0, (doc.pages?.length ?? 1) - 1);
     setCurrentPageIndex((prev) => clamp(prev, 0, max));
   }, [doc.pages]);
 
+  const showPageToolbar = overviewMode && (!!selectedPageId || isDraggingPage);
+
+  useEffect(() => {
+    Animated.timing(pageToolbarAnim, {
+      toValue: showPageToolbar ? 1 : 0,
+      duration: showPageToolbar ? 180 : 140,
+      useNativeDriver: true
+    }).start();
+  }, [pageToolbarAnim, showPageToolbar]);
+
   const getDefaultTargetPageId = useCallback((): ID | null => {
+    if (selectedPageId) return selectedPageId;
+    if (doc.pages?.length) {
+      const safeIndex = clamp(currentPageIndex, 0, doc.pages.length - 1);
+      const visiblePageId = doc.pages[safeIndex]?.id;
+      if (visiblePageId) return visiblePageId;
+    }
     if (selectedElement) return selectedElement.pageId;
-    return doc.pages?.[doc.pages.length - 1]?.id ?? doc.pages?.[0]?.id ?? null;
-  }, [doc.pages, selectedElement]);
+    return doc.pages?.[0]?.id ?? null;
+  }, [currentPageIndex, doc.pages, selectedElement, selectedPageId]);
 
   const updateElement = useCallback((id: string, updater: (prev: CanvasElement) => CanvasElement) => {
     setDoc((prev) => ({ ...prev, elements: prev.elements.map((el) => (el.id === id ? updater(el) : el)) }));
@@ -1187,6 +1211,76 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     [pushUndoSnapshot, selectedId]
   );
 
+  const duplicatePage = useCallback(
+    (pageId: ID) => {
+      pushUndoSnapshot();
+      let nextSelected: ID | null = null;
+      let nextIndex = 0;
+      setDoc((prev) => {
+        const pages = [...(prev.pages ?? [])];
+        const idx = pages.findIndex((p) => p.id === pageId);
+        if (idx < 0) return prev;
+        const base = pages[idx];
+        const newPageId = makeLocalId();
+        const duplicatedPage: CanvasPage = {
+          ...base,
+          id: newPageId
+        };
+        pages.splice(idx + 1, 0, duplicatedPage);
+
+        const duplicatedElements = prev.elements
+          .filter((el) => el.pageId === pageId)
+          .map((el) => ({
+            ...JSON.parse(JSON.stringify(el)),
+            id: makeLocalId(),
+            pageId: newPageId
+          })) as CanvasElement[];
+
+        nextSelected = newPageId;
+        nextIndex = idx + 1;
+        return {
+          ...prev,
+          pages,
+          elements: [...prev.elements, ...duplicatedElements]
+        };
+      });
+      if (nextSelected) {
+        setSelectedPageId(nextSelected);
+        setCurrentPageIndex(nextIndex);
+      }
+    },
+    [pushUndoSnapshot]
+  );
+
+  const renameSelectedPage = useCallback(() => {
+    if (!selectedPageId) return;
+    const idx = (doc.pages ?? []).findIndex((p) => p.id === selectedPageId);
+    const currentLabel = idx >= 0 ? (doc.pages?.[idx]?.title ?? `Page ${idx + 1}`) : "";
+    setRenamePageDraft(currentLabel);
+    setShowRenamePageModal(true);
+  }, [doc.pages, selectedPageId]);
+
+  const applyRenamePage = useCallback(() => {
+    if (!selectedPageId) {
+      setShowRenamePageModal(false);
+      return;
+    }
+    const title = renamePageDraft.trim();
+    setDoc((prev) => ({
+      ...prev,
+      pages: (prev.pages ?? []).map((p) =>
+        p.id === selectedPageId
+          ? { ...p, title: title.length ? title : undefined }
+          : p
+      )
+    }));
+    setShowRenamePageModal(false);
+  }, [renamePageDraft, selectedPageId]);
+
+  const reorderPages = useCallback((orderedPages: CanvasPage[]) => {
+    setDoc((prev) => ({ ...prev, pages: orderedPages }));
+  }, []);
+
   // ── Render ─────────────────────────────────────────────────────────────────
   const colors = useMemo(
     () => ({
@@ -1427,8 +1521,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             <Pressable style={[tb(), showShapeMenu && styles.activeToolBtn]} onPress={() => setShowShapeMenu(true)}>
               <Ionicons name="shapes-outline" size={16} color={colors.textPrimary} />
             </Pressable>
-            <Pressable style={tb()} onPress={addPage}>
-              <Ionicons name="document-text-outline" size={16} color={colors.textPrimary} />
+            <Pressable
+              style={[tb(), overviewMode && styles.activeToolBtn]}
+              onPress={() => {
+                setOverviewMode(true);
+                setSelectedPageId(null);
+              }}
+            >
+              <Ionicons name="grid-outline" size={16} color={colors.textPrimary} />
             </Pressable>
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
           </>
@@ -1661,37 +1761,212 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         </Pressable>
       </Modal>
 
-      <Modal visible={overviewMode} transparent animationType="fade" onRequestClose={() => setOverviewMode(false)}>
-        <Pressable style={styles.overviewBackdrop} onPress={() => setOverviewMode(false)}>
+      <Modal
+        visible={overviewMode}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setOverviewMode(false);
+          setSelectedPageId(null);
+          setIsDraggingPage(false);
+        }}
+      >
+        <View style={styles.overviewModalRoot}>
+          <Pressable
+            style={styles.overviewBackdrop}
+            onPress={() => {
+              setSelectedPageId(null);
+              setIsDraggingPage(false);
+            }}
+          />
+
           <View style={[styles.overviewCard, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}> 
             <View style={styles.overviewHeader}>
               <Text variant="subtitle">Pages overview</Text>
-              <Pressable style={styles.menuBtnSmall} onPress={() => setOverviewMode(false)}>
+              <Pressable
+                style={styles.menuBtnSmall}
+                onPress={() => {
+                  setOverviewMode(false);
+                  setSelectedPageId(null);
+                  setIsDraggingPage(false);
+                }}
+              >
                 <Ionicons name="close" size={18} color={colors.textPrimary} />
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.overviewGrid}>
-              {(doc.pages ?? []).map((page, idx) => {
-                const isActive = idx === currentPageIndex;
+            <DraggableFlatList
+              data={doc.pages ?? []}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.overviewList}
+              activationDistance={10}
+              onDragBegin={(index) => {
+                const page = doc.pages?.[index];
+                if (page) setSelectedPageId(page.id);
+                setIsDraggingPage(true);
+              }}
+              onDragEnd={({ data, to }) => {
+                reorderPages(data);
+                const next = data[to];
+                if (next) {
+                  setSelectedPageId(next.id);
+                  setCurrentPageIndex(to);
+                }
+                setIsDraggingPage(false);
+              }}
+              renderItem={({ item, drag, isActive, getIndex }: RenderItemParams<CanvasPage>) => {
+                const index = getIndex?.() ?? 0;
+                const isCurrent = index === currentPageIndex;
+                const isSelected = selectedPageId === item.id;
+                const title = item.title ?? `Page ${index + 1}`;
                 return (
                   <Pressable
-                    key={page.id}
-                    style={[styles.overviewThumbWrap, { borderColor: isActive ? colors.primary : colors.border }]}
                     onPress={() => {
-                      setCurrentPageIndex(idx);
-                      setOverviewMode(false);
+                      setSelectedPageId(item.id);
+                      setCurrentPageIndex(index);
                     }}
+                    onLongPress={() => {
+                      setSelectedPageId(item.id);
+                      drag();
+                    }}
+                    delayLongPress={220}
+                    style={[
+                      styles.overviewRow,
+                      {
+                        borderColor: isSelected || isCurrent ? colors.primary : colors.border,
+                        backgroundColor: isActive ? "#2A3346" : "#151C29",
+                        transform: [{ scale: isActive ? 1.05 : 1 }],
+                        opacity: isActive ? 0.96 : 1,
+                        elevation: isActive ? 10 : 2,
+                        shadowOpacity: isActive ? 0.28 : 0.1
+                      }
+                    ]}
                   >
-                    <View style={styles.overviewThumbInner}>
+                    <View style={styles.overviewThumbInnerRow}>
                       <View style={styles.overviewThumbPage} />
                     </View>
-                    <Text muted variant="caption">Page {idx + 1}</Text>
+                    <View style={styles.overviewRowMeta}>
+                      <Text variant="subtitle" numberOfLines={1}>{title}</Text>
+                      <Text muted variant="caption">{Math.round(item.width)} × {Math.round(item.height)}</Text>
+                    </View>
+                    <Pressable
+                      onLongPress={() => {
+                        setSelectedPageId(item.id);
+                        drag();
+                      }}
+                      delayLongPress={120}
+                      hitSlop={8}
+                      style={styles.overviewDragHandle}
+                    >
+                      <Ionicons name="reorder-three-outline" size={18} color={colors.textSecondary} />
+                    </Pressable>
                   </Pressable>
                 );
-              })}
-            </ScrollView>
+              }}
+            />
           </View>
+
+          <Animated.View
+            pointerEvents={showPageToolbar ? "auto" : "none"}
+            style={[
+              styles.pageToolbarWrap,
+              {
+                opacity: pageToolbarAnim,
+                transform: [
+                  {
+                    translateY: pageToolbarAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [24, 0]
+                    })
+                  }
+                ]
+              }
+            ]}
+          >
+            <View style={styles.pageToolbarInner}>
+              <Pressable
+                style={styles.pageToolbarBtn}
+                onPress={() => {
+                  if (!selectedPageId) return;
+                  deletePage(selectedPageId);
+                  setSelectedPageId(null);
+                }}
+              >
+                <Ionicons name="trash-outline" size={18} color="#EF4444" />
+              </Pressable>
+
+              <Pressable
+                style={styles.pageToolbarBtn}
+                onPress={() => {
+                  if (!selectedPageId) return;
+                  duplicatePage(selectedPageId);
+                }}
+              >
+                <Ionicons name="copy-outline" size={18} color="#E5E7EB" />
+              </Pressable>
+
+              <Pressable style={styles.pageToolbarBtn} onPress={renameSelectedPage}>
+                <Ionicons name="create-outline" size={18} color="#E5E7EB" />
+              </Pressable>
+
+              <Pressable
+                style={styles.pageToolbarBtn}
+                onPress={() => {
+                  addPage();
+                }}
+              >
+                <Ionicons name="add-outline" size={20} color="#E5E7EB" />
+              </Pressable>
+
+              <Pressable
+                style={styles.pageToolbarBtn}
+                onPress={() => {
+                  if (!selectedPageId) return;
+                  movePage(selectedPageId, -1);
+                }}
+              >
+                <Ionicons name="arrow-up-outline" size={18} color="#E5E7EB" />
+              </Pressable>
+
+              <Pressable
+                style={styles.pageToolbarBtn}
+                onPress={() => {
+                  if (!selectedPageId) return;
+                  movePage(selectedPageId, 1);
+                }}
+              >
+                <Ionicons name="arrow-down-outline" size={18} color="#E5E7EB" />
+              </Pressable>
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      <Modal visible={showRenamePageModal} transparent animationType="fade" onRequestClose={() => setShowRenamePageModal(false)}>
+        <Pressable style={styles.shapeModalBackdrop} onPress={() => setShowRenamePageModal(false)}>
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[styles.shapeModalCard, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
+          >
+            <Text variant="subtitle" style={styles.shapeModalTitle}>Rename page</Text>
+            <TextInput
+              value={renamePageDraft}
+              onChangeText={setRenamePageDraft}
+              placeholder="Page name"
+              placeholderTextColor="#94A3B866"
+              style={[styles.renameInput, { color: colors.textPrimary, borderColor: colors.border }]}
+              autoFocus
+              maxLength={48}
+            />
+            <View style={styles.renameActions}>
+              <Pressable style={styles.menuBtnSmall} onPress={() => setShowRenamePageModal(false)}>
+                <Text muted>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.menuBtnSmall, styles.activeBtn]} onPress={applyRenamePage}>
+                <Text style={{ color: colors.textPrimary }}>Save</Text>
+              </Pressable>
+            </View>
+          </Pressable>
         </Pressable>
       </Modal>
 
@@ -2013,8 +2288,12 @@ const styles = StyleSheet.create({
     zIndex: 120
   },
   overviewBackdrop: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.45)",
+    zIndex: 0
+  },
+  overviewModalRoot: {
+    flex: 1,
     justifyContent: "center",
     paddingHorizontal: 16,
     paddingVertical: 28
@@ -2024,7 +2303,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     maxHeight: "80%",
     padding: 12,
-    gap: 10
+    gap: 10,
+    zIndex: 2
   },
   overviewHeader: {
     flexDirection: "row",
@@ -2036,6 +2316,42 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 10,
     paddingBottom: 6
+  },
+  overviewList: {
+    paddingBottom: 8,
+    gap: 8
+  },
+  overviewRow: {
+    minHeight: 78,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    shadowColor: "#000000",
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 }
+  },
+  overviewThumbInnerRow: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: "#121722",
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  overviewRowMeta: {
+    flex: 1,
+    gap: 4
+  },
+  overviewDragHandle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center"
   },
   overviewThumbWrap: {
     width: "31%",
@@ -2064,8 +2380,7 @@ const styles = StyleSheet.create({
   shapeModalBackdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.28)",
-    justifyContent: "flex-start",
-    paddingTop: 76,
+    justifyContent: "center",
     paddingHorizontal: 16
   },
   shapeModalCard: {
@@ -2096,6 +2411,36 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 1400,
     elevation: 24
+  },
+  pageToolbarWrap: {
+    position: "absolute",
+    left: 12,
+    right: 12,
+    bottom: 22,
+    zIndex: 1200
+  },
+  pageToolbarInner: {
+    minHeight: 62,
+    borderRadius: 22,
+    backgroundColor: "rgba(17, 24, 39, 0.86)",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(148,163,184,0.32)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 10,
+    shadowColor: "#000000",
+    shadowOpacity: 0.28,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 18
+  },
+  pageToolbarBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: "center",
+    justifyContent: "center"
   },
   bottomTextToolbarWrap: {
     position: "absolute",
@@ -2212,6 +2557,19 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 8,
     alignItems: "center"
+  },
+  renameInput: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    minHeight: 44,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  renameActions: {
+    marginTop: 10,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8
   },
   sizePresetChip: {
     minWidth: 46,
