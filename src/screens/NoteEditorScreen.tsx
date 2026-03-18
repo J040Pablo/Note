@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, TextInput, ScrollView, Pressable, ActivityIndicator } from "react-native";
+import { View, StyleSheet, TextInput, Pressable, ActivityIndicator } from "react-native";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
 import { CanvasNoteEditor } from "@components/CanvasNoteEditor";
@@ -135,7 +135,7 @@ const NoteEditorScreen: React.FC = () => {
 
   return (
     <Screen style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <View style={styles.content}>
         <View style={styles.headerRow}>
           <Pressable
             disabled={saving}
@@ -178,7 +178,7 @@ const NoteEditorScreen: React.FC = () => {
         />
 
         <CanvasNoteEditor value={content} onChangeText={setContent} />
-      </ScrollView>
+      </View>
     </Screen>
   );
 };
@@ -188,6 +188,7 @@ const styles = StyleSheet.create({
     paddingTop: 0
   },
   content: {
+    flex: 1,
     paddingBottom: 32
   },
   headerRow: {

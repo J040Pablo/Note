@@ -22,8 +22,6 @@ import {
   StyleSheet,
   TextInput,
   View,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
   type GestureResponderEvent,
   type LayoutChangeEvent,
   type PanResponderGestureState,
@@ -50,7 +48,7 @@ import {
 
 const MIN_EL = 40;
 const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 2.5;
+const ZOOM_MAX = 3;
 const PAGE_GAP = 18;
 const HISTORY_LIMIT = 80;
 const FLOATING_TOOLBAR_H = 46;
@@ -61,6 +59,7 @@ const DRAW_COLORS = ["#F9FAFB", "#A78BFA", "#F472B6", "#60A5FA", "#34D399", "#FB
 const DRAW_SIZES = [2, 4, 6, 8, 12];
 const DRAW_OPACITIES = [0.35, 0.55, 0.75, 1];
 const DRAW_SMOOTH_LEVELS = [0, 0.25, 0.45, 0.65, 0.82];
+const CENTER_X_BIAS = 104;
 
 type InteractionMode = "move" | "resize";
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
@@ -89,6 +88,11 @@ interface PinchState {
   anchorX: number;
   anchorY: number;
   overviewTriggered?: boolean;
+}
+
+interface CanvasPanState {
+  startOffsetX: number;
+  startOffsetY: number;
 }
 
 interface DrawingDraft {
@@ -121,6 +125,32 @@ const buildSmoothPath = (points: Array<{ x: number; y: number }>) => {
 const cloneDoc = (doc: CanvasNoteDocument): CanvasNoteDocument => JSON.parse(JSON.stringify(doc)) as CanvasNoteDocument;
 const touchDist = (a: { pageX: number; pageY: number }, b: { pageX: number; pageY: number }) =>
   Math.sqrt((a.pageX - b.pageX) ** 2 + (a.pageY - b.pageY) ** 2);
+const toPositiveNumber = (value: unknown, fallback: number) => {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+};
+const normalizeCanvasDoc = (raw: CanvasNoteDocument): CanvasNoteDocument => {
+  const pageWidth = toPositiveNumber(raw.pageWidth, 900);
+  const pageHeight = toPositiveNumber(raw.pageHeight, 1200);
+  const pages = (raw.pages ?? []).map((p) => ({
+    ...p,
+    width: toPositiveNumber(p.width, pageWidth),
+    height: toPositiveNumber(p.height, pageHeight)
+  }));
+  const safePages = pages.length ? pages : [{ id: "page-1", width: pageWidth, height: pageHeight }];
+  const offsetX = Number.isFinite(raw.offsetX) ? (raw.offsetX as number) : 0;
+  const offsetY = Number.isFinite(raw.offsetY) ? (raw.offsetY as number) : 0;
+  const zoom = Number.isFinite(raw.zoom) ? clamp(raw.zoom, ZOOM_MIN, ZOOM_MAX) : 1;
+  return {
+    ...raw,
+    pageWidth,
+    pageHeight,
+    pages: safePages,
+    offsetX,
+    offsetY,
+    zoom
+  };
+};
 const sameRect = (
   a: { x: number; y: number; width: number; height: number } | null,
   b: { x: number; y: number; width: number; height: number } | null
@@ -343,20 +373,20 @@ const CanvasElementView = memo(
 
 export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onChangeText }) => {
   const { theme } = useTheme();
-  const defaultTextColor = "#F3F4F6";
+  const defaultTextColor = "#FFFFFF";
 
   // ── Document state ─────────────────────────────────────────────────────────
   const [doc, setDoc] = useState<CanvasNoteDocument>(() => {
-    const parsed = parseCanvasNoteContent(value);
-    return { ...parsed, zoom: 1, offsetX: parsed.offsetX ?? 0, offsetY: parsed.offsetY ?? 0 };
+    const parsed = normalizeCanvasDoc(parseCanvasNoteContent(value));
+    return { ...parsed, zoom: 1, offsetX: 0, offsetY: 0 };
   });
+  const [zoom, setZoom] = useState(1);
+  const [canvasPosition, setCanvasPosition] = useState({ x: 0, y: 0 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [scrollEnabled, setScrollEnabled] = useState(true);
   const [viewportW, setViewportW] = useState(0);
+  const [viewportH, setViewportH] = useState(0);
   const [historyTick, setHistoryTick] = useState(0);
-  const [scrollY, setScrollY] = useState(0);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
-  const [scrollAreaY, setScrollAreaY] = useState(0);
   const [rootLayout, setRootLayout] = useState({ width: 0, height: 0 });
   const [rootWindowFrame, setRootWindowFrame] = useState({ x: 0, y: 0, width: 0, height: 0 });
   const [selectedOverlayRect, setSelectedOverlayRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
@@ -377,9 +407,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   // ── Refs ───────────────────────────────────────────────────────────────────
   const docRef = useRef(doc);
   docRef.current = doc;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const canvasPositionRef = useRef(canvasPosition);
+  canvasPositionRef.current = canvasPosition;
 
   const elementInteractionRef = useRef<ElementInteraction | null>(null);
   const pinchStateRef = useRef<PinchState | null>(null);
+  const canvasPanStateRef = useRef<CanvasPanState | null>(null);
   const rootRef = useRef<View | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
   const elementRefs = useRef<Record<string, View | null>>({});
@@ -387,6 +422,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const undoStackRef = useRef<CanvasNoteDocument[]>([]);
   const redoStackRef = useRef<CanvasNoteDocument[]>([]);
   const displayScaleRef = useRef(1);
+  const pendingInitialCenterRef = useRef(true);
 
   const lastSerializedRef = useRef(serializeCanvasNoteContent(parseCanvasNoteContent(value)));
   const serializeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -435,8 +471,11 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
   // Sync external value
   useEffect(() => {
-    const incoming = serializeCanvasNoteContent(parseCanvasNoteContent(value));
-    const current = serializeCanvasNoteContent(docRef.current);
+    if (value === lastSerializedRef.current) return;
+
+    const normalizedIncoming = normalizeCanvasDoc(parseCanvasNoteContent(value));
+    const incoming = serializeCanvasNoteContent(normalizedIncoming);
+    const current = serializeCanvasNoteContent(normalizeCanvasDoc(docRef.current));
 
     if (incoming === current) {
       lastSerializedRef.current = incoming;
@@ -445,14 +484,23 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
     if (incoming === lastSerializedRef.current) return;
 
-    const parsed = parseCanvasNoteContent(value);
-    // Always normalize to zoom = 1 when loading from storage
-    setDoc({ ...parsed, zoom: 1, offsetX: parsed.offsetX ?? 0, offsetY: parsed.offsetY ?? 0 });
+    setDoc({ ...normalizedIncoming, zoom: 1, offsetX: 0, offsetY: 0 });
+    setZoom(1);
+    setCanvasPosition({ x: 0, y: 0 });
+    pendingInitialCenterRef.current = true;
     lastSerializedRef.current = incoming;
     undoStackRef.current = [];
     redoStackRef.current = [];
     notifyHistoryChanged();
   }, [notifyHistoryChanged, value]);
+
+  useEffect(() => {
+    if (!pendingInitialCenterRef.current) return;
+    if (viewportW <= 0 || viewportH <= 0) return;
+    pendingInitialCenterRef.current = false;
+    setZoom(1);
+    setCanvasPosition({ x: 0, y: 0 });
+  }, [viewportH, viewportW]);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -493,13 +541,33 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   );
 
   const baseFitScale = useMemo(() => {
-    const targetWidth = Math.max(220, viewportW - 24);
-    const pageW = doc.pageWidth || 1;
-    return clamp(targetWidth / pageW, 0.2, 2.5);
-  }, [doc.pageWidth, viewportW]);
+    const targetWidth = Math.max(220, viewportW - 32);
+    const targetHeight = Math.max(220, viewportH - 32);
+    const pageW = toPositiveNumber(doc.pageWidth, 900);
+    const pageH = toPositiveNumber(doc.pageHeight, 1200);
+    const fitByWidth = targetWidth / pageW;
+    const fitByHeight = targetHeight / pageH;
+    const fitScale = Math.min(fitByWidth, fitByHeight);
+    return clamp(fitScale * 0.98, 0.2, 2.5);
+  }, [doc.pageHeight, doc.pageWidth, viewportH, viewportW]);
 
-  const displayScale = useMemo(() => clamp(baseFitScale * doc.zoom, 0.2, 4), [baseFitScale, doc.zoom]);
+  const displayScale = useMemo(() => clamp(baseFitScale * zoom, 0.2, 4), [baseFitScale, zoom]);
   displayScaleRef.current = displayScale;
+
+  const clampCanvasOffset = useCallback(
+    (rawX: number, rawY: number, scale: number = displayScaleRef.current) => {
+      if (viewportW <= 0 || viewportH <= 0) return { x: rawX, y: rawY };
+      const scaledW = Math.max(1, toPositiveNumber(doc.pageWidth, 900) * scale);
+      const scaledH = Math.max(1, toPositiveNumber(doc.pageHeight, 1200) * scale);
+      const maxOffsetX = Math.max(96, (scaledW - viewportW) / 2 + 96);
+      const maxOffsetY = Math.max(96, (scaledH - viewportH) / 2 + 96);
+      return {
+        x: clamp(rawX, -maxOffsetX, maxOffsetX),
+        y: clamp(rawY, -maxOffsetY, maxOffsetY)
+      };
+    },
+    [doc.pageHeight, doc.pageWidth, viewportH, viewportW]
+  );
 
   const pagesById = useMemo(() => {
     const m = new Map<string, CanvasPage>();
@@ -554,15 +622,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
     requestAnimationFrame(() => {
       rootRef.current?.measureInWindow((rootX, rootY, rootWidth, rootHeight) => {
-        const nextRoot = { x: rootX, y: rootY, width: rootWidth, height: rootHeight };
-        setRootWindowFrame((prev) =>
-          Math.abs(prev.x - rootX) < 0.5 &&
-          Math.abs(prev.y - rootY) < 0.5 &&
-          Math.abs(prev.width - rootWidth) < 0.5 &&
-          Math.abs(prev.height - rootHeight) < 0.5
-            ? prev
-            : nextRoot
-        );
         const elementNode = elementRefs.current[selectedTextElement.id];
         elementNode?.measureInWindow((x, y, width, height) => {
           const nextRect = { x: x - rootX, y: y - rootY, width, height };
@@ -570,7 +629,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         });
       });
     });
-  }, [doc.zoom, doc.offsetX, doc.offsetY, rootLayout.height, rootLayout.width, scrollY, selectedTextElement]);
+  }, [zoom, canvasPosition.x, canvasPosition.y, rootLayout.height, rootLayout.width, selectedTextElement]);
 
   useEffect(() => {
     const max = Math.max(0, (doc.pages?.length ?? 1) - 1);
@@ -736,7 +795,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       const y = clamp(rawY, 0, page.height);
       clearSelection();
       pushUndoSnapshot();
-      setScrollEnabled(false);
       setDrawingDraft({ pageId, points: [{ x, y }] });
     },
     [clearSelection, pagesById, pushUndoSnapshot]
@@ -764,7 +822,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   );
 
   const endDrawing = useCallback(() => {
-    setScrollEnabled(true);
     setDrawingDraft((draft) => {
       if (!draft || draft.points.length < 1) return null;
       const points = draft.points.length === 1 ? [draft.points[0], { ...draft.points[0], x: draft.points[0].x + 0.1 }] : draft.points;
@@ -851,10 +908,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           if (drawingMode) return false;
           const touches = evt.nativeEvent.touches?.length ?? 0;
           if (touches >= 2) return true;
-          if (!selectedId && touches === 1 && Math.abs(gs.dx) > 10 && Math.abs(gs.dy) < 14) {
+          if (touches === 1 && (Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1)) {
             return true;
           }
-          return (Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1) && !!elementInteractionRef.current;
+          return !!elementInteractionRef.current;
         },
 
         onPanResponderGrant: (evt) => {
@@ -862,21 +919,28 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           const touches = evt.nativeEvent.touches ?? [];
           if (touches.length >= 2) {
             const scale = displayScaleRef.current || 1;
-            const offsetX = docRef.current.offsetX ?? 0;
-            const offsetY = docRef.current.offsetY ?? 0;
+            const offsetX = canvasPositionRef.current.x;
+            const offsetY = canvasPositionRef.current.y;
+            const pageW = toPositiveNumber(docRef.current.pageWidth, 900);
+            const pageH = toPositiveNumber(docRef.current.pageHeight, 1200);
+            const baseCenterX = (viewportW - pageW * baseFitScale) / 2 + CENTER_X_BIAS;
+            const baseCenterY = (viewportH - pageH * baseFitScale) / 2;
             const midX = (touches[0].pageX + touches[1].pageX) / 2;
             const midY = (touches[0].pageY + touches[1].pageY) / 2;
-            const localX = midX;
-            const localY = midY - scrollAreaY + scrollY;
             pinchStateRef.current = {
               startDist: touchDist(touches[0], touches[1]),
-              startZoom: docRef.current.zoom,
-              anchorX: (localX - offsetX) / scale,
-              anchorY: (localY - offsetY) / scale
+              startZoom: zoomRef.current,
+              anchorX: (midX - baseCenterX - offsetX) / scale,
+              anchorY: (midY - baseCenterY - offsetY) / scale
             };
+            canvasPanStateRef.current = null;
             elementInteractionRef.current = null;
+          } else if (touches.length === 1 && !elementInteractionRef.current) {
+            canvasPanStateRef.current = {
+              startOffsetX: canvasPositionRef.current.x,
+              startOffsetY: canvasPositionRef.current.y
+            };
           }
-          setScrollEnabled(false);
         },
 
         onPanResponderMove: (evt, gs: PanResponderGestureState) => {
@@ -888,29 +952,36 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             if (!pinchStateRef.current.overviewTriggered && ratio < 0.72) {
               pinchStateRef.current = { ...pinchStateRef.current, overviewTriggered: true };
               setOverviewMode(true);
-              setDoc((prev) => ({ ...prev, zoom: 1, offsetX: 0, offsetY: 0 }));
+              setZoom(1);
+              setCanvasPosition({ x: 0, y: 0 });
               return;
             }
             const nextZoom = clamp(pinchStateRef.current.startZoom * ratio, ZOOM_MIN, ZOOM_MAX);
-            const nextScale = clamp(baseFitScale * nextZoom, 0.2, 4);
             const midX = (touches[0].pageX + touches[1].pageX) / 2;
             const midY = (touches[0].pageY + touches[1].pageY) / 2;
-            const localX = midX;
-            const localY = midY - scrollAreaY + scrollY;
-
-            const nextOffsetX = localX - pinchStateRef.current.anchorX * nextScale;
-            const nextOffsetY = localY - pinchStateRef.current.anchorY * nextScale;
-
-            setDoc((prev) => ({
-              ...prev,
-              zoom: nextZoom,
-              offsetX: nextOffsetX,
-              offsetY: nextOffsetY
-            }));
+            const nextScale = clamp(baseFitScale * nextZoom, 0.2, 4);
+            const pageW = toPositiveNumber(docRef.current.pageWidth, 900);
+            const pageH = toPositiveNumber(docRef.current.pageHeight, 1200);
+            const baseCenterX = (viewportW - pageW * baseFitScale) / 2 + CENTER_X_BIAS;
+            const baseCenterY = (viewportH - pageH * baseFitScale) / 2;
+            const nextX = midX - baseCenterX - pinchStateRef.current.anchorX * nextScale;
+            const nextY = midY - baseCenterY - pinchStateRef.current.anchorY * nextScale;
+            const clampedOffset = clampCanvasOffset(nextX, nextY, nextScale);
+            setCanvasPosition({ x: clampedOffset.x, y: clampedOffset.y });
+            setZoom(nextZoom);
             return;
           }
 
           const interaction = elementInteractionRef.current;
+          if (!interaction && touches.length === 1 && canvasPanStateRef.current) {
+            const scale = displayScaleRef.current || 1;
+            const nextOffsetX = canvasPanStateRef.current.startOffsetX + gs.dx;
+            const nextOffsetY = canvasPanStateRef.current.startOffsetY + gs.dy;
+            const clampedOffset = clampCanvasOffset(nextOffsetX, nextOffsetY, scale);
+            setCanvasPosition({ x: clampedOffset.x, y: clampedOffset.y });
+            return;
+          }
+
           if (!interaction) return;
           const scale = displayScaleRef.current || 1;
           const dxEl = (evt.nativeEvent.pageX - interaction.startPageX) / scale;
@@ -975,25 +1046,19 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           });
         },
 
-        onPanResponderRelease: (_, gs) => {
-          if (!drawingMode && !selectedId && !elementInteractionRef.current && Math.abs(gs.dx) > 52 && Math.abs(gs.dy) < 24) {
-            setCurrentPageIndex((prev) => {
-              const max = Math.max(0, (docRef.current.pages?.length ?? 1) - 1);
-              return clamp(prev + (gs.dx < 0 ? 1 : -1), 0, max);
-            });
-          }
+        onPanResponderRelease: () => {
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
-          setScrollEnabled(true);
+          canvasPanStateRef.current = null;
         },
 
         onPanResponderTerminate: () => {
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
-          setScrollEnabled(true);
+          canvasPanStateRef.current = null;
         }
       }),
-    [baseFitScale, drawingMode, pagesById, scrollAreaY, scrollY, selectedId, drawingSmoothness]
+    [baseFitScale, clampCanvasOffset, drawingMode, pagesById, drawingSmoothness, viewportH, viewportW]
   );
 
   // ── Toolbar add helpers ────────────────────────────────────────────────────
@@ -1029,7 +1094,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         ...el.style,
         fontSize: 36,
         bold: true,
-        textColor: "#F3F4F6"
+        textColor: "#FFFFFF"
       }
     });
     setPendingFocusTextId(el.id);
@@ -1160,7 +1225,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const selectedFontSize = selectedTextStyle.fontSize ?? 18;
   const showSelectionDelete = !!selectedId;
   const pageCount = doc.pages?.length ?? 0;
-  const currentPage = pageCount > 0 ? doc.pages[currentPageIndex] ?? doc.pages[0] : null;
+  const currentPage =
+    pageCount > 0
+      ? doc.pages[currentPageIndex] ?? doc.pages[0]
+      : { id: "fallback-page", width: toPositiveNumber(doc.pageWidth, 900), height: toPositiveNumber(doc.pageHeight, 1200) };
   const overlayWidth = rootLayout.width || rootWindowFrame.width;
   const overlayHeight = rootLayout.height || rootWindowFrame.height;
   const toolbarWidth = Math.min(textToolbarLayout.width || 320, Math.max(220, overlayWidth - 16));
@@ -1173,11 +1241,27 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const maxToolbarTop = Math.max(minToolbarTop, overlayHeight - keyboardHeight - toolbarHeight - 8);
   const textToolbarTop = clamp(preferredToolbarTop >= minToolbarTop ? preferredToolbarTop : fallbackToolbarTop, minToolbarTop, maxToolbarTop);
   const popupTop = clamp(textToolbarTop + toolbarHeight + 8, minToolbarTop, Math.max(minToolbarTop, overlayHeight - keyboardHeight - 120));
+  const baseCenterOffset = useMemo(() => {
+    const pageW = toPositiveNumber(currentPage.width, toPositiveNumber(doc.pageWidth, 900));
+    const pageH = toPositiveNumber(currentPage.height, toPositiveNumber(doc.pageHeight, 1200));
+    return {
+      x: (viewportW - pageW * baseFitScale) / 2 + CENTER_X_BIAS,
+      y: (viewportH - pageH * baseFitScale) / 2
+    };
+  }, [baseFitScale, currentPage.height, currentPage.width, doc.pageHeight, doc.pageWidth, viewportH, viewportW]);
+  const renderOffset = useMemo(() => {
+    const x = Number.isFinite(canvasPosition.x) ? canvasPosition.x : 0;
+    const y = Number.isFinite(canvasPosition.y) ? canvasPosition.y : 0;
+    const clamped = clampCanvasOffset(x, y, displayScale);
+    return { x: baseCenterOffset.x + clamped.x, y: baseCenterOffset.y + clamped.y };
+  }, [baseCenterOffset.x, baseCenterOffset.y, canvasPosition.x, canvasPosition.y, clampCanvasOffset, displayScale]);
 
   const resetZoom = useCallback(() => {
-    setDoc((prev) => ({ ...prev, zoom: 1, offsetX: 0, offsetY: 0 }));
+    const centered = clampCanvasOffset(0, 0, baseFitScale);
+    setZoom(1);
+    setCanvasPosition({ x: centered.x, y: centered.y });
     scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, []);
+  }, [baseFitScale, clampCanvasOffset]);
 
   const toggleDrawingMode = useCallback(() => {
     setDrawingMode((prev) => (prev === "brush" ? null : "brush"));
@@ -1189,48 +1273,46 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
   const renderPage = useCallback(
     (page: CanvasPage, index: number) => {
+      const pageW = Math.max(240, toPositiveNumber(page.width, toPositiveNumber(doc.pageWidth, 900)));
+      const pageH = Math.max(320, toPositiveNumber(page.height, toPositiveNumber(doc.pageHeight, 1200)));
       const pageEls = sortedElements.filter((el) => el.pageId === page.id);
       const pageDrawingEls = drawingsByPage.get(page.id) ?? [];
-      const scaledW = page.width * displayScale;
-      const scaledH = page.height * displayScale;
       return (
-        <View key={page.id} style={{ alignItems: "center", marginBottom: PAGE_GAP, width: scaledW }}>
-          <View style={{ width: scaledW, height: scaledH, alignItems: "center", justifyContent: "center" }}>
-            <View
-              style={[
-                styles.page,
-                {
-                  width: page.width,
-                  height: page.height,
-                  backgroundColor: page.backgroundColor ?? "#171923",
-                  borderColor: drawingMode ? "#6D5BD0" : "#282D3A",
-                  transform: [{ scale: displayScale }]
-                }
-              ]}
-            >
+        <View key={page.id} style={[styles.pageSlot, index < (doc.pages?.length ?? 1) - 1 && styles.pageSlotWithGap]}>
+          <View
+            style={[
+              styles.pageShell,
+              {
+                width: pageW,
+                height: pageH,
+                borderColor: drawingMode ? "#6D5BD0" : "#2B3340"
+              }
+            ]}
+          >
+            <View style={styles.page}>
               <Pressable style={StyleSheet.absoluteFillObject} onPress={clearSelection} />
 
-              {pageEls.map((element) => (
-                <CanvasElementView
-                  key={element.id}
-                  element={element}
-                  selected={element.id === selectedId}
-                  primaryColor={colors.primary}
-                  surfaceElevated={colors.surfaceElevated}
-                  defaultTextColor={defaultTextColor}
-                  onSetRef={setElementRef}
-                  onSetInputRef={setInputRef}
-                  onTextFocused={handleTextFocused}
-                  onSelect={handleSelect}
-                  onMovePressIn={handleElementMovePressIn}
-                  onResizePressIn={handleElementResizePressIn}
-                  onChangeText={handleTextChange}
-                  onTextSizeChange={handleTextSizeChange}
-                />
-              ))}
+            {pageEls.map((element) => (
+              <CanvasElementView
+                key={element.id}
+                element={element}
+                selected={element.id === selectedId}
+                primaryColor={colors.primary}
+                surfaceElevated={colors.surfaceElevated}
+                defaultTextColor={defaultTextColor}
+                onSetRef={setElementRef}
+                onSetInputRef={setInputRef}
+                onTextFocused={handleTextFocused}
+                onSelect={handleSelect}
+                onMovePressIn={handleElementMovePressIn}
+                onResizePressIn={handleElementResizePressIn}
+                onChangeText={handleTextChange}
+                onTextSizeChange={handleTextSizeChange}
+              />
+            ))}
 
               <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-                <Svg width={page.width} height={page.height}>
+                <Svg width={pageW} height={pageH}>
                   {pageDrawingEls.map((drawingEl) =>
                     drawingEl.type === "drawing"
                       ? drawingEl.strokes.map((stroke) => (
@@ -1290,11 +1372,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       colors.primary,
       colors.surfaceElevated,
       defaultTextColor,
-      displayScale,
       drawingColor,
       drawingDraft,
       drawingMode,
       drawingSize,
+      doc.pages,
+      doc.pageHeight,
+      doc.pageWidth,
       drawingsByPage,
       beginDrawing,
       endDrawing,
@@ -1316,7 +1400,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   return (
     <View
       ref={rootRef}
-      style={[styles.root, { backgroundColor: "#0D0F14" }]}
+      style={[styles.root, { backgroundColor: "#0F0F10" }]}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         setRootLayout((prev) =>
@@ -1389,7 +1473,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <Pressable style={styles.zoomResetBtn} onPress={resetZoom}>
           <Text variant="caption" muted style={styles.zoomLabel}>
-            {Math.round(doc.zoom * 100)}%
+            {Math.round(zoom * 100)}%
           </Text>
         </Pressable>
 
@@ -1522,26 +1606,38 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         ref={(n) => {
           scrollRef.current = n;
         }}
-        scrollEnabled={scrollEnabled && !drawingMode && !overviewMode}
+        style={styles.canvasScroll}
+        scrollEnabled={false}
         contentContainerStyle={styles.pagesContent}
         keyboardShouldPersistTaps="handled"
         onLayout={(e: LayoutChangeEvent) => {
-          const { width, y } = e.nativeEvent.layout;
+          const { width, height } = e.nativeEvent.layout;
           setViewportW((prev) => (Math.abs(prev - width) < 0.5 ? prev : width));
-          setScrollAreaY((prev) => (Math.abs(prev - y) < 0.5 ? prev : y));
+          setViewportH((prev) => (Math.abs(prev - height) < 0.5 ? prev : height));
         }}
-        onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => {
-          const nextY = e.nativeEvent.contentOffset.y;
-          setScrollY((prev) => (Math.abs(prev - nextY) < 0.5 ? prev : nextY));
-        }}
-        scrollEventThrottle={16}
       >
         <View
-          style={{
-            transform: [{ translateX: doc.offsetX ?? 0 }, { translateY: doc.offsetY ?? 0 }]
-          }}
+          style={[
+            styles.canvasViewport,
+            {
+              width: Math.max(1, viewportW),
+              height: Math.max(1, viewportH)
+            }
+          ]}
         >
-          {currentPage ? renderPage(currentPage, currentPageIndex) : null}
+          <View
+            style={{
+              // Set transform origin to top-left for correct zoom behavior
+              transform: [
+                { translateX: renderOffset.x },
+                { translateY: renderOffset.y },
+                { scale: displayScale }
+              ],
+              transformOrigin: '0 0', // For web, ignored on native but harmless
+            }}
+          >
+            {currentPage ? renderPage(currentPage, currentPageIndex) : null}
+          </View>
         </View>
       </ScrollView>
 
@@ -1574,7 +1670,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
       <Modal visible={overviewMode} transparent animationType="fade" onRequestClose={() => setOverviewMode(false)}>
         <Pressable style={styles.overviewBackdrop} onPress={() => setOverviewMode(false)}>
-          <View style={[styles.overviewCard, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}>
+          <View style={[styles.overviewCard, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}> 
             <View style={styles.overviewHeader}>
               <Text variant="subtitle">Pages overview</Text>
               <Pressable style={styles.menuBtnSmall} onPress={() => setOverviewMode(false)}>
@@ -1852,19 +1948,39 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   pagesContent: {
-    paddingTop: 6,
-    paddingBottom: 24,
-    alignItems: "center"
+    flexGrow: 1,
+    alignItems: "stretch",
+    justifyContent: "flex-start"
   },
-  page: {
+  canvasScroll: {
+    flex: 1
+  },
+  canvasViewport: {
+    flex: 1,
+    position: "relative",
+    overflow: "hidden"
+  },
+  pageSlot: {
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  pageSlotWithGap: {
+    marginBottom: PAGE_GAP
+  },
+  pageShell: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 14,
-    overflow: "hidden",
     shadowColor: "#000000",
-    shadowOpacity: 0.28,
-    shadowRadius: 20,
+    shadowOpacity: 0.4,
+    shadowRadius: 40,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 8
+    elevation: 16
+  },
+  page: {
+    flex: 1,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: "#1E1E1E"
   },
   pageActions: {
     flexDirection: "row",
