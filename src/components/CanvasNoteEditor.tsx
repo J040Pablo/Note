@@ -949,14 +949,16 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           if (touches.length >= 2 && pinchStateRef.current) {
             const dist = touchDist(touches[0], touches[1]);
             const ratio = dist / Math.max(1, pinchStateRef.current.startDist);
-            if (!pinchStateRef.current.overviewTriggered && ratio < 0.72) {
+            const nextZoom = clamp(pinchStateRef.current.startZoom * ratio, ZOOM_MIN, ZOOM_MAX);
+            const startedAt100 = Math.abs(pinchStateRef.current.startZoom - 1) <= 0.05;
+            const isPinchingIn = ratio < 1;
+            if (!pinchStateRef.current.overviewTriggered && startedAt100 && isPinchingIn && nextZoom <= 0.8) {
               pinchStateRef.current = { ...pinchStateRef.current, overviewTriggered: true };
               setOverviewMode(true);
               setZoom(1);
               setCanvasPosition({ x: 0, y: 0 });
               return;
             }
-            const nextZoom = clamp(pinchStateRef.current.startZoom * ratio, ZOOM_MIN, ZOOM_MAX);
             const midX = (touches[0].pageX + touches[1].pageX) / 2;
             const midY = (touches[0].pageY + touches[1].pageY) / 2;
             const nextScale = clamp(baseFitScale * nextZoom, 0.2, 4);
@@ -1451,15 +1453,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             <Ionicons name="close-circle-outline" size={16} color={drawingMode === "eraser" ? "#EF4444" : colors.textPrimary} />
           </Pressable>
         )}
-
-        <Pressable
-          style={[tb(), overviewMode && styles.activeToolBtn]}
-          onPress={() => setOverviewMode(true)}
-          accessibilityLabel="Pages overview"
-          accessibilityHint="Open grid view with all pages"
-        >
-          <Ionicons name="grid-outline" size={16} color={colors.textPrimary} />
-        </Pressable>
 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
