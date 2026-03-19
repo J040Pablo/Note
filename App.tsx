@@ -1,7 +1,7 @@
 import React from "react";
 import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from "@react-navigation/native";
 import { StatusBar } from "expo-status-bar";
-import { useColorScheme, Linking as RNLinking } from "react-native";
+import { Linking as RNLinking } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import RootNavigator from "@navigation/RootNavigator";
 import { ThemeProvider, useTheme } from "@hooks/useTheme";
@@ -37,7 +37,6 @@ const parseDeepLinkToRoute = (url: string): { uri: string; name?: string; mimeTy
 
 const ThemedNavigation: React.FC = () => {
   const { theme } = useTheme();
-  const scheme = useColorScheme();
 
   React.useEffect(() => {
     const handleUrl = (incoming: string | null) => {
@@ -74,9 +73,9 @@ const ThemedNavigation: React.FC = () => {
           }
         }}
         theme={{
-          ...(scheme === "dark" ? DarkTheme : DefaultTheme),
+          ...(theme.mode === "dark" ? DarkTheme : DefaultTheme),
           colors: {
-            ...(scheme === "dark" ? DarkTheme.colors : DefaultTheme.colors),
+            ...(theme.mode === "dark" ? DarkTheme.colors : DefaultTheme.colors),
             background: theme.colors.background,
             card: theme.colors.surface,
             border: theme.colors.border,

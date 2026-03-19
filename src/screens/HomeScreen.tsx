@@ -433,7 +433,7 @@ const HomeScreen: React.FC = () => {
                   recentNotes.map((note) => (
                     <Pressable
                       key={note.id}
-                      style={hsStyles.noteCard}
+                      style={[hsStyles.noteCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
                       onPress={() => handleOpenNote(note.id)}
                       onLongPress={() => handleTogglePin("note", note.id)}
                       delayLongPress={260}
@@ -730,9 +730,14 @@ const hsStyles = StyleSheet.create({
   },
   card: {
     borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     padding: 12,
-    marginTop: spacing.md
+    marginTop: spacing.md,
+    shadowColor: "#000000",
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 4
   },
   sectionHeader: {
     flexDirection: "row",
@@ -791,7 +796,11 @@ const hsStyles = StyleSheet.create({
     fontSize: 14
   },
   noteCard: {
-    paddingVertical: 8
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    marginBottom: 8
   },
   noteTopRow: {
     flexDirection: "row",

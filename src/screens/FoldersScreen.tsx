@@ -383,18 +383,18 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center"
   },
   folderCard: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: 16,
     overflow: "hidden",
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
+    shadowOpacity: 0.18,
     shadowRadius: 12,
-    elevation: 2
+    elevation: 4
   },
   banner: {
     width: "100%",

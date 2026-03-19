@@ -51,7 +51,7 @@ const FoldersStackNavigator = () => {
         fullScreenGestureEnabled: true,
         gestureEnabled: true,
         headerStyle: { backgroundColor: theme.colors.surface },
-        headerShadowVisible: false,
+        headerShadowVisible: true,
         headerTintColor: theme.colors.textPrimary,
         contentStyle: { backgroundColor: theme.colors.background }
       }}
@@ -85,7 +85,13 @@ const TabsNavigator = () => {
         tabBarInactiveTintColor: theme.colors.textSecondary,
         tabBarStyle: {
           backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.border
+          borderTopColor: theme.colors.border,
+          borderTopWidth: 1,
+          elevation: 4,
+          shadowColor: "#000000",
+          shadowOpacity: 0.2,
+          shadowRadius: 6,
+          shadowOffset: { width: 0, height: -2 }
         },
         tabBarIcon: ({ color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = "home";
@@ -119,7 +125,7 @@ const RootNavigator = () => {
         animationTypeForReplace: "push",
         presentation: "card",
         headerStyle: { backgroundColor: theme.colors.surface },
-        headerShadowVisible: false,
+        headerShadowVisible: true,
         headerTintColor: theme.colors.textPrimary,
         headerBackVisible: true,
         contentStyle: { backgroundColor: theme.colors.background }

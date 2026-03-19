@@ -1,9 +1,8 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { useColorScheme } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { FOLDER_COLOR_OPTIONS } from "@utils/folderColors";
 
-export type ThemeMode = "light" | "dark" | "system";
+export type ThemeMode = "light" | "dark";
 
 export const spacing = {
   xs: 4,
@@ -13,7 +12,7 @@ export const spacing = {
 } as const;
 
 interface Theme {
-  mode: Exclude<ThemeMode, "system">;
+  mode: ThemeMode;
   colors: {
     background: string;
     surface: string;
@@ -22,7 +21,15 @@ interface Theme {
     textPrimary: string;
     textSecondary: string;
     primary: string;
+    primaryLight: string;
+    primaryDark: string;
+    primaryAlpha20: string;
     onPrimary: string;
+    secondary: string;
+    secondaryLight: string;
+    secondaryDark: string;
+    secondaryAlpha20: string;
+    onSecondary: string;
     accent: string;
     border: string;
     danger: string;
@@ -36,6 +43,14 @@ interface ThemeContextValue {
   theme: Theme;
   mode: ThemeMode;
   setMode: (mode: ThemeMode) => void;
+  themeMode: ThemeMode;
+  setThemeMode: (mode: ThemeMode) => void;
+  primaryColor: string;
+  setPrimaryColor: (color: string) => void;
+  secondaryColor: string;
+  setSecondaryColor: (color: string) => void;
+  primaryPresets: string[];
+  secondaryPresets: string[];
   accentColor: string;
   setAccentColor: (color: string) => void;
   accentPresets: string[];
@@ -43,50 +58,84 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-const lightPalette: Theme["colors"] = {
-  background: "#f9fafb",
-  surface: "#f9fafb",
-  surfaceElevated: "#ffffff",
-  card: "#ffffff",
-  textPrimary: "#0f172a",
-  textSecondary: "#6b7280",
-  primary: "#6366f1",
-  onPrimary: "#ffffff",
-  accent: "#22c55e",
-  border: "#e5e7eb",
-  danger: "#ef4444",
-  priorityLow: "#9ca3af",
-  priorityMedium: "#f97316",
-  priorityHigh: "#ef4444"
-};
+const STORAGE_THEME_KEY = "theme";
+const LEGACY_STORAGE_MODE_KEY = "settings.theme.mode";
+const LEGACY_STORAGE_ACCENT_KEY = "settings.theme.accent";
 
-const darkPalette: Theme["colors"] = {
-  background: "#020617",
-  surface: "#020617",
-  surfaceElevated: "#020617",
-  card: "#0f172a",
-  textPrimary: "#e5e7eb",
-  textSecondary: "#9ca3af",
-  primary: "#818cf8",
-  onPrimary: "#020617",
-  accent: "#4ade80",
-  border: "#1f2937",
-  danger: "#f97373",
-  priorityLow: "#6b7280",
-  priorityMedium: "#fb923c",
-  priorityHigh: "#f97373"
-};
+export const colorPresets = [
+  "#FFFFFF",
+  "#6B7280",
+  "#000000",
+  "#7C3AED",
+  "#3B82F6",
+  "#22C55E",
+  "#F59E0B",
+  "#EF4444",
+  "#F472B6",
+  ...FOLDER_COLOR_OPTIONS.map((option) => option.hex.toUpperCase())
+].filter((hex, index, all) => all.indexOf(hex) === index);
 
-const STORAGE_MODE_KEY = "settings.theme.mode";
-const STORAGE_ACCENT_KEY = "settings.theme.accent";
+export const primaryPresets = colorPresets;
+export const secondaryPresets = colorPresets;
 
-export const accentPresets = FOLDER_COLOR_OPTIONS.map((option) => option.hex.toLowerCase());
+const DEFAULT_THEME_MODE: ThemeMode = "dark";
+const DEFAULT_PRIMARY = "#7C3AED";
+const DEFAULT_SECONDARY = "#22C55E";
+
+interface PersistedThemeSettings {
+  themeMode: ThemeMode;
+  primaryColor: string;
+  secondaryColor: string;
+}
 
 const isValidHexColor = (value: string): boolean => /^#([0-9A-Fa-f]{6})$/.test(value);
 
 const normalizeHex = (value: string): string => {
   const trimmed = value.trim();
   return trimmed.startsWith("#") ? trimmed.toUpperCase() : `#${trimmed.toUpperCase()}`;
+};
+
+const isLightColor = (hex: string): boolean => {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+  return brightness > 200;
+};
+
+const isSimilarColor = (c1: string, c2: string): boolean => {
+  const a = hexToRgb(c1);
+  const b = hexToRgb(c2);
+  const diff = Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b);
+  return diff < 100;
+};
+
+const getContrastColor = (hex: string): "#000000" | "#FFFFFF" => {
+  return isLightColor(hex) ? "#000000" : "#FFFFFF";
+};
+
+const adjustColor = (hex: string, amount: number): string => {
+  const col = hex.replace("#", "");
+  const num = parseInt(col, 16);
+
+  let r = (num >> 16) + amount;
+  let g = ((num >> 8) & 0x00ff) + amount;
+  let b = (num & 0x0000ff) + amount;
+
+  r = Math.max(Math.min(255, r), 0);
+  g = Math.max(Math.min(255, g), 0);
+  b = Math.max(Math.min(255, b), 0);
+
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0").toUpperCase()}`;
+};
+
+const withAlpha = (hex: string, alpha: number): string => {
+  const clamped = Math.max(0, Math.min(alpha, 1));
+  const alphaHex = Math.round(clamped * 255)
+    .toString(16)
+    .padStart(2, "0")
+    .toUpperCase();
+  return `${hex}${alphaHex}`;
 };
 
 const hexToRgb = (hex: string): { r: number; g: number; b: number } => {
@@ -124,48 +173,47 @@ const mixHex = (base: string, target: string, amount: number): string => {
   return `#${toHex(mix(b.r, t.r))}${toHex(mix(b.g, t.g))}${toHex(mix(b.b, t.b))}`;
 };
 
-const ensureAccentContrast = (
-  accent: string,
-  background: string,
-  mode: "light" | "dark",
-  minRatio = 2.6
-): string => {
-  if (contrastRatio(accent, background) >= minRatio) return accent;
-
-  const target = mode === "dark" ? "#FFFFFF" : "#000000";
-  let candidate = accent;
-
-  for (let i = 0; i < 8; i += 1) {
-    candidate = mixHex(candidate, target, 0.2);
-    if (contrastRatio(candidate, background) >= minRatio) {
-      return candidate;
-    }
-  }
-
-  return candidate;
-};
-
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const system = useColorScheme();
-  const [mode, setMode] = useState<ThemeMode>("system");
-  const [accentColor, setAccentColorState] = useState<string>(accentPresets[0]);
+  const [mode, setMode] = useState<ThemeMode>(DEFAULT_THEME_MODE);
+  const [primaryColor, setPrimaryColorState] = useState<string>(DEFAULT_PRIMARY);
+  const [secondaryColor, setSecondaryColorState] = useState<string>(DEFAULT_SECONDARY);
 
   useEffect(() => {
     (async () => {
       try {
-        const [savedMode, savedAccent] = await Promise.all([
-          AsyncStorage.getItem(STORAGE_MODE_KEY),
-          AsyncStorage.getItem(STORAGE_ACCENT_KEY)
+        const [savedTheme, savedMode, savedAccent] = await Promise.all([
+          AsyncStorage.getItem(STORAGE_THEME_KEY),
+          AsyncStorage.getItem(LEGACY_STORAGE_MODE_KEY),
+          AsyncStorage.getItem(LEGACY_STORAGE_ACCENT_KEY)
         ]);
 
-        if (savedMode === "light" || savedMode === "dark" || savedMode === "system") {
-          setMode(savedMode);
+        if (savedTheme) {
+          const parsed = JSON.parse(savedTheme) as Partial<PersistedThemeSettings>;
+          if (parsed.themeMode === "light" || parsed.themeMode === "dark") {
+            setMode(parsed.themeMode);
+          }
+          if (parsed.primaryColor) {
+            const normalizedPrimary = normalizeHex(parsed.primaryColor);
+            if (isValidHexColor(normalizedPrimary)) {
+              setPrimaryColorState(normalizedPrimary);
+            }
+          }
+          if (parsed.secondaryColor) {
+            const normalizedSecondary = normalizeHex(parsed.secondaryColor);
+            if (isValidHexColor(normalizedSecondary)) {
+              setSecondaryColorState(normalizedSecondary);
+            }
+          }
+          return;
         }
 
+        if (savedMode === "light" || savedMode === "dark") {
+          setMode(savedMode);
+        }
         if (savedAccent) {
           const normalized = normalizeHex(savedAccent);
           if (isValidHexColor(normalized)) {
-            setAccentColorState(normalized);
+            setSecondaryColorState(normalized);
           }
         }
       } catch {
@@ -175,41 +223,106 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, []);
 
   useEffect(() => {
-    AsyncStorage.setItem(STORAGE_MODE_KEY, mode).catch(() => undefined);
-  }, [mode]);
+    const payload: PersistedThemeSettings = {
+      themeMode: mode,
+      primaryColor,
+      secondaryColor
+    };
+    AsyncStorage.setItem(STORAGE_THEME_KEY, JSON.stringify(payload)).catch(() => undefined);
+  }, [mode, primaryColor, secondaryColor]);
 
-  useEffect(() => {
-    AsyncStorage.setItem(STORAGE_ACCENT_KEY, accentColor).catch(() => undefined);
-  }, [accentColor]);
-
-  const setAccentColor = (input: string) => {
+  const setPrimaryColor = (input: string) => {
     const normalized = normalizeHex(input);
     if (!isValidHexColor(normalized)) return;
-    setAccentColorState(normalized);
+    setPrimaryColorState(normalized);
   };
 
-  const theme: Theme = useMemo(() => {
-    const effectiveMode: "light" | "dark" =
-      mode === "system" ? (system === "dark" ? "dark" : "light") : mode;
+  const setSecondaryColor = (input: string) => {
+    const normalized = normalizeHex(input);
+    if (!isValidHexColor(normalized)) return;
+    setSecondaryColorState(normalized);
+  };
 
-    const basePalette = effectiveMode === "dark" ? darkPalette : lightPalette;
-    const adjustedAccent = ensureAccentContrast(accentColor, basePalette.background, effectiveMode);
-    const selectedOnPrimary = luminanceFromHex(adjustedAccent) > 0.42 ? "#111827" : "#ffffff";
+  const setAccentColor = setSecondaryColor;
+
+  const theme: Theme = useMemo(() => {
+    // Keep light/dark visually different regardless of selected primary color.
+    const backgroundBase = mode === "light" ? adjustColor(primaryColor, 12) : adjustColor(primaryColor, -16);
+    const primaryIsLight = isLightColor(backgroundBase);
+    const textPrimary = getContrastColor(backgroundBase);
+    const textSecondary = primaryIsLight
+      ? adjustColor(backgroundBase, -110)
+      : adjustColor(backgroundBase, 110);
+
+    const background = backgroundBase;
+    const surface = mode === "light"
+      ? adjustColor(backgroundBase, -16)
+      : adjustColor(backgroundBase, 18);
+    const surfaceElevated = mode === "light"
+      ? adjustColor(backgroundBase, -24)
+      : adjustColor(backgroundBase, 28);
+    const card = mode === "light"
+      ? adjustColor(backgroundBase, -20)
+      : adjustColor(backgroundBase, 24);
+    const border = mode === "light"
+      ? adjustColor(backgroundBase, -34)
+      : adjustColor(backgroundBase, 34);
+
+    let actionColor = secondaryColor;
+
+    if (isSimilarColor(backgroundBase, actionColor)) {
+      actionColor = primaryIsLight ? "#000000" : "#FFFFFF";
+    }
+
+    const actionOnColor = getContrastColor(actionColor);
 
     return {
-      mode: effectiveMode,
+      mode,
       colors: {
-        ...basePalette,
-        primary: adjustedAccent,
-        accent: adjustedAccent,
-        onPrimary: selectedOnPrimary
+        background,
+        surface,
+        surfaceElevated,
+        card,
+        textPrimary,
+        textSecondary,
+        primary: actionColor,
+        primaryLight: mixHex(actionColor, "#FFFFFF", mode === "dark" ? 0.26 : 0.18),
+        primaryDark: mixHex(actionColor, "#000000", mode === "dark" ? 0.3 : 0.22),
+        primaryAlpha20: withAlpha(actionColor, 0.2),
+        onPrimary: actionOnColor,
+        secondary: actionColor,
+        secondaryLight: mixHex(actionColor, "#FFFFFF", mode === "dark" ? 0.26 : 0.18),
+        secondaryDark: mixHex(actionColor, "#000000", mode === "dark" ? 0.3 : 0.22),
+        secondaryAlpha20: withAlpha(actionColor, 0.2),
+        onSecondary: actionOnColor,
+        accent: actionColor,
+        border,
+        danger: mode === "dark" ? "#FCA5A5" : "#B91C1C",
+        priorityLow: textSecondary,
+        priorityMedium: mode === "dark" ? "#FDBA74" : "#C2410C",
+        priorityHigh: mode === "dark" ? "#FCA5A5" : "#B91C1C"
       }
     };
-  }, [accentColor, mode, system]);
+  }, [mode, primaryColor, secondaryColor]);
 
   return (
     <ThemeContext.Provider
-      value={{ theme, mode, setMode, accentColor, setAccentColor, accentPresets }}
+      value={{
+        theme,
+        mode,
+        setMode,
+        themeMode: mode,
+        setThemeMode: setMode,
+        primaryColor,
+        setPrimaryColor,
+        secondaryColor,
+        setSecondaryColor,
+        primaryPresets,
+        secondaryPresets,
+        accentColor: secondaryColor,
+        setAccentColor,
+        accentPresets: secondaryPresets
+      }}
     >
       {children}
     </ThemeContext.Provider>

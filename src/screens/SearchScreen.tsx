@@ -15,8 +15,9 @@ import { getAllNotes } from "@services/notesService";
 import { getAllTasks } from "@services/tasksService";
 import { getPlainTextFromRichNoteContent, getRichNotePreviewLine } from "@utils/noteContent";
 
-type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
 type SearchFilter = "all" | "folder" | "note" | "task";
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 type SearchResult = {
   id: string;
@@ -139,7 +140,7 @@ const SearchScreen: React.FC = () => {
                 styles.filterChip,
                 {
                   borderColor: theme.colors.border,
-                  backgroundColor: active ? theme.colors.primary + "22" : theme.colors.card
+                  backgroundColor: active ? theme.colors.primaryAlpha20 : theme.colors.card
                 }
               ]}
             >

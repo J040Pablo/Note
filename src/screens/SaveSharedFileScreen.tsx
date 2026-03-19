@@ -66,7 +66,7 @@ const SaveSharedFileScreen: React.FC = () => {
         style={[
           styles.row,
           { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-          selectedFolderId === null && { backgroundColor: theme.colors.primary + "22" }
+          selectedFolderId === null && { backgroundColor: theme.colors.primaryAlpha20 }
         ]}
       >
         <Text>Home (root)</Text>
@@ -81,7 +81,7 @@ const SaveSharedFileScreen: React.FC = () => {
             style={[
               styles.row,
               { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
-              selectedFolderId === item.id && { backgroundColor: theme.colors.primary + "22" }
+              selectedFolderId === item.id && { backgroundColor: theme.colors.primaryAlpha20 }
             ]}
           >
             <Text numberOfLines={1}>{item.name}</Text>

@@ -1098,7 +1098,7 @@ const FolderDetailScreen: React.FC = () => {
                 return (
                   <Pressable
                     onPress={() => setTargetFolderId(id)}
-                    style={[styles.moveRow, selected && { backgroundColor: theme.colors.primary + "22" }]}
+                    style={[styles.moveRow, selected && { backgroundColor: theme.colors.primaryAlpha20 }]}
                   >
                     <Ionicons
                       name={item.id === "root" ? "home-outline" : "folder-outline"}
@@ -1151,7 +1151,7 @@ const FolderDetailScreen: React.FC = () => {
                     onPress={() => setTargetFolderId(id)}
                     style={[
                       styles.moveRow,
-                      selected && { backgroundColor: theme.colors.primary + "22" },
+                      selected && { backgroundColor: theme.colors.primaryAlpha20 },
                       disabled && { opacity: 0.35 }
                     ]}
                   >
@@ -1206,7 +1206,7 @@ const FolderDetailScreen: React.FC = () => {
                 return (
                   <Pressable
                     onPress={() => setTargetFolderId(id)}
-                    style={[styles.moveRow, selected && { backgroundColor: theme.colors.primary + "22" }]}
+                    style={[styles.moveRow, selected && { backgroundColor: theme.colors.primaryAlpha20 }]}
                   >
                     <Ionicons
                       name={item.id === "root" ? "home-outline" : "folder-outline"}

@@ -15,7 +15,7 @@ export const FileIcon: React.FC<FileIconProps> = ({ type, size = 18 }) => {
     type === "pdf" ? "document-text-outline" : type === "image" ? "image-outline" : "document-outline";
 
   const color =
-    type === "pdf" ? theme.colors.danger : type === "image" ? theme.colors.accent : theme.colors.textSecondary;
+    type === "pdf" ? theme.colors.danger : type === "image" ? theme.colors.secondary : theme.colors.textSecondary;
 
   return <Ionicons name={iconName} size={size} color={color} />;
 };

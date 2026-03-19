@@ -269,7 +269,7 @@ const TasksScreen: React.FC = () => {
                 onPress={() => setSelectedDate(key)}
                 style={[
                   styles.dayCell,
-                  isSelected && { backgroundColor: theme.colors.primary + "22" }
+                  isSelected && { backgroundColor: theme.colors.primaryAlpha20 }
                 ]}
               >
                 <Text
