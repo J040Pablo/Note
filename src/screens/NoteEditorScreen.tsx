@@ -34,6 +34,7 @@ const NoteEditorScreen: React.FC = () => {
   const [lastSavedContent, setLastSavedContent] = useState(existing?.content ?? serializeCanvasNoteContent(createEmptyCanvasNote()));
   const [saving, setSaving] = useState(false);
   const [isReadMode, setIsReadMode] = useState(false);
+  const [centerSignal, setCenterSignal] = useState(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
 
@@ -139,6 +140,7 @@ const NoteEditorScreen: React.FC = () => {
           onChangeText={setContent}
           toolbarVisible={!isReadMode}
           editable={!isReadMode}
+          centerSignal={centerSignal}
         />
 
         <View style={[styles.headerRow, { borderBottomColor: theme.colors.border + "55" }]}> 
@@ -162,6 +164,16 @@ const NoteEditorScreen: React.FC = () => {
           />
 
           <View style={styles.headerActions}>
+            {isReadMode && (
+              <Pressable
+                onPress={() => setCenterSignal((prev) => prev + 1)}
+                hitSlop={8}
+                style={styles.focusToggleButton}
+              >
+                <Ionicons name="locate-outline" size={20} color={theme.colors.textPrimary} />
+              </Pressable>
+            )}
+
             <Pressable
               onPress={() => setIsReadMode((prev) => !prev)}
               hitSlop={8}

@@ -60,6 +60,9 @@ const DRAW_COLORS = ["#F9FAFB", "#A78BFA", "#F472B6", "#60A5FA", "#34D399", "#FB
 const DRAW_SIZES = [2, 4, 6, 8, 12];
 const DRAW_OPACITIES = [0.35, 0.55, 0.75, 1];
 const DRAW_SMOOTH_LEVELS = [0, 0.25, 0.45, 0.65, 0.82];
+const PAGE_SWIPE_DIST = 50;
+const PAGE_SWIPE_VELOCITY = 0.45;
+const PAGE_CENTER_Y_BIAS = 32;
 const makeLocalId = (): ID => `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
 type InteractionMode = "move" | "resize";
@@ -71,6 +74,7 @@ interface CanvasNoteEditorProps {
   onChangeText: (value: string) => void;
   toolbarVisible?: boolean;
   editable?: boolean;
+  centerSignal?: number;
 }
 
 interface ElementInteraction {
@@ -396,7 +400,13 @@ const CanvasElementView = memo(
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onChangeText, toolbarVisible = true, editable = true }) => {
+export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
+  value,
+  onChangeText,
+  toolbarVisible = true,
+  editable = true,
+  centerSignal = 0
+}) => {
   const { theme } = useTheme();
   const defaultTextColor = "#FFFFFF";
 
@@ -427,6 +437,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const [drawingSize, setDrawingSize] = useState(4);
   const [drawingDraft, setDrawingDraft] = useState<DrawingDraft | null>(null);
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
+  const [nextPageIndex, setNextPageIndex] = useState<number | null>(null);
+  const [pageTransitionDirection, setPageTransitionDirection] = useState<1 | -1>(1);
   const [overviewMode, setOverviewMode] = useState(false);
   const [selectedPageId, setSelectedPageId] = useState<ID | null>(null);
   const [isDraggingPage, setIsDraggingPage] = useState(false);
@@ -455,6 +467,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const pageToolbarAnim = useRef(new Animated.Value(0)).current;
   const toolbarTranslateY = useRef(new Animated.Value(0)).current;
   const toolbarOpacity = useRef(new Animated.Value(1)).current;
+  const pageSwipeX = useRef(new Animated.Value(0)).current;
+  const pageSwipeActiveRef = useRef(false);
+  const animatedIndex = useRef(new Animated.Value(0)).current;
 
   const lastSerializedRef = useRef(serializeCanvasNoteContent(parseCanvasNoteContent(value)));
   const serializeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -597,7 +612,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     setCanvasPosition((prev) => {
       if (viewportW <= 0 || viewportH <= 0) return prev;
       const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, fitScale);
-      return clampCanvasOffset(center.x, center.y, fitScale);
+      return clampCanvasOffset(center.x, center.y + PAGE_CENTER_Y_BIAS, fitScale);
     });
 
     pendingInitialCenterRef.current = true;
@@ -616,7 +631,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     const pageW = toPositiveNumber(docRef.current.pageWidth, 900);
     const pageH = toPositiveNumber(docRef.current.pageHeight, 1200);
     const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, baseFitScale);
-    const centered = clampCanvasOffset(center.x, center.y, baseFitScale);
+    const centered = clampCanvasOffset(center.x, center.y + PAGE_CENTER_Y_BIAS, baseFitScale);
     setCanvasPosition(centered);
   }, [baseFitScale, clampCanvasOffset, viewportH, viewportW]);
 
@@ -685,7 +700,16 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   useEffect(() => {
     const max = Math.max(0, (doc.pages?.length ?? 1) - 1);
     setCurrentPageIndex((prev) => clamp(prev, 0, max));
+    setNextPageIndex((prev) => (prev === null ? prev : clamp(prev, 0, max)));
   }, [doc.pages]);
+
+  useEffect(() => {
+    Animated.timing(animatedIndex, {
+      toValue: currentPageIndex,
+      duration: 200,
+      useNativeDriver: false
+    }).start();
+  }, [animatedIndex, currentPageIndex]);
 
   const showPageToolbar = overviewMode && (!!selectedPageId || isDraggingPage);
 
@@ -1013,6 +1037,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
         onPanResponderGrant: (evt) => {
           if (drawingMode) return;
+          pageSwipeActiveRef.current = false;
           const touches = evt.nativeEvent.touches ?? [];
           if (touches.length >= 2) {
             const scale = displayScaleRef.current || 1;
@@ -1065,6 +1090,30 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
           const interaction = elementInteractionRef.current;
           if (!interaction && touches.length === 1 && canvasPanStateRef.current) {
+            const swipeAllowed = !overviewMode && pageCount > 1 && zoomRef.current <= 1.02 && !selectedTextElement && nextPageIndex === null;
+            const horizontalDominant = Math.abs(gs.dx) > Math.abs(gs.dy) * 1.15;
+
+            if (swipeAllowed && horizontalDominant) {
+              const direction: 1 | -1 = gs.dx < 0 ? 1 : -1;
+              const targetIndex = clamp(currentPageIndex + direction, 0, pageCount - 1);
+              if (targetIndex !== currentPageIndex) {
+                if (!pageSwipeActiveRef.current || nextPageIndex !== targetIndex) {
+                  pageSwipeActiveRef.current = true;
+                  setPageTransitionDirection(direction);
+                  setNextPageIndex(targetIndex);
+                  pageSwipeX.setValue(direction === 1 ? 0 : -slideWidth);
+                }
+                const drag = clamp(Math.abs(gs.dx), 0, slideWidth);
+                pageSwipeX.setValue(direction === 1 ? -drag : -slideWidth + drag);
+              } else {
+                // Edge resistance at first/last page.
+                const resisted = gs.dx * 0.2;
+                pageSwipeX.setValue(resisted);
+              }
+              return;
+            }
+
+            if (pageSwipeActiveRef.current) return;
             const scale = displayScaleRef.current || 1;
             const nextOffsetX = canvasPanStateRef.current.startOffsetX + gs.dx;
             const nextOffsetY = canvasPanStateRef.current.startOffsetY + gs.dy;
@@ -1137,19 +1186,82 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           });
         },
 
-        onPanResponderRelease: () => {
+        onPanResponderRelease: (_evt, gs) => {
+          if (pageSwipeActiveRef.current && nextPageIndex !== null) {
+            const horizontalDominant = Math.abs(gs.dx) > Math.abs(gs.dy);
+            const validSwipe = horizontalDominant && (Math.abs(gs.dx) > PAGE_SWIPE_DIST || Math.abs(gs.vx) > PAGE_SWIPE_VELOCITY);
+
+            if (validSwipe) {
+              const toValue = pageTransitionDirection === 1 ? -slideWidth : 0;
+              Animated.timing(pageSwipeX, {
+                toValue,
+                duration: 170,
+                useNativeDriver: true
+              }).start(({ finished }) => {
+                if (!finished) return;
+                finalizePageTransition(nextPageIndex);
+              });
+            } else {
+              const backTo = pageTransitionDirection === 1 ? 0 : -slideWidth;
+              Animated.timing(pageSwipeX, {
+                toValue: backTo,
+                duration: 170,
+                useNativeDriver: true
+              }).start(() => {
+                setNextPageIndex(null);
+                setPageTransitionDirection(1);
+                pageSwipeX.setValue(0);
+              });
+            }
+          } else {
+            Animated.timing(pageSwipeX, {
+              toValue: 0,
+              duration: 120,
+              useNativeDriver: true
+            }).start();
+          }
+          pageSwipeActiveRef.current = false;
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
           canvasPanStateRef.current = null;
         },
 
         onPanResponderTerminate: () => {
+          if (pageSwipeActiveRef.current || nextPageIndex !== null) {
+            Animated.timing(pageSwipeX, {
+              toValue: 0,
+              duration: 150,
+              useNativeDriver: true
+            }).start(() => {
+              setNextPageIndex(null);
+              setPageTransitionDirection(1);
+            });
+          }
+          pageSwipeActiveRef.current = false;
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
           canvasPanStateRef.current = null;
         }
       }),
-    [baseFitScale, clampCanvasOffset, drawingMode, pagesById, drawingSmoothness, viewportH, viewportW]
+    [
+      baseFitScale,
+      clampCanvasOffset,
+      currentPageIndex,
+      drawingMode,
+      finalizePageTransition,
+      goToPage,
+      nextPageIndex,
+      overviewMode,
+      pageCount,
+      pageTransitionDirection,
+      pageSwipeX,
+      pagesById,
+      slideWidth,
+      drawingSmoothness,
+      selectedTextElement,
+      viewportH,
+      viewportW
+    ]
   );
 
   // ── Toolbar add helpers ────────────────────────────────────────────────────
@@ -1390,6 +1502,20 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     pageCount > 0
       ? doc.pages[currentPageIndex] ?? doc.pages[0]
       : { id: "fallback-page", width: toPositiveNumber(doc.pageWidth, 900), height: toPositiveNumber(doc.pageHeight, 1200) };
+  const stagedNextPage =
+    nextPageIndex !== null && pageCount > 0
+      ? doc.pages[nextPageIndex] ?? null
+      : null;
+  const currentPageWidth = Math.max(240, toPositiveNumber(currentPage.width, toPositiveNumber(doc.pageWidth, 900)));
+  const stagedNextPageWidth = stagedNextPage
+    ? Math.max(240, toPositiveNumber(stagedNextPage.width, toPositiveNumber(doc.pageWidth, 900)))
+    : currentPageWidth;
+  const slideWidth = Math.max(currentPageWidth, stagedNextPageWidth);
+  const currentPageHeight = Math.max(320, toPositiveNumber(currentPage.height, toPositiveNumber(doc.pageHeight, 1200)));
+  const stagedNextPageHeight = stagedNextPage
+    ? Math.max(320, toPositiveNumber(stagedNextPage.height, toPositiveNumber(doc.pageHeight, 1200)))
+    : currentPageHeight;
+  const pageTrackHeight = Math.max(currentPageHeight, stagedNextPageHeight);
   const overlayWidth = rootLayout.width || rootWindowFrame.width;
   const overlayHeight = rootLayout.height || rootWindowFrame.height;
   const toolbarWidth = Math.min(textToolbarLayout.width || 320, Math.max(220, overlayWidth - 16));
@@ -1413,11 +1539,58 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     const pageW = toPositiveNumber(currentPage.width, toPositiveNumber(doc.pageWidth, 900));
     const pageH = toPositiveNumber(currentPage.height, toPositiveNumber(doc.pageHeight, 1200));
     const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, baseFitScale);
-    const centered = clampCanvasOffset(center.x, center.y, baseFitScale);
+    const centered = clampCanvasOffset(center.x, center.y + PAGE_CENTER_Y_BIAS, baseFitScale);
     setZoom(1);
     setCanvasPosition({ x: centered.x, y: centered.y });
     scrollRef.current?.scrollTo({ y: 0, animated: true });
   }, [baseFitScale, clampCanvasOffset, currentPage.height, currentPage.width, doc.pageHeight, doc.pageWidth, viewportH, viewportW]);
+
+  useEffect(() => {
+    if (!centerSignal) return;
+    resetZoom();
+  }, [centerSignal, resetZoom]);
+
+  const finalizePageTransition = useCallback((targetIndex: number) => {
+    setCurrentPageIndex(targetIndex);
+    setNextPageIndex(null);
+    setPageTransitionDirection(1);
+    requestAnimationFrame(() => {
+      pageSwipeX.setValue(0);
+    });
+  }, [pageSwipeX]);
+
+  const goToPage = useCallback(
+    (requestedIndex: number, animated = true) => {
+      const targetIndex = clamp(requestedIndex, 0, Math.max(0, pageCount - 1));
+      if (targetIndex === currentPageIndex) return;
+      if (nextPageIndex !== null) return;
+
+      const direction: 1 | -1 = targetIndex > currentPageIndex ? 1 : -1;
+      setPageTransitionDirection(direction);
+      setNextPageIndex(targetIndex);
+
+      if (!animated) {
+        finalizePageTransition(targetIndex);
+        return;
+      }
+
+      if (direction === 1) {
+        pageSwipeX.setValue(0);
+      } else {
+        pageSwipeX.setValue(-slideWidth);
+      }
+
+      Animated.timing(pageSwipeX, {
+        toValue: direction === 1 ? -slideWidth : 0,
+        duration: 210,
+        useNativeDriver: true
+      }).start(({ finished }) => {
+        if (!finished) return;
+        finalizePageTransition(targetIndex);
+      });
+    },
+    [currentPageIndex, finalizePageTransition, nextPageIndex, pageCount, pageSwipeX, slideWidth]
+  );
 
   const toggleDrawingMode = useCallback(() => {
     if (!editable) return;
@@ -1619,7 +1792,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             accessibilityLabel="Eraser tool"
             accessibilityHint="Switch to eraser mode"
           >
-            <Ionicons name="close-circle-outline" size={16} color={drawingMode === "eraser" ? "#EF4444" : colors.textPrimary} />
+            <Ionicons name="backspace-outline" size={18} color={drawingMode === "eraser" ? "#EF4444" : colors.textPrimary} />
           </Pressable>
         )}
 
@@ -1642,7 +1815,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
         <Pressable
           style={[tb(), currentPageIndex <= 0 && styles.disabledBtn]}
-          onPress={() => setCurrentPageIndex((prev) => Math.max(0, prev - 1))}
+          onPress={() => goToPage(currentPageIndex - 1)}
           disabled={currentPageIndex <= 0}
         >
           <Ionicons name="chevron-back" size={16} color={currentPageIndex <= 0 ? colors.textSecondary : colors.textPrimary} />
@@ -1652,7 +1825,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         </View>
         <Pressable
           style={[tb(), currentPageIndex >= pageCount - 1 && styles.disabledBtn]}
-          onPress={() => setCurrentPageIndex((prev) => Math.min(Math.max(0, pageCount - 1), prev + 1))}
+          onPress={() => goToPage(currentPageIndex + 1)}
           disabled={currentPageIndex >= pageCount - 1}
         >
           <Ionicons name="chevron-forward" size={16} color={currentPageIndex >= pageCount - 1 ? colors.textSecondary : colors.textPrimary} />
@@ -1713,7 +1886,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
               </Pressable>
 
               <Pressable style={styles.menuBtnSmall} onPress={() => setDrawingMode("eraser")}>
-                <Ionicons name="close-circle-outline" size={16} color="#EF4444" />
+                <Ionicons name="backspace-outline" size={18} color="#EF4444" />
               </Pressable>
             </View>
           </>
@@ -1793,10 +1966,78 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
               }
             ]}
           >
-            {currentPage ? renderPage(currentPage) : null}
+            {currentPage ? (
+              <View style={[styles.pageTrackViewport, { width: slideWidth, height: pageTrackHeight }]}> 
+                {stagedNextPage ? (
+                  <Animated.View
+                    style={[
+                      styles.pageTrack,
+                      {
+                        width: slideWidth * 2,
+                        transform: [{ translateX: pageSwipeX }]
+                      }
+                    ]}
+                  >
+                    {pageTransitionDirection === 1 ? (
+                      <>
+                        <View style={[styles.pageTrackItem, { width: slideWidth, height: pageTrackHeight }]}>{renderPage(currentPage)}</View>
+                        <View style={[styles.pageTrackItem, { width: slideWidth, height: pageTrackHeight }]}>{renderPage(stagedNextPage)}</View>
+                      </>
+                    ) : (
+                      <>
+                        <View style={[styles.pageTrackItem, { width: slideWidth, height: pageTrackHeight }]}>{renderPage(stagedNextPage)}</View>
+                        <View style={[styles.pageTrackItem, { width: slideWidth, height: pageTrackHeight }]}>{renderPage(currentPage)}</View>
+                      </>
+                    )}
+                  </Animated.View>
+                ) : (
+                  <View style={[styles.pageTrackItem, { width: slideWidth, height: pageTrackHeight }]}>{renderPage(currentPage)}</View>
+                )}
+              </View>
+            ) : null}
           </View>
         </View>
       </ScrollView>
+
+      <View pointerEvents="box-none" style={styles.dotsOverlay}>
+        <View style={styles.dotsContainer}>
+          {(doc.pages ?? []).map((page, index) => {
+            const dotScale = animatedIndex.interpolate({
+              inputRange: [index - 1, index, index + 1],
+              outputRange: [1, 1.2, 1],
+              extrapolate: "clamp"
+            });
+            const dotOpacity = animatedIndex.interpolate({
+              inputRange: [index - 1, index, index + 1],
+              outputRange: [0.3, 1, 0.3],
+              extrapolate: "clamp"
+            });
+            const dotWidth = animatedIndex.interpolate({
+              inputRange: [index - 1, index, index + 1],
+              outputRange: [8, 16, 8],
+              extrapolate: "clamp"
+            });
+            return (
+              <Pressable
+                key={page.id}
+                onPress={() => goToPage(index)}
+                hitSlop={8}
+              >
+                <Animated.View
+                  style={[
+                    styles.dot,
+                    {
+                      width: dotWidth,
+                      opacity: dotOpacity,
+                      transform: [{ scale: dotScale }]
+                    }
+                  ]}
+                />
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
 
       <Modal visible={showShapeMenu} transparent animationType="fade" onRequestClose={() => setShowShapeMenu(false)}>
         <Pressable style={styles.shapeModalBackdrop} onPress={() => setShowShapeMenu(false)}>
@@ -2326,6 +2567,18 @@ const styles = StyleSheet.create({
     left: 0,
     zIndex: 1
   },
+  pageTrackViewport: {
+    overflow: "hidden"
+  },
+  pageTrack: {
+    flexDirection: "row",
+    alignItems: "stretch"
+  },
+  pageTrackItem: {
+    position: "relative",
+    alignItems: "center",
+    justifyContent: "flex-start"
+  },
   canvas: {
     position: "absolute",
     top: 0,
@@ -2376,6 +2629,28 @@ const styles = StyleSheet.create({
   },
   drawingTouchLayer: {
     zIndex: 120
+  },
+  dotsOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 999,
+    pointerEvents: "box-none"
+  },
+  dotsContainer: {
+    position: "absolute",
+    bottom: 20,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+    pointerEvents: "auto"
+  },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "rgba(255,255,255,0.3)"
   },
   overviewBackdrop: {
     ...StyleSheet.absoluteFillObject,
