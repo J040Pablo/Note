@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator } from "react-native";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, Vibration } from "react-native";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
@@ -8,7 +8,6 @@ import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { useTheme } from "@hooks/useTheme";
 import { useTasksStore } from "@store/useTasksStore";
-import { useAppStore } from "@store/useAppStore";
 import {
   createTask,
   deleteTask,
@@ -24,9 +23,7 @@ import {
   TaskPriority
 } from "@services/tasksService";
 import {
-  getPinnedItems,
   getSortPreference,
-  savePinnedItems,
   saveSortPreference
 } from "@services/appMetaService";
 import { Ionicons } from "@expo/vector-icons";
@@ -69,9 +66,6 @@ const TasksScreen: React.FC = () => {
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
   const removeTask = useTasksStore((s) => s.removeTask);
-  const pinnedItems = useAppStore((s) => s.pinnedItems);
-  const togglePinned = useAppStore((s) => s.togglePinned);
-  const setPinnedItems = useAppStore((s) => s.setPinnedItems);
 
   const [newText, setNewText] = useState("");
   const [priority, setPriority] = useState<TaskPriority>(1);
@@ -90,16 +84,14 @@ const TasksScreen: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      const [all, pinned, savedSort] = await Promise.all([
+      const [all, savedSort] = await Promise.all([
         getAllTasks(),
-        getPinnedItems(),
         getSortPreference<TaskSortMode>(TASK_SORT_SCOPE, "custom")
       ]);
       setTasks(all);
-      setPinnedItems(pinned);
       setSortMode(savedSort);
     })();
-  }, [setPinnedItems, setTasks]);
+  }, [setTasks]);
 
   useEffect(() => {
     const focusTaskId = route.params?.focusTaskId;
@@ -182,6 +174,11 @@ const TasksScreen: React.FC = () => {
     setScheduledDate(task.scheduledDate ?? selectedDate);
     setShowModal(true);
   };
+
+  const handleTaskLongPress = useCallback((task: Task) => {
+    Vibration.vibrate(10);
+    setSelectedTask(task);
+  }, []);
 
   return (
     <Screen>
@@ -322,6 +319,12 @@ const TasksScreen: React.FC = () => {
           <Pressable
             style={[
               styles.taskRow,
+              selectedTask?.id === item.id && {
+                borderWidth: 2,
+                borderColor: theme.colors.secondary,
+                borderRadius: 10,
+                paddingHorizontal: 8
+              },
               isActive && {
                 backgroundColor: theme.colors.card,
                 elevation: 6,
@@ -331,8 +334,8 @@ const TasksScreen: React.FC = () => {
                 shadowOffset: { width: 0, height: 4 }
               }
             ]}
-            onLongPress={() => setSelectedTask(item)}
-            delayLongPress={260}
+            onLongPress={() => handleTaskLongPress(item)}
+            delayLongPress={300}
           >
             <Pressable
               onPress={async () => {
@@ -348,13 +351,7 @@ const TasksScreen: React.FC = () => {
                 }
               ]}
             />
-            <Pressable
-              style={styles.taskTextWrapper}
-              onPress={async () => {
-                const updated = await toggleTaskForDate(item, selectedDate);
-                upsertTask(updated);
-              }}
-            >
+            <View style={styles.taskTextWrapper}>
               <Text
                 style={[
                   styles.taskText,
@@ -372,7 +369,7 @@ const TasksScreen: React.FC = () => {
               {!item.repeatDays?.length && !!item.scheduledDate && (
                 <Text muted variant="caption">Date: {item.scheduledDate}</Text>
               )}
-            </Pressable>
+            </View>
             <Pressable
               onPress={async () => {
                 const nextPriority = ((item.priority + 1) % 3) as TaskPriority;
@@ -450,28 +447,38 @@ const TasksScreen: React.FC = () => {
         onClose={() => setSelectedTask(null)}
         actions={[
           {
-            key: "pin",
-            label:
-              selectedTask && pinnedItems.some((x) => x.type === "task" && x.id === selectedTask.id)
-                ? "Unpin"
-                : "Pin",
-            icon:
-              selectedTask && pinnedItems.some((x) => x.type === "task" && x.id === selectedTask.id)
-                ? "pin"
-                : "pin-outline",
-            onPress: async () => {
-              if (!selectedTask) return;
-              const next = togglePinned("task", selectedTask.id);
-              await savePinnedItems(next);
-            }
-          },
-          {
             key: "edit",
             label: "Edit",
             icon: "pencil",
             onPress: () => {
               if (!selectedTask) return;
               openEditModal(selectedTask);
+            }
+          },
+          {
+            key: "complete",
+            label:
+              selectedTask && isTaskCompletedForDate(selectedTask, selectedDate)
+                ? "Mark as pending"
+                : "Mark as completed",
+            icon:
+              selectedTask && isTaskCompletedForDate(selectedTask, selectedDate)
+                ? "refresh-outline"
+                : "checkmark-circle-outline",
+            onPress: async () => {
+              if (!selectedTask) return;
+              const updated = await toggleTaskForDate(selectedTask, selectedDate);
+              upsertTask(updated);
+            }
+          },
+          {
+            key: "move",
+            label: "Move position",
+            icon: "swap-vertical-outline",
+            onPress: async () => {
+              setSortMode("custom");
+              await saveSortPreference(TASK_SORT_SCOPE, "custom");
+              showToast("Long press reorder icon to move task");
             }
           },
           {
