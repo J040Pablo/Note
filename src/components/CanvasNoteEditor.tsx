@@ -51,7 +51,6 @@ import {
 const MIN_EL = 40;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 3;
-const PAGE_GAP = 18;
 const HISTORY_LIMIT = 80;
 const FLOATING_TOOLBAR_H = 46;
 const FONT_FAMILIES = ["System", "sans-serif", "serif", "monospace", "cursive"] as const;
@@ -61,7 +60,6 @@ const DRAW_COLORS = ["#F9FAFB", "#A78BFA", "#F472B6", "#60A5FA", "#34D399", "#FB
 const DRAW_SIZES = [2, 4, 6, 8, 12];
 const DRAW_OPACITIES = [0.35, 0.55, 0.75, 1];
 const DRAW_SMOOTH_LEVELS = [0, 0.25, 0.45, 0.65, 0.82];
-const CENTER_X_BIAS = 104;
 const makeLocalId = (): ID => `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
 type InteractionMode = "move" | "resize";
@@ -132,6 +130,16 @@ const toPositiveNumber = (value: unknown, fallback: number) => {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? n : fallback;
 };
+const getCenteredCanvasPosition = (
+  viewportWidth: number,
+  viewportHeight: number,
+  canvasWidth: number,
+  canvasHeight: number,
+  scale: number
+) => ({
+  x: viewportWidth / 2 - (canvasWidth * scale) / 2,
+  y: viewportHeight / 2 - (canvasHeight * scale) / 2
+});
 const normalizeCanvasDoc = (raw: CanvasNoteDocument): CanvasNoteDocument => {
   const pageWidth = toPositiveNumber(raw.pageWidth, 900);
   const pageHeight = toPositiveNumber(raw.pageHeight, 1200);
@@ -492,23 +500,36 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
     if (incoming === lastSerializedRef.current) return;
 
+    const pageW = toPositiveNumber(normalizedIncoming.pageWidth, 900);
+    const pageH = toPositiveNumber(normalizedIncoming.pageHeight, 1200);
+    const targetWidth = Math.max(220, viewportW - 32);
+    const targetHeight = Math.max(220, viewportH - 32);
+    const fitScale = clamp(Math.min(targetWidth / pageW, targetHeight / pageH) * 0.98, 0.2, 2.5);
     setDoc({ ...normalizedIncoming, zoom: 1, offsetX: 0, offsetY: 0 });
     setZoom(1);
-    setCanvasPosition({ x: 0, y: 0 });
+    setCanvasPosition((prev) => {
+      if (viewportW <= 0 || viewportH <= 0) return prev;
+      const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, fitScale);
+      return clampCanvasOffset(center.x, center.y, fitScale);
+    });
     pendingInitialCenterRef.current = true;
     lastSerializedRef.current = incoming;
     undoStackRef.current = [];
     redoStackRef.current = [];
     notifyHistoryChanged();
-  }, [notifyHistoryChanged, value]);
+  }, [clampCanvasOffset, notifyHistoryChanged, value, viewportH, viewportW]);
 
   useEffect(() => {
     if (!pendingInitialCenterRef.current) return;
     if (viewportW <= 0 || viewportH <= 0) return;
     pendingInitialCenterRef.current = false;
     setZoom(1);
-    setCanvasPosition({ x: 0, y: 0 });
-  }, [viewportH, viewportW]);
+    const pageW = toPositiveNumber(docRef.current.pageWidth, 900);
+    const pageH = toPositiveNumber(docRef.current.pageHeight, 1200);
+    const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, baseFitScale);
+    const centered = clampCanvasOffset(center.x, center.y, baseFitScale);
+    setCanvasPosition(centered);
+  }, [baseFitScale, clampCanvasOffset, viewportH, viewportW]);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -567,11 +588,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       if (viewportW <= 0 || viewportH <= 0) return { x: rawX, y: rawY };
       const scaledW = Math.max(1, toPositiveNumber(doc.pageWidth, 900) * scale);
       const scaledH = Math.max(1, toPositiveNumber(doc.pageHeight, 1200) * scale);
-      const maxOffsetX = Math.max(96, (scaledW - viewportW) / 2 + 96);
-      const maxOffsetY = Math.max(96, (scaledH - viewportH) / 2 + 96);
+      const panPadding = 1800;
+      const minX = viewportW - scaledW - panPadding;
+      const maxX = panPadding;
+      const minY = viewportH - scaledH - panPadding;
+      const maxY = panPadding;
       return {
-        x: clamp(rawX, -maxOffsetX, maxOffsetX),
-        y: clamp(rawY, -maxOffsetY, maxOffsetY)
+        x: clamp(rawX, minX, maxX),
+        y: clamp(rawY, minY, maxY)
       };
     },
     [doc.pageHeight, doc.pageWidth, viewportH, viewportW]
@@ -945,17 +969,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             const scale = displayScaleRef.current || 1;
             const offsetX = canvasPositionRef.current.x;
             const offsetY = canvasPositionRef.current.y;
-            const pageW = toPositiveNumber(docRef.current.pageWidth, 900);
-            const pageH = toPositiveNumber(docRef.current.pageHeight, 1200);
-            const baseCenterX = (viewportW - pageW * baseFitScale) / 2 + CENTER_X_BIAS;
-            const baseCenterY = (viewportH - pageH * baseFitScale) / 2;
             const midX = (touches[0].pageX + touches[1].pageX) / 2;
             const midY = (touches[0].pageY + touches[1].pageY) / 2;
             pinchStateRef.current = {
               startDist: touchDist(touches[0], touches[1]),
               startZoom: zoomRef.current,
-              anchorX: (midX - baseCenterX - offsetX) / scale,
-              anchorY: (midY - baseCenterY - offsetY) / scale
+              anchorX: (midX - offsetX) / scale,
+              anchorY: (midY - offsetY) / scale
             };
             canvasPanStateRef.current = null;
             elementInteractionRef.current = null;
@@ -986,12 +1006,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             const midX = (touches[0].pageX + touches[1].pageX) / 2;
             const midY = (touches[0].pageY + touches[1].pageY) / 2;
             const nextScale = clamp(baseFitScale * nextZoom, 0.2, 4);
-            const pageW = toPositiveNumber(docRef.current.pageWidth, 900);
-            const pageH = toPositiveNumber(docRef.current.pageHeight, 1200);
-            const baseCenterX = (viewportW - pageW * baseFitScale) / 2 + CENTER_X_BIAS;
-            const baseCenterY = (viewportH - pageH * baseFitScale) / 2;
-            const nextX = midX - baseCenterX - pinchStateRef.current.anchorX * nextScale;
-            const nextY = midY - baseCenterY - pinchStateRef.current.anchorY * nextScale;
+            const nextX = midX - pinchStateRef.current.anchorX * nextScale;
+            const nextY = midY - pinchStateRef.current.anchorY * nextScale;
             const clampedOffset = clampCanvasOffset(nextX, nextY, nextScale);
             setCanvasPosition({ x: clampedOffset.x, y: clampedOffset.y });
             setZoom(nextZoom);
@@ -1337,27 +1353,22 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const maxToolbarTop = Math.max(minToolbarTop, overlayHeight - keyboardHeight - toolbarHeight - 8);
   const textToolbarTop = clamp(preferredToolbarTop >= minToolbarTop ? preferredToolbarTop : fallbackToolbarTop, minToolbarTop, maxToolbarTop);
   const popupTop = clamp(textToolbarTop + toolbarHeight + 8, minToolbarTop, Math.max(minToolbarTop, overlayHeight - keyboardHeight - 120));
-  const baseCenterOffset = useMemo(() => {
-    const pageW = toPositiveNumber(currentPage.width, toPositiveNumber(doc.pageWidth, 900));
-    const pageH = toPositiveNumber(currentPage.height, toPositiveNumber(doc.pageHeight, 1200));
-    return {
-      x: (viewportW - pageW * baseFitScale) / 2 + CENTER_X_BIAS,
-      y: (viewportH - pageH * baseFitScale) / 2
-    };
-  }, [baseFitScale, currentPage.height, currentPage.width, doc.pageHeight, doc.pageWidth, viewportH, viewportW]);
-  const renderOffset = useMemo(() => {
+  const renderCanvasPosition = useMemo(() => {
     const x = Number.isFinite(canvasPosition.x) ? canvasPosition.x : 0;
     const y = Number.isFinite(canvasPosition.y) ? canvasPosition.y : 0;
     const clamped = clampCanvasOffset(x, y, displayScale);
-    return { x: baseCenterOffset.x + clamped.x, y: baseCenterOffset.y + clamped.y };
-  }, [baseCenterOffset.x, baseCenterOffset.y, canvasPosition.x, canvasPosition.y, clampCanvasOffset, displayScale]);
+    return { x: clamped.x, y: clamped.y };
+  }, [canvasPosition.x, canvasPosition.y, clampCanvasOffset, displayScale]);
 
   const resetZoom = useCallback(() => {
-    const centered = clampCanvasOffset(0, 0, baseFitScale);
+    const pageW = toPositiveNumber(currentPage.width, toPositiveNumber(doc.pageWidth, 900));
+    const pageH = toPositiveNumber(currentPage.height, toPositiveNumber(doc.pageHeight, 1200));
+    const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, baseFitScale);
+    const centered = clampCanvasOffset(center.x, center.y, baseFitScale);
     setZoom(1);
     setCanvasPosition({ x: centered.x, y: centered.y });
     scrollRef.current?.scrollTo({ y: 0, animated: true });
-  }, [baseFitScale, clampCanvasOffset]);
+  }, [baseFitScale, clampCanvasOffset, currentPage.height, currentPage.width, doc.pageHeight, doc.pageWidth, viewportH, viewportW]);
 
   const toggleDrawingMode = useCallback(() => {
     setDrawingMode((prev) => (prev === "brush" ? null : "brush"));
@@ -1368,98 +1379,95 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   }, [clearSelection]);
 
   const renderPage = useCallback(
-    (page: CanvasPage, index: number) => {
+    (page: CanvasPage) => {
       const pageW = Math.max(240, toPositiveNumber(page.width, toPositiveNumber(doc.pageWidth, 900)));
       const pageH = Math.max(320, toPositiveNumber(page.height, toPositiveNumber(doc.pageHeight, 1200)));
       const pageEls = sortedElements.filter((el) => el.pageId === page.id);
       const pageDrawingEls = drawingsByPage.get(page.id) ?? [];
       return (
-        <View key={page.id} style={[styles.pageSlot, index < (doc.pages?.length ?? 1) - 1 && styles.pageSlotWithGap]}>
-          <View
-            style={[
-              styles.pageShell,
-              {
-                width: pageW,
-                height: pageH,
-                borderColor: drawingMode ? "#6D5BD0" : "#2B3340"
-              }
-            ]}
-          >
-            <View style={styles.page}>
-              <Pressable style={StyleSheet.absoluteFillObject} onPress={clearSelection} />
+        <View
+          key={page.id}
+          style={[
+            styles.canvas,
+            {
+              width: pageW,
+              height: pageH,
+              borderColor: drawingMode ? "#6D5BD0" : "#2B3340"
+            }
+          ]}
+        >
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={clearSelection} />
 
-            {pageEls.map((element) => (
-              <CanvasElementView
-                key={element.id}
-                element={element}
-                selected={element.id === selectedId}
-                primaryColor={colors.primary}
-                surfaceElevated={colors.surfaceElevated}
-                defaultTextColor={defaultTextColor}
-                onSetRef={setElementRef}
-                onSetInputRef={setInputRef}
-                onTextFocused={handleTextFocused}
-                onSelect={handleSelect}
-                onMovePressIn={handleElementMovePressIn}
-                onResizePressIn={handleElementResizePressIn}
-                onChangeText={handleTextChange}
-                onTextSizeChange={handleTextSizeChange}
-              />
-            ))}
+          {pageEls.map((element) => (
+            <CanvasElementView
+              key={element.id}
+              element={element}
+              selected={element.id === selectedId}
+              primaryColor={colors.primary}
+              surfaceElevated={colors.surfaceElevated}
+              defaultTextColor={defaultTextColor}
+              onSetRef={setElementRef}
+              onSetInputRef={setInputRef}
+              onTextFocused={handleTextFocused}
+              onSelect={handleSelect}
+              onMovePressIn={handleElementMovePressIn}
+              onResizePressIn={handleElementResizePressIn}
+              onChangeText={handleTextChange}
+              onTextSizeChange={handleTextSizeChange}
+            />
+          ))}
 
-              <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
-                <Svg width={pageW} height={pageH}>
-                  {pageDrawingEls.map((drawingEl) =>
-                    drawingEl.type === "drawing"
-                      ? drawingEl.strokes.map((stroke) => (
-                            <Path
-                              key={stroke.id}
-                              d={buildSmoothPath(stroke.points)}
-                              stroke={stroke.color}
-                              strokeWidth={stroke.size}
-                              strokeOpacity={stroke.opacity ?? 1}
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              fill="none"
-                            />
-                        ))
-                      : null
-                  )}
+          <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+            <Svg width={pageW} height={pageH}>
+              {pageDrawingEls.map((drawingEl) =>
+                drawingEl.type === "drawing"
+                  ? drawingEl.strokes.map((stroke) => (
+                        <Path
+                          key={stroke.id}
+                          d={buildSmoothPath(stroke.points)}
+                          stroke={stroke.color}
+                          strokeWidth={stroke.size}
+                          strokeOpacity={stroke.opacity ?? 1}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          fill="none"
+                        />
+                    ))
+                  : null
+              )}
 
-                  {drawingDraft?.pageId === page.id && drawingDraft.points.length > 1 && (
-                      <Path
-                        d={buildSmoothPath(drawingDraft.points)}
-                        stroke={drawingColor}
-                        strokeWidth={drawingSize}
-                        strokeOpacity={drawingOpacity}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        fill="none"
-                    />
-                  )}
-                </Svg>
-              </View>
-
-              <View
-                pointerEvents={drawingMode ? "auto" : "none"}
-                style={[StyleSheet.absoluteFillObject, styles.drawingTouchLayer]}
-                onStartShouldSetResponderCapture={(evt) => !!drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
-                onMoveShouldSetResponderCapture={(evt) => !!drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
-                onResponderGrant={(evt) => {
-                  const x = evt.nativeEvent.locationX;
-                  const y = evt.nativeEvent.locationY;
-                  beginDrawing(page.id, x, y);
-                }}
-                onResponderMove={(evt) => {
-                  const x = evt.nativeEvent.locationX;
-                  const y = evt.nativeEvent.locationY;
-                  updateDrawing(page.id, x, y);
-                }}
-                onResponderRelease={endDrawing}
-                onResponderTerminate={endDrawing}
-              />
-            </View>
+              {drawingDraft?.pageId === page.id && drawingDraft.points.length > 1 && (
+                  <Path
+                    d={buildSmoothPath(drawingDraft.points)}
+                    stroke={drawingColor}
+                    strokeWidth={drawingSize}
+                    strokeOpacity={drawingOpacity}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
+                />
+              )}
+            </Svg>
           </View>
+
+          <View
+            pointerEvents={drawingMode ? "auto" : "none"}
+            style={[StyleSheet.absoluteFillObject, styles.drawingTouchLayer]}
+            onStartShouldSetResponderCapture={(evt) => !!drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
+            onMoveShouldSetResponderCapture={(evt) => !!drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
+            onResponderGrant={(evt) => {
+              const x = evt.nativeEvent.locationX;
+              const y = evt.nativeEvent.locationY;
+              beginDrawing(page.id, x, y);
+            }}
+            onResponderMove={(evt) => {
+              const x = evt.nativeEvent.locationX;
+              const y = evt.nativeEvent.locationY;
+              updateDrawing(page.id, x, y);
+            }}
+            onResponderRelease={endDrawing}
+            onResponderTerminate={endDrawing}
+          />
         </View>
       );
     },
@@ -1496,7 +1504,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   return (
     <View
       ref={rootRef}
-      style={[styles.root, { backgroundColor: "#0F0F10" }]}
+      style={styles.root}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         setRootLayout((prev) =>
@@ -1701,7 +1709,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         }}
         style={styles.canvasScroll}
         scrollEnabled={false}
-        contentContainerStyle={styles.pagesContent}
         keyboardShouldPersistTaps="handled"
         onLayout={(e: LayoutChangeEvent) => {
           const { width, height } = e.nativeEvent.layout;
@@ -1711,7 +1718,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       >
         <View
           style={[
-            styles.canvasViewport,
+            styles.workspace,
             {
               width: Math.max(1, viewportW),
               height: Math.max(1, viewportH)
@@ -1719,17 +1726,19 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           ]}
         >
           <View
-            style={{
-              // Set transform origin to top-left for correct zoom behavior
+            style={[
+              styles.canvasContainer,
+              {
               transform: [
-                { translateX: renderOffset.x },
-                { translateY: renderOffset.y },
+                { translateX: renderCanvasPosition.x },
+                { translateY: renderCanvasPosition.y },
                 { scale: displayScale }
               ],
-              transformOrigin: '0 0', // For web, ignored on native but harmless
-            }}
+              transformOrigin: "0 0"
+              }
+            ]}
           >
-            {currentPage ? renderPage(currentPage, currentPageIndex) : null}
+            {currentPage ? renderPage(currentPage) : null}
           </View>
         </View>
       </ScrollView>
@@ -2175,7 +2184,12 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 // ─────────────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  root: { flex: 1, gap: 6, marginTop: 8 },
+  root: {
+    flex: 1,
+    gap: 6,
+    marginTop: 8,
+    backgroundColor: "#0b0b0b"
+  },
   topBar: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
@@ -2215,40 +2229,34 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  pagesContent: {
-    flexGrow: 1,
-    alignItems: "stretch",
-    justifyContent: "flex-start"
-  },
   canvasScroll: {
-    flex: 1
+    flex: 1,
+    backgroundColor: "#0b0b0b"
   },
-  canvasViewport: {
+  workspace: {
     flex: 1,
     position: "relative",
+    backgroundColor: "#0b0b0b",
     overflow: "hidden"
   },
-  pageSlot: {
-    alignItems: "center",
-    justifyContent: "center"
+  canvasContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0
   },
-  pageSlotWithGap: {
-    marginBottom: PAGE_GAP
-  },
-  pageShell: {
+  canvas: {
+    position: "absolute",
+    top: 0,
+    left: 0,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 14,
+    borderRadius: 12,
     shadowColor: "#000000",
     shadowOpacity: 0.4,
-    shadowRadius: 40,
+    shadowRadius: 20,
     shadowOffset: { width: 0, height: 10 },
-    elevation: 16
-  },
-  page: {
-    flex: 1,
-    borderRadius: 14,
+    elevation: 16,
     overflow: "hidden",
-    backgroundColor: "#1E1E1E"
+    backgroundColor: "#1a1a1a"
   },
   pageActions: {
     flexDirection: "row",

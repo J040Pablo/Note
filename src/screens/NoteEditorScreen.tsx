@@ -174,11 +174,17 @@ const NoteEditorScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   screen: {
-    paddingTop: 0
+    paddingTop: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+    backgroundColor: "#0b0b0b"
   },
   content: {
     flex: 1,
-    paddingBottom: 32
+    paddingBottom: 0,
+    backgroundColor: "#0b0b0b",
+    paddingHorizontal: 12,
+    paddingTop: 6
   },
   headerRow: {
     flexDirection: "row",
