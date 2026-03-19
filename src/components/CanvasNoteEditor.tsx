@@ -69,6 +69,8 @@ type DrawingToolMode = "brush" | "eraser" | null;
 interface CanvasNoteEditorProps {
   value: string;
   onChangeText: (value: string) => void;
+  toolbarVisible?: boolean;
+  editable?: boolean;
 }
 
 interface ElementInteraction {
@@ -204,6 +206,7 @@ const ArrowShape = memo(({ color, strokeWidth }: { color: string; strokeWidth: n
 interface ElementProps {
   element: CanvasElement;
   selected: boolean;
+  editable: boolean;
   primaryColor: string;
   surfaceElevated: string;
   defaultTextColor: string;
@@ -221,6 +224,7 @@ const CanvasElementView = memo(
   ({
     element,
     selected,
+    editable,
     primaryColor,
     surfaceElevated,
     defaultTextColor,
@@ -233,14 +237,23 @@ const CanvasElementView = memo(
     onChangeText,
     onTextSizeChange
   }: ElementProps) => {
-    const handlePress = useCallback(() => onSelect(element.id), [element.id, onSelect]);
+    const handlePress = useCallback(() => {
+      if (!editable) return;
+      onSelect(element.id);
+    }, [editable, element.id, onSelect]);
     const handlePressIn = useCallback(
-      (evt: GestureResponderEvent) => onMovePressIn(element, evt),
-      [element, onMovePressIn]
+      (evt: GestureResponderEvent) => {
+        if (!editable) return;
+        onMovePressIn(element, evt);
+      },
+      [editable, element, onMovePressIn]
     );
     const handleText = useCallback(
-      (t: string) => onChangeText(element.id, t),
-      [element.id, onChangeText]
+      (t: string) => {
+        if (!editable) return;
+        onChangeText(element.id, t);
+      },
+      [editable, element.id, onChangeText]
     );
 
     let inner: React.ReactNode = null;
@@ -260,8 +273,9 @@ const CanvasElementView = memo(
           multiline
           scrollEnabled={false}
           value={element.text}
-          editable={selected}
+          editable={selected && editable}
           onFocus={() => {
+            if (!editable) return;
             handlePress();
             onTextFocused(element.id);
           }}
@@ -335,7 +349,7 @@ const CanvasElementView = memo(
           {inner}
         </Pressable>
 
-        {selected && (
+        {selected && editable && (
           <>
             {/* Corners */}
             {(["nw", "ne", "sw", "se"] as const).map((h) => (
@@ -382,7 +396,7 @@ const CanvasElementView = memo(
 // Main component
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onChangeText }) => {
+export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onChangeText, toolbarVisible = true, editable = true }) => {
   const { theme } = useTheme();
   const defaultTextColor = "#FFFFFF";
 
@@ -439,6 +453,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   const displayScaleRef = useRef(1);
   const pendingInitialCenterRef = useRef(true);
   const pageToolbarAnim = useRef(new Animated.Value(0)).current;
+  const toolbarTranslateY = useRef(new Animated.Value(0)).current;
+  const toolbarOpacity = useRef(new Animated.Value(1)).current;
 
   const lastSerializedRef = useRef(serializeCanvasNoteContent(parseCanvasNoteContent(value)));
   const serializeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -484,52 +500,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       if (serializeTimerRef.current) clearTimeout(serializeTimerRef.current);
     };
   }, [doc, onChangeText]);
-
-  // Sync external value
-  useEffect(() => {
-    if (value === lastSerializedRef.current) return;
-
-    const normalizedIncoming = normalizeCanvasDoc(parseCanvasNoteContent(value));
-    const incoming = serializeCanvasNoteContent(normalizedIncoming);
-    const current = serializeCanvasNoteContent(normalizeCanvasDoc(docRef.current));
-
-    if (incoming === current) {
-      lastSerializedRef.current = incoming;
-      return;
-    }
-
-    if (incoming === lastSerializedRef.current) return;
-
-    const pageW = toPositiveNumber(normalizedIncoming.pageWidth, 900);
-    const pageH = toPositiveNumber(normalizedIncoming.pageHeight, 1200);
-    const targetWidth = Math.max(220, viewportW - 32);
-    const targetHeight = Math.max(220, viewportH - 32);
-    const fitScale = clamp(Math.min(targetWidth / pageW, targetHeight / pageH) * 0.98, 0.2, 2.5);
-    setDoc({ ...normalizedIncoming, zoom: 1, offsetX: 0, offsetY: 0 });
-    setZoom(1);
-    setCanvasPosition((prev) => {
-      if (viewportW <= 0 || viewportH <= 0) return prev;
-      const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, fitScale);
-      return clampCanvasOffset(center.x, center.y, fitScale);
-    });
-    pendingInitialCenterRef.current = true;
-    lastSerializedRef.current = incoming;
-    undoStackRef.current = [];
-    redoStackRef.current = [];
-    notifyHistoryChanged();
-  }, [clampCanvasOffset, notifyHistoryChanged, value, viewportH, viewportW]);
-
-  useEffect(() => {
-    if (!pendingInitialCenterRef.current) return;
-    if (viewportW <= 0 || viewportH <= 0) return;
-    pendingInitialCenterRef.current = false;
-    setZoom(1);
-    const pageW = toPositiveNumber(docRef.current.pageWidth, 900);
-    const pageH = toPositiveNumber(docRef.current.pageHeight, 1200);
-    const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, baseFitScale);
-    const centered = clampCanvasOffset(center.x, center.y, baseFitScale);
-    setCanvasPosition(centered);
-  }, [baseFitScale, clampCanvasOffset, viewportH, viewportW]);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -600,6 +570,55 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     },
     [doc.pageHeight, doc.pageWidth, viewportH, viewportW]
   );
+
+  // Sync external value
+  useEffect(() => {
+    if (value === lastSerializedRef.current) return;
+
+    const normalizedIncoming = normalizeCanvasDoc(parseCanvasNoteContent(value));
+    const incoming = serializeCanvasNoteContent(normalizedIncoming);
+    const current = serializeCanvasNoteContent(normalizeCanvasDoc(docRef.current));
+
+    if (incoming === current) {
+      lastSerializedRef.current = incoming;
+      return;
+    }
+
+    if (incoming === lastSerializedRef.current) return;
+
+    const pageW = toPositiveNumber(normalizedIncoming.pageWidth, 900);
+    const pageH = toPositiveNumber(normalizedIncoming.pageHeight, 1200);
+    const targetWidth = Math.max(220, viewportW - 32);
+    const targetHeight = Math.max(220, viewportH - 32);
+    const fitScale = clamp(Math.min(targetWidth / pageW, targetHeight / pageH) * 0.98, 0.2, 2.5);
+
+    setDoc({ ...normalizedIncoming, zoom: 1, offsetX: 0, offsetY: 0 });
+    setZoom(1);
+    setCanvasPosition((prev) => {
+      if (viewportW <= 0 || viewportH <= 0) return prev;
+      const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, fitScale);
+      return clampCanvasOffset(center.x, center.y, fitScale);
+    });
+
+    pendingInitialCenterRef.current = true;
+    lastSerializedRef.current = incoming;
+    undoStackRef.current = [];
+    redoStackRef.current = [];
+    notifyHistoryChanged();
+  }, [clampCanvasOffset, notifyHistoryChanged, value, viewportH, viewportW]);
+
+  useEffect(() => {
+    if (!pendingInitialCenterRef.current) return;
+    if (viewportW <= 0 || viewportH <= 0) return;
+    pendingInitialCenterRef.current = false;
+
+    setZoom(1);
+    const pageW = toPositiveNumber(docRef.current.pageWidth, 900);
+    const pageH = toPositiveNumber(docRef.current.pageHeight, 1200);
+    const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, baseFitScale);
+    const centered = clampCanvasOffset(center.x, center.y, baseFitScale);
+    setCanvasPosition(centered);
+  }, [baseFitScale, clampCanvasOffset, viewportH, viewportW]);
 
   const pagesById = useMemo(() => {
     const m = new Map<string, CanvasPage>();
@@ -678,6 +697,32 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
     }).start();
   }, [pageToolbarAnim, showPageToolbar]);
 
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(toolbarTranslateY, {
+        toValue: toolbarVisible ? 0 : -110,
+        duration: 200,
+        useNativeDriver: true
+      }),
+      Animated.timing(toolbarOpacity, {
+        toValue: toolbarVisible ? 1 : 0,
+        duration: 180,
+        useNativeDriver: true
+      })
+    ]).start();
+  }, [toolbarOpacity, toolbarTranslateY, toolbarVisible]);
+
+  useEffect(() => {
+    if (editable) return;
+    setDrawingMode(null);
+    setShowShapeMenu(false);
+    setShowStylePanel(false);
+    setShowAlignMenu(false);
+    setSelectedId(null);
+    setPendingFocusTextId(null);
+    elementInteractionRef.current = null;
+  }, [editable]);
+
   const getDefaultTargetPageId = useCallback((): ID | null => {
     if (selectedPageId) return selectedPageId;
     if (doc.pages?.length) {
@@ -719,16 +764,16 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   // ── Element callbacks ──────────────────────────────────────────────────────
   const handleSelect = useCallback(
     (id: string) => {
-      if (drawingMode) return;
+      if (!editable || drawingMode) return;
       setSelectedId(id);
       bringToFront(id);
     },
-    [bringToFront, drawingMode]
+    [bringToFront, drawingMode, editable]
   );
 
   const beginInteraction = useCallback(
     (el: CanvasElement, mode: InteractionMode, evt: GestureResponderEvent, handle?: ResizeHandle) => {
-      if (drawingMode) return;
+      if (!editable || drawingMode) return;
       pushUndoSnapshot();
       setSelectedId(el.id);
       bringToFront(el.id);
@@ -744,7 +789,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         startPageY: evt.nativeEvent.pageY
       };
     },
-    [bringToFront, drawingMode, pushUndoSnapshot]
+    [bringToFront, drawingMode, editable, pushUndoSnapshot]
   );
 
   const handleElementMovePressIn = useCallback(
@@ -762,9 +807,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
   const handleTextChange = useCallback(
     (id: string, text: string) => {
+      if (!editable) return;
       updateElement(id, (prev) => (prev.type === "text" ? { ...prev, text } : prev));
     },
-    [updateElement]
+    [editable, updateElement]
   );
 
   const handleTextSizeChange = useCallback((id: string, h: number) => {
@@ -837,6 +883,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
   const beginDrawing = useCallback(
     (pageId: ID, rawX: number, rawY: number) => {
+      if (!editable) return;
       const page = pagesById.get(pageId);
       if (!page) return;
       const x = clamp(rawX, 0, page.width);
@@ -845,11 +892,12 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       pushUndoSnapshot();
       setDrawingDraft({ pageId, points: [{ x, y }] });
     },
-    [clearSelection, pagesById, pushUndoSnapshot]
+    [clearSelection, editable, pagesById, pushUndoSnapshot]
   );
 
   const updateDrawing = useCallback(
     (pageId: ID, rawX: number, rawY: number) => {
+      if (!editable) return;
       const page = pagesById.get(pageId);
       if (!page) return;
       const x = clamp(rawX, 0, page.width);
@@ -866,10 +914,11 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
         return { ...prev, points: [...prev.points, { x: filteredX, y: filteredY }] };
       });
     },
-    [drawingSmoothness, pagesById]
+    [drawingSmoothness, editable, pagesById]
   );
 
   const endDrawing = useCallback(() => {
+    if (!editable) return;
     setDrawingDraft((draft) => {
       if (!draft || draft.points.length < 1) return null;
       const points = draft.points.length === 1 ? [draft.points[0], { ...draft.points[0], x: draft.points[0].x + 0.1 }] : draft.points;
@@ -943,7 +992,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 
       return null;
     });
-  }, [drawingColor, drawingMode, drawingOpacity, drawingSize]);
+  }, [drawingColor, drawingMode, drawingOpacity, drawingSize, editable]);
 
   // ── PanResponder ───────────────────────────────────────────────────────────
   const panResponder = useMemo(
@@ -1371,12 +1420,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
   }, [baseFitScale, clampCanvasOffset, currentPage.height, currentPage.width, doc.pageHeight, doc.pageWidth, viewportH, viewportW]);
 
   const toggleDrawingMode = useCallback(() => {
+    if (!editable) return;
     setDrawingMode((prev) => (prev === "brush" ? null : "brush"));
     setShowShapeMenu(false);
     setShowStylePanel(false);
     setShowAlignMenu(false);
     clearSelection();
-  }, [clearSelection]);
+  }, [clearSelection, editable]);
 
   const renderPage = useCallback(
     (page: CanvasPage) => {
@@ -1402,7 +1452,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             <CanvasElementView
               key={element.id}
               element={element}
-              selected={element.id === selectedId}
+              selected={editable && element.id === selectedId}
+              editable={editable}
               primaryColor={colors.primary}
               surfaceElevated={colors.surfaceElevated}
               defaultTextColor={defaultTextColor}
@@ -1451,10 +1502,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           </View>
 
           <View
-            pointerEvents={drawingMode ? "auto" : "none"}
+            pointerEvents={drawingMode && editable ? "auto" : "none"}
             style={[StyleSheet.absoluteFillObject, styles.drawingTouchLayer]}
-            onStartShouldSetResponderCapture={(evt) => !!drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
-            onMoveShouldSetResponderCapture={(evt) => !!drawingMode && (evt.nativeEvent.touches?.length ?? 0) === 1}
+            onStartShouldSetResponderCapture={(evt) => !!drawingMode && editable && (evt.nativeEvent.touches?.length ?? 0) === 1}
+            onMoveShouldSetResponderCapture={(evt) => !!drawingMode && editable && (evt.nativeEvent.touches?.length ?? 0) === 1}
             onResponderGrant={(evt) => {
               const x = evt.nativeEvent.locationX;
               const y = evt.nativeEvent.locationY;
@@ -1514,7 +1565,17 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
       {...panResponder.panHandlers}
     >
       {/* ── Top toolbar ───────────────────────────────────────────────────── */}
-      <View style={[styles.topBar, { borderColor: colors.border, backgroundColor: colors.surfaceElevated }]}>
+      <Animated.View
+        pointerEvents={toolbarVisible ? "box-none" : "none"}
+        style={[
+          styles.topBarOverlay,
+          {
+            opacity: toolbarOpacity,
+            transform: [{ translateY: toolbarTranslateY }]
+          }
+        ]}
+      >
+        <View style={[styles.topBar, { borderColor: "rgba(148,163,184,0.28)" }]}> 
         {!isTextMode && (
           <>
             <Pressable style={tb()} onPress={addText}>
@@ -1701,13 +1762,15 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
             </Pressable>
           </>
         )}
-      </View>
+        </View>
+      </Animated.View>
 
       <ScrollView
         ref={(n) => {
           scrollRef.current = n;
         }}
         style={styles.canvasScroll}
+        contentContainerStyle={styles.canvasScrollContent}
         scrollEnabled={false}
         keyboardShouldPersistTaps="handled"
         onLayout={(e: LayoutChangeEvent) => {
@@ -1716,15 +1779,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
           setViewportH((prev) => (Math.abs(prev - height) < 0.5 ? prev : height));
         }}
       >
-        <View
-          style={[
-            styles.workspace,
-            {
-              width: Math.max(1, viewportW),
-              height: Math.max(1, viewportH)
-            }
-          ]}
-        >
+        <View style={styles.workspace}>
           <View
             style={[
               styles.canvasContainer,
@@ -2186,19 +2241,38 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({ value, onCha
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    gap: 6,
-    marginTop: 8,
+    width: "100%",
+    height: "100%",
     backgroundColor: "#0b0b0b"
+  },
+  topBarOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 999,
+    backgroundColor: "transparent",
+    alignItems: "center",
+    paddingHorizontal: 8
   },
   topBar: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
+    borderRadius: 16,
     paddingHorizontal: 8,
     paddingVertical: 6,
+    marginTop: 78,
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
-    gap: 4
+    gap: 4,
+    backgroundColor: "rgba(20,20,20,0.62)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    maxWidth: "96%",
+    alignSelf: "center"
   },
   toolBtn: {
     width: 42,
@@ -2233,16 +2307,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#0b0b0b"
   },
+  canvasScrollContent: {
+    flexGrow: 1,
+    minHeight: "100%"
+  },
   workspace: {
     flex: 1,
+    width: "100%",
+    height: "100%",
     position: "relative",
     backgroundColor: "#0b0b0b",
+    padding: 0,
     overflow: "hidden"
   },
   canvasContainer: {
     position: "absolute",
     top: 0,
-    left: 0
+    left: 0,
+    zIndex: 1
   },
   canvas: {
     position: "absolute",

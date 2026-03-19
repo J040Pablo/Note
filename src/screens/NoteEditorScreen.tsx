@@ -33,6 +33,7 @@ const NoteEditorScreen: React.FC = () => {
   const [lastSavedTitle, setLastSavedTitle] = useState(existing?.title ?? "");
   const [lastSavedContent, setLastSavedContent] = useState(existing?.content ?? serializeCanvasNoteContent(createEmptyCanvasNote()));
   const [saving, setSaving] = useState(false);
+  const [isReadMode, setIsReadMode] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
 
@@ -133,7 +134,14 @@ const NoteEditorScreen: React.FC = () => {
   return (
     <Screen style={styles.screen}>
       <View style={styles.content}>
-        <View style={styles.headerRow}>
+        <CanvasNoteEditor
+          value={content}
+          onChangeText={setContent}
+          toolbarVisible={!isReadMode}
+          editable={!isReadMode}
+        />
+
+        <View style={[styles.headerRow, { borderBottomColor: theme.colors.border + "55" }]}> 
           <Pressable
             disabled={saving}
             onPress={handleBack}
@@ -146,27 +154,38 @@ const NoteEditorScreen: React.FC = () => {
           <TextInput
             value={title}
             onChangeText={setTitle}
+            editable={!isReadMode}
             placeholder="Title"
             placeholderTextColor={theme.colors.textSecondary}
             style={[styles.headerTitleInput, { color: theme.colors.textPrimary }]}
             numberOfLines={1}
           />
 
-          <Pressable
-            disabled={saving}
-            onPress={handleSave}
-            hitSlop={8}
-            style={[styles.saveButton, { backgroundColor: theme.colors.primary + "22" }, saving && styles.disabledButton]}
-          >
-            {saving ? (
-              <ActivityIndicator size="small" color={theme.colors.primary} />
-            ) : (
-              <Ionicons name="save-outline" size={18} color={theme.colors.primary} />
-            )}
-          </Pressable>
-        </View>
+          <View style={styles.headerActions}>
+            <Pressable
+              onPress={() => setIsReadMode((prev) => !prev)}
+              hitSlop={8}
+              style={styles.focusToggleButton}
+            >
+              <Ionicons name={isReadMode ? "create-outline" : "eye-outline"} size={20} color={theme.colors.textPrimary} />
+            </Pressable>
 
-        <CanvasNoteEditor value={content} onChangeText={setContent} />
+            {!isReadMode && (
+              <Pressable
+                disabled={saving}
+                onPress={handleSave}
+                hitSlop={8}
+                style={[styles.saveButton, saving && styles.disabledButton]}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color={theme.colors.primary} />
+                ) : (
+                  <Ionicons name="save-outline" size={18} color={theme.colors.primary} />
+                )}
+              </Pressable>
+            )}
+          </View>
+        </View>
       </View>
     </Screen>
   );
@@ -183,33 +202,57 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingBottom: 0,
     backgroundColor: "#0b0b0b",
-    paddingHorizontal: 12,
-    paddingTop: 6
+    paddingHorizontal: 0,
+    paddingTop: 0,
+    position: "relative"
   },
   headerRow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 12,
-    minHeight: 48
+    minHeight: 72,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "rgba(0,0,0,0.42)",
+    borderBottomWidth: StyleSheet.hairlineWidth
   },
   backButton: {
     width: 36,
     height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center"
   },
   headerTitleInput: {
     flex: 1,
     marginHorizontal: 8,
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: "700",
-    paddingVertical: 0
+    paddingVertical: 0,
+    letterSpacing: 0.2
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  focusToggleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.08)"
   },
   saveButton: {
     width: 36,
     height: 36,
-    borderRadius: 10,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center"
   },
