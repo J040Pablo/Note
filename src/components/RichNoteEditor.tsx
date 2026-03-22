@@ -12,9 +12,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
-import type { DrawingPoint, DrawingStroke, NoteBlock, NoteDrawingBlock, NoteTextBlock, RichNoteDocument } from "@models/types";
+import type { DrawingPoint, DrawingStroke, NoteBlock, NoteCodeBlock, NoteDrawingBlock, NoteTextBlock, RichNoteDocument } from "@models/types";
 import { pickAndStoreImage } from "@utils/mediaPicker";
+import { debounce } from "@utils/performance";
 import {
+  createCodeBlock,
   createDrawingBlock,
   createEmptyRichNote,
   createImageBlock,
@@ -22,6 +24,8 @@ import {
   parseRichNoteContent,
   serializeRichNoteContent
 } from "@utils/noteContent";
+import CodeBlockRenderer from "@components/CodeBlockRenderer";
+import TextFormattingToolbar from "@components/TextFormattingToolbar";
 
 interface RichNoteEditorProps {
   value: string;
@@ -161,45 +165,76 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
   const { theme } = useTheme();
   const [doc, setDoc] = useState<RichNoteDocument>(() => parseRichNoteContent(value));
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  
+  // Debounce ref to avoid excessive saves
+  const debouncedSaveRef = useRef<((content: string) => void) | null>(null);
 
   useEffect(() => {
     setDoc(parseRichNoteContent(value));
   }, [value]);
 
+  // Create debounced save on mount
+  useEffect(() => {
+    debouncedSaveRef.current = debounce((content: string) => {
+      onChangeText(content);
+    }, 800);
+  }, [onChangeText]);
+
   const commit = useCallback(
     (next: RichNoteDocument) => {
       setDoc(next);
-      onChangeText(serializeRichNoteContent(next));
+      // Use debounced save to avoid excessive updates
+      if (debouncedSaveRef.current) {
+        debouncedSaveRef.current(serializeRichNoteContent(next));
+      }
     },
-    [onChangeText]
+    []
   );
 
   const updateBlock = useCallback(
     (blockId: string, updater: (prev: NoteBlock) => NoteBlock) => {
-      const next: RichNoteDocument = {
-        ...doc,
-        blocks: doc.blocks.map((b) => (b.id === blockId ? updater(b) : b))
-      };
-      commit(next);
+      setDoc((prev) => {
+        const next: RichNoteDocument = {
+          ...prev,
+          blocks: prev.blocks.map((b) => (b.id === blockId ? updater(b) : b))
+        };
+        // Trigger debounced save
+        if (debouncedSaveRef.current) {
+          debouncedSaveRef.current(serializeRichNoteContent(next));
+        }
+        return next;
+      });
     },
-    [commit, doc]
+    []
   );
 
   const insertAfter = useCallback(
     (index: number, block: NoteBlock) => {
-      const nextBlocks = [...doc.blocks];
-      nextBlocks.splice(index + 1, 0, block);
-      commit({ ...doc, blocks: nextBlocks });
+      setDoc((prev) => {
+        const nextBlocks = [...prev.blocks];
+        nextBlocks.splice(index + 1, 0, block);
+        const next = { ...prev, blocks: nextBlocks };
+        if (debouncedSaveRef.current) {
+          debouncedSaveRef.current(serializeRichNoteContent(next));
+        }
+        return next;
+      });
     },
-    [commit, doc]
+    []
   );
 
   const removeBlock = useCallback(
     (blockId: string) => {
-      const nextBlocks = doc.blocks.filter((b) => b.id !== blockId);
-      commit({ ...doc, blocks: nextBlocks.length ? nextBlocks : [createTextBlock("")] });
+      setDoc((prev) => {
+        const nextBlocks = prev.blocks.filter((b) => b.id !== blockId);
+        const next = { ...prev, blocks: nextBlocks.length ? nextBlocks : [createTextBlock("")] };
+        if (debouncedSaveRef.current) {
+          debouncedSaveRef.current(serializeRichNoteContent(next));
+        }
+        return next;
+      });
     },
-    [commit, doc]
+    []
   );
 
   const formatTextBlock = useCallback(
@@ -374,6 +409,20 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
             />
           )}
 
+          {block.type === "code" && (
+            <CodeBlockRenderer
+              block={block}
+              onUpdate={(code) => 
+                updateBlock(block.id, (prev) => (prev.type === "code" ? { ...prev, code } : prev))
+              }
+              onChangeLanguage={(lang) => 
+                updateBlock(block.id, (prev) => (prev.type === "code" ? { ...prev, language: lang } : prev))
+              }
+              onDelete={() => removeBlock(block.id)}
+              editable
+            />
+          )}
+
           <View style={styles.insertRow}>
             <Pressable
               style={[styles.insertButton, { borderColor: theme.colors.border }]}
@@ -392,6 +441,13 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
             >
               <Ionicons name="image-outline" size={14} color={theme.colors.textSecondary} />
               <Text muted variant="caption">Image</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.insertButton, { borderColor: theme.colors.border }]}
+              onPress={() => insertAfter(index, createCodeBlock())}
+            >
+              <Ionicons name="code" size={14} color={theme.colors.textSecondary} />
+              <Text muted variant="caption">Code</Text>
             </Pressable>
             <Pressable
               style={[styles.insertButton, { borderColor: theme.colors.border }]}

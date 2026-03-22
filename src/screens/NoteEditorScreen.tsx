@@ -80,7 +80,7 @@ const NoteEditorScreen: React.FC = () => {
       setCurrentNote(saved);
       setLastSavedTitle(saved.title);
       setLastSavedContent(saved.content);
-      navigation.setParams({ noteId: saved.id, folderId: saved.folderId });
+      navigation.replace("NoteEditor", { noteId: saved.id, folderId: saved.folderId });
       return saved;
     } catch (error) {
       console.error("[note] save failed", error);

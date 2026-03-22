@@ -49,6 +49,15 @@ export interface NoteImageBlock {
   caption?: string;
 }
 
+export interface NoteCodeBlock {
+  id: ID;
+  type: "code";
+  code: string;
+  language?: "javascript" | "typescript" | "python" | "java" | "sql" | "html" | "css" | "json" | "yaml" | "bash";
+  theme?: "dark" | "light";
+  showLineNumbers?: boolean;
+}
+
 export interface DrawingPoint {
   x: number;
   y: number;
@@ -71,12 +80,22 @@ export interface NoteDrawingBlock {
   strokes: DrawingStroke[];
 }
 
-export type NoteBlock = NoteTextBlock | NoteImageBlock | NoteDrawingBlock;
+export type NoteBlock = NoteTextBlock | NoteImageBlock | NoteCodeBlock | NoteDrawingBlock;
 
 export interface RichNoteDocument {
   version: 1;
   blocks: NoteBlock[];
 }
+
+export interface QuickNote {
+  id: ID;
+  content: string;
+  folderId: ID | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type NoteType = "rich" | "canvas" | "quick";
 
 export type CanvasElementType = "text" | "image" | "shape" | "drawing";
 export type CanvasShapeType = "arrow" | "rectangle" | "circle";

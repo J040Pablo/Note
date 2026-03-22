@@ -36,6 +36,7 @@ import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
 import type { CanvasElement, CanvasNoteDocument, CanvasPage, ID } from "@models/types";
 import { pickAndStoreImage } from "@utils/mediaPicker";
+import { highlightCodeBlock } from "@utils/syntaxHighlighter";
 import {
   createCanvasDrawingElement,
   createCanvasImageElement,
@@ -68,12 +69,14 @@ const MAX_STROKE_STEP = 4;
 const MAX_STROKE_CONNECT_DISTANCE = 240;
 const MAX_INTERPOLATED_POINTS_PER_MOVE = 64;
 const DRAW_TOUCH_PAD = 1000;
+const SNAP_THRESHOLD = 8;
 const makeLocalId = (): ID => `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
 type InteractionMode = "move" | "resize";
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 type DrawingToolMode = "brush" | "eraser" | null;
 type EditorInteractionMode = "draw" | "select" | "text";
+type TextInteractionMode = "move" | "edit";
 
 interface CanvasNoteEditorProps {
   value: string;
@@ -235,6 +238,7 @@ interface ElementProps {
   element: CanvasElement;
   selected: boolean;
   editable: boolean;
+  isTextEditing: boolean;
   primaryColor: string;
   surfaceElevated: string;
   defaultTextColor: string;
@@ -242,6 +246,7 @@ interface ElementProps {
   onSetInputRef: (id: string, node: TextInput | null) => void;
   onTextFocused: (id: string) => void;
   onSelect: (id: string) => void;
+  onEnterTextEdit: (id: string) => void;
   onMovePressIn: (el: CanvasElement, evt: GestureResponderEvent) => void;
   onResizePressIn: (el: CanvasElement, handle: ResizeHandle, evt: GestureResponderEvent) => void;
   onChangeText: (id: string, text: string) => void;
@@ -253,6 +258,7 @@ const CanvasElementView = memo(
     element,
     selected,
     editable,
+    isTextEditing,
     primaryColor,
     surfaceElevated,
     defaultTextColor,
@@ -260,6 +266,7 @@ const CanvasElementView = memo(
     onSetInputRef,
     onTextFocused,
     onSelect,
+    onEnterTextEdit,
     onMovePressIn,
     onResizePressIn,
     onChangeText,
@@ -267,14 +274,34 @@ const CanvasElementView = memo(
   }: ElementProps) => {
     const handlePress = useCallback(() => {
       if (!editable) return;
-      onSelect(element.id);
-    }, [editable, element.id, onSelect]);
+      if (element.type !== "text") {
+        onSelect(element.id);
+        return;
+      }
+
+      // Tap on text should always enter edit mode.
+      onEnterTextEdit(element.id);
+    }, [editable, element.id, element.type, onEnterTextEdit, onSelect]);
+
     const handlePressIn = useCallback(
       (evt: GestureResponderEvent) => {
         if (!editable) return;
+        // For text, dragging is handled by long-press to avoid intercepting tap/edit.
+        if (element.type === "text") return;
         onMovePressIn(element, evt);
       },
-      [editable, element, onMovePressIn]
+      [editable, element, isTextEditing, onMovePressIn]
+    );
+
+    const handleTextLongPress = useCallback(
+      (evt: GestureResponderEvent) => {
+        if (!editable) return;
+        if (element.type !== "text") return;
+        if (isTextEditing) return;
+        onSelect(element.id);
+        onMovePressIn(element, evt);
+      },
+      [editable, element, isTextEditing, onMovePressIn, onSelect]
     );
     const handleText = useCallback(
       (t: string) => {
@@ -288,6 +315,10 @@ const CanvasElementView = memo(
 
     if (element.type === "text") {
       const color = element.style?.textColor ?? defaultTextColor;
+      const isCodeBlock = element.style?.fontFamily === "monospace";
+      const canEditText = selected && editable && isTextEditing;
+      const codeEditColor = "#E5E7EB";
+      const codeEditBackground = "#111827";
       const textDecorationLine = element.style?.underline
         ? element.style?.strikethrough
           ? "underline line-through"
@@ -295,38 +326,67 @@ const CanvasElementView = memo(
         : element.style?.strikethrough
           ? "line-through"
           : "none";
-      inner = (
-        <TextInput
-          ref={(node) => onSetInputRef(element.id, node)}
-          multiline
-          scrollEnabled={false}
-          value={element.text}
-          editable={selected && editable}
-          onFocus={() => {
-            if (!editable) return;
-            handlePress();
-            onTextFocused(element.id);
-          }}
-          onPressIn={handlePressIn}
-          onChangeText={handleText}
-          onContentSizeChange={(e) => onTextSizeChange(element.id, e.nativeEvent.contentSize.height)}
-          placeholder="Tap to type…"
-          placeholderTextColor={`${color}66`}
-          style={{
-            color,
-            fontSize: element.style?.fontSize ?? 18,
-            fontWeight: element.style?.bold ? "700" : "400",
-            fontStyle: element.style?.italic ? "italic" : "normal",
-            textDecorationLine,
-            textAlign: element.style?.textAlign ?? "left",
-            fontFamily: element.style?.fontFamily,
-            paddingHorizontal: 8,
-            paddingVertical: 6,
-            width: "100%",
-            height: "100%"
-          }}
-        />
-      );
+      
+      // Use syntax highlighting for code blocks
+      if (isCodeBlock && !canEditText) {
+        const highlights = highlightCodeBlock(element.text, "javascript", "dark");
+        inner = (
+          <View style={{ paddingHorizontal: 8, paddingVertical: 6, width: "100%", height: "100%" }}>
+            <View style={{ flexDirection: "row", flexWrap: "wrap" }}>
+              {highlights.map((highlight, idx) => (
+                <Text
+                  key={idx}
+                  style={{
+                    fontSize: element.style?.fontSize ?? 18,
+                    fontFamily: "monospace",
+                    fontWeight: highlight.fontWeight === "bold" ? "700" : (element.style?.bold ? "700" : "400"),
+                    fontStyle: element.style?.italic ? "italic" : "normal",
+                    color: highlight.color,
+                    lineHeight: (element.style?.fontSize ?? 18) * 1.4
+                  }}
+                >
+                  {highlight.text}
+                </Text>
+              ))}
+            </View>
+          </View>
+        );
+      } else {
+        inner = (
+          <TextInput
+            ref={(node) => onSetInputRef(element.id, node)}
+            multiline
+            scrollEnabled={false}
+            value={element.text}
+            editable={canEditText}
+            onFocus={() => {
+              if (!editable) return;
+              handlePress();
+              onTextFocused(element.id);
+            }}
+            onPressIn={canEditText ? undefined : handlePressIn}
+            onChangeText={handleText}
+            onContentSizeChange={(e) => onTextSizeChange(element.id, e.nativeEvent.contentSize.height)}
+            placeholder="Tap to type…"
+            placeholderTextColor={isCodeBlock ? "#9CA3AF" : `${color}66`}
+            style={{
+              color: isCodeBlock ? codeEditColor : color,
+              fontSize: element.style?.fontSize ?? 18,
+              fontWeight: element.style?.bold ? "700" : "400",
+              fontStyle: element.style?.italic ? "italic" : "normal",
+              textDecorationLine,
+              textAlign: element.style?.textAlign ?? "left",
+              fontFamily: element.style?.fontFamily,
+              backgroundColor: isCodeBlock ? codeEditBackground : "transparent",
+              borderRadius: isCodeBlock ? 8 : 0,
+              paddingHorizontal: 8,
+              paddingVertical: 6,
+              width: "100%",
+              height: "100%"
+            }}
+          />
+        );
+      }
     } else if (element.type === "image") {
       inner = <Image source={{ uri: element.uri }} style={styles.imageFill} resizeMode="contain" />;
     } else if (element.type === "shape") {
@@ -372,6 +432,8 @@ const CanvasElementView = memo(
         <Pressable
           onPress={handlePress}
           onPressIn={handlePressIn}
+          onLongPress={element.type === "text" && !isTextEditing ? handleTextLongPress : undefined}
+          delayLongPress={180}
           style={StyleSheet.absoluteFillObject}
         >
           {inner}
@@ -456,6 +518,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const [pendingFocusTextId, setPendingFocusTextId] = useState<string | null>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingToolMode>(null);
   const [mode, setMode] = useState<EditorInteractionMode>("select");
+  const [textInteractionMode, setTextInteractionMode] = useState<TextInteractionMode>("move");
   const [drawingOpacity, setDrawingOpacity] = useState(1);
   const [drawingSmoothness, setDrawingSmoothness] = useState(0.05);
   const [drawingColor, setDrawingColor] = useState(DRAW_COLORS[1]);
@@ -469,6 +532,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const [isDraggingPage, setIsDraggingPage] = useState(false);
   const [showRenamePageModal, setShowRenamePageModal] = useState(false);
   const [renamePageDraft, setRenamePageDraft] = useState("");
+  const [alignmentGuides, setAlignmentGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const docRef = useRef(doc);
@@ -683,16 +747,21 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   }, []);
 
   const handleTextFocused = useCallback((id: string) => {
+    setTextInteractionMode("edit");
+    setMode("text");
     if (pendingFocusTextId === id) setPendingFocusTextId(null);
   }, [pendingFocusTextId]);
 
   const clearSelection = useCallback(() => {
     setSelectedId(null);
+    setTextInteractionMode("move");
+    // Keep drawing mode active; otherwise drawing touch layer is disabled mid-stroke.
+    setMode(drawingMode ? "draw" : "select");
     setPendingFocusTextId(null);
     setShowStylePanel(false);
     setShowAlignMenu(false);
     Keyboard.dismiss();
-  }, []);
+  }, [drawingMode]);
 
   useEffect(() => {
     if (!pendingFocusTextId) return;
@@ -776,6 +845,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   useEffect(() => {
     if (editable) return;
     setDrawingMode(null);
+    setTextInteractionMode("move");
     setShowShapeMenu(false);
     setShowStylePanel(false);
     setShowAlignMenu(false);
@@ -826,7 +896,24 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const handleSelect = useCallback(
     (id: string) => {
       if (!editable || drawingMode) return;
+      const target = docRef.current.elements.find((x) => x.id === id);
       setSelectedId(id);
+      setTextInteractionMode(target?.type === "text" ? "move" : "move");
+      setMode("select");
+      bringToFront(id);
+    },
+    [bringToFront, drawingMode, editable]
+  );
+
+  const enterTextEdit = useCallback(
+    (id: string) => {
+      if (!editable || drawingMode) return;
+      const target = docRef.current.elements.find((x) => x.id === id);
+      if (!target || target.type !== "text") return;
+      setSelectedId(id);
+      setTextInteractionMode("edit");
+      setMode("text");
+      setPendingFocusTextId(id);
       bringToFront(id);
     },
     [bringToFront, drawingMode, editable]
@@ -834,9 +921,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
 
   const beginInteraction = useCallback(
     (el: CanvasElement, mode: InteractionMode, evt: GestureResponderEvent, handle?: ResizeHandle) => {
-      if (!editable || drawingMode) return;
+      if (!editable || drawingMode || textInteractionMode === "edit") return;
       pushUndoSnapshot();
       setSelectedId(el.id);
+      setTextInteractionMode("move");
       bringToFront(el.id);
       elementInteractionRef.current = {
         elementId: el.id,
@@ -850,7 +938,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         startPageY: evt.nativeEvent.pageY
       };
     },
-    [bringToFront, drawingMode, editable, pushUndoSnapshot]
+    [bringToFront, drawingMode, editable, pushUndoSnapshot, textInteractionMode]
   );
 
   const handleElementMovePressIn = useCallback(
@@ -941,6 +1029,31 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     },
     [updateSelectedTextStyle]
   );
+
+  const toggleCodeTextStyle = useCallback(() => {
+    updateSelectedTextStyle((style: Record<string, unknown>) => {
+      const isCode = style.fontFamily === "monospace";
+      if (isCode) {
+        return {
+          ...style,
+          fontFamily: "System",
+          textColor: defaultTextColor,
+          highlightColor: ""
+        };
+      }
+
+      return {
+        ...style,
+        fontFamily: "monospace",
+        textColor: "#E5E7EB",
+        highlightColor: "#111827",
+        bold: false,
+        italic: false,
+        underline: false,
+        strikethrough: false
+      };
+    });
+  }, [defaultTextColor, updateSelectedTextStyle]);
 
   const beginDrawing = useCallback(
     (pageId: ID, rawX: number, rawY: number) => {
@@ -1102,6 +1215,75 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     drawingLastPointRef.current = null;
   }, [drawingColor, drawingMode, drawingOpacity, drawingSize, editable]);
 
+  const getSnappedMove = useCallback(
+    (elementId: ID, rawX: number, rawY: number) => {
+      const currentDoc = docRef.current;
+      const moving = currentDoc.elements.find((el) => el.id === elementId);
+      if (!moving) return { x: rawX, y: rawY, guideX: null as number | null, guideY: null as number | null };
+
+      const page = pagesById.get(moving.pageId);
+      const pageW = page?.width ?? currentDoc.pageWidth;
+      const pageH = page?.height ?? currentDoc.pageHeight;
+      const w = moving.width;
+      const h = moving.height;
+
+      const others = currentDoc.elements.filter((el) => el.pageId === moving.pageId && el.id !== moving.id);
+
+      const verticalTargets: number[] = [0, pageW / 2, pageW];
+      const horizontalTargets: number[] = [0, pageH / 2, pageH];
+
+      for (const el of others) {
+        verticalTargets.push(el.x, el.x + el.width / 2, el.x + el.width);
+        horizontalTargets.push(el.y, el.y + el.height / 2, el.y + el.height);
+      }
+
+      const movingV = [rawX, rawX + w / 2, rawX + w];
+      const movingH = [rawY, rawY + h / 2, rawY + h];
+
+      let bestDx = Number.POSITIVE_INFINITY;
+      let bestDy = Number.POSITIVE_INFINITY;
+      let snappedX = rawX;
+      let snappedY = rawY;
+      let guideX: number | null = null;
+      let guideY: number | null = null;
+
+      for (const target of verticalTargets) {
+        for (let i = 0; i < movingV.length; i += 1) {
+          const delta = target - movingV[i];
+          const abs = Math.abs(delta);
+          if (abs <= SNAP_THRESHOLD && abs < bestDx) {
+            bestDx = abs;
+            snappedX = rawX + delta;
+            guideX = target;
+          }
+        }
+      }
+
+      for (const target of horizontalTargets) {
+        for (let i = 0; i < movingH.length; i += 1) {
+          const delta = target - movingH[i];
+          const abs = Math.abs(delta);
+          if (abs <= SNAP_THRESHOLD && abs < bestDy) {
+            bestDy = abs;
+            snappedY = rawY + delta;
+            guideY = target;
+          }
+        }
+      }
+
+      const clampedX = clamp(snappedX, 0, Math.max(0, pageW - w));
+      const clampedY = clamp(snappedY, 0, Math.max(0, pageH - h));
+
+      return {
+        x: clampedX,
+        y: clampedY,
+        guideX,
+        guideY
+      };
+    },
+    [pagesById]
+  );
+
   // ── PanResponder ───────────────────────────────────────────────────────────
   const panResponder = useMemo(
     () =>
@@ -1109,12 +1291,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         onStartShouldSetPanResponder: () => false,
         onStartShouldSetPanResponderCapture: (evt) => {
           if (isDraggingPageRef.current || overviewMode) return false;
+          if (textInteractionMode === "edit") return false;
           return !drawingMode && (evt.nativeEvent.touches?.length ?? 0) >= 2;
         },
         onMoveShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponderCapture: (evt, gs) => {
           if (isDraggingPageRef.current || overviewMode) return false;
           if (drawingMode) return false;
+          if (textInteractionMode === "edit") return false;
           const touches = evt.nativeEvent.touches?.length ?? 0;
           if (touches >= 2) return true;
           if (touches === 1 && (Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1)) {
@@ -1124,7 +1308,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         },
 
         onPanResponderGrant: (evt) => {
-          if (drawingMode || isDraggingPageRef.current || overviewMode) return;
+          if (drawingMode || isDraggingPageRef.current || overviewMode || textInteractionMode === "edit") return;
           pageSwipeActiveRef.current = false;
           const touches = evt.nativeEvent.touches ?? [];
           if (touches.length >= 2) {
@@ -1150,7 +1334,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         },
 
         onPanResponderMove: (evt, gs: PanResponderGestureState) => {
-          if (drawingMode || isDraggingPageRef.current || overviewMode) return;
+          if (drawingMode || isDraggingPageRef.current || overviewMode || textInteractionMode === "edit") return;
           const touches = evt.nativeEvent.touches ?? [];
           if (touches.length >= 2 && pinchStateRef.current) {
             const dist = touchDist(touches[0], touches[1]);
@@ -1220,11 +1404,25 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
             if (!prevEl) return prev;
             const clampSize = (size: number) => Math.max(MIN_EL, size);
 
+            const snapped =
+              interaction.mode === "move"
+                ? getSnappedMove(interaction.elementId, interaction.startElX + dxEl, interaction.startElY + dyEl)
+                : null;
+            if (interaction.mode === "move") {
+              setAlignmentGuides((prevGuides) => {
+                const nextGuides = { x: snapped?.guideX ?? null, y: snapped?.guideY ?? null };
+                if (prevGuides.x === nextGuides.x && prevGuides.y === nextGuides.y) return prevGuides;
+                return nextGuides;
+              });
+            } else {
+              setAlignmentGuides((prevGuides) => (prevGuides.x === null && prevGuides.y === null ? prevGuides : { x: null, y: null }));
+            }
+
             const nextEls = prev.elements.map((cur) => {
               if (cur.id !== interaction.elementId) return cur;
 
               if (interaction.mode === "move") {
-                return { ...cur, x: interaction.startElX + dxEl, y: interaction.startElY + dyEl };
+                return { ...cur, x: snapped?.x ?? interaction.startElX + dxEl, y: snapped?.y ?? interaction.startElY + dyEl };
               }
 
               const handle = interaction.handle ?? "se";
@@ -1315,6 +1513,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
           canvasPanStateRef.current = null;
+          setAlignmentGuides({ x: null, y: null });
         },
 
         onPanResponderTerminate: () => {
@@ -1333,6 +1532,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
           canvasPanStateRef.current = null;
+          setAlignmentGuides({ x: null, y: null });
         }
       }),
     [
@@ -1350,7 +1550,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       pagesById,
       slideWidth,
       drawingSmoothness,
+      getSnappedMove,
       selectedTextElement,
+      textInteractionMode,
       viewportH,
       viewportW
     ]
@@ -1369,6 +1571,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     const y = Math.max(24, pageH * 0.18);
     const el = createCanvasTextElement("", x, y, pageId);
     addElement({ ...el, style: { ...el.style, textColor: defaultTextColor } });
+    setTextInteractionMode("edit");
+    setMode("text");
     setPendingFocusTextId(el.id);
   }, [addElement, defaultTextColor, doc.pageHeight, doc.pageWidth, getDefaultTargetPageId, pagesById]);
 
@@ -1584,12 +1788,12 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       setMode("draw");
       return;
     }
-    if (selectedTextElement) {
+    if (selectedTextElement && textInteractionMode === "edit") {
       setMode("text");
       return;
     }
     setMode("select");
-  }, [drawingMode, selectedTextElement]);
+  }, [drawingMode, selectedTextElement, textInteractionMode]);
   const showTextToolbar = !!selectedTextElement && !drawingMode;
   const selectedTextStyle = selectedTextElement?.style ?? {};
   const selectedTextColor = selectedTextStyle.textColor ?? defaultTextColor;
@@ -1736,14 +1940,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     if (!editable) return;
     setDrawingMode((prev) => {
       const next = prev === "brush" ? null : "brush";
-      setMode(next ? "draw" : selectedTextElement ? "text" : "select");
+      setMode(next ? "draw" : "select");
       return next;
     });
     setShowShapeMenu(false);
     setShowStylePanel(false);
     setShowAlignMenu(false);
     clearSelection();
-  }, [clearSelection, editable, selectedTextElement]);
+  }, [clearSelection, editable]);
 
   const renderPage = useCallback(
     (page: CanvasPage) => {
@@ -1773,6 +1977,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                   element={element}
                   selected={editable && element.id === selectedId}
                   editable={editable}
+                  isTextEditing={textInteractionMode === "edit" && element.id === selectedId}
                   primaryColor={colors.primary}
                   surfaceElevated={colors.surfaceElevated}
                   defaultTextColor={defaultTextColor}
@@ -1780,6 +1985,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                   onSetInputRef={setInputRef}
                   onTextFocused={handleTextFocused}
                   onSelect={handleSelect}
+                  onEnterTextEdit={enterTextEdit}
                   onMovePressIn={handleElementMovePressIn}
                   onResizePressIn={handleElementResizePressIn}
                   onChangeText={handleTextChange}
@@ -1875,12 +2081,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       handleElementMovePressIn,
       handleElementResizePressIn,
       handleSelect,
+      enterTextEdit,
       handleTextChange,
       handleTextSizeChange,
       handleTextFocused,
       setElementRef,
       setInputRef,
       selectedId,
+      textInteractionMode,
       sortedElements,
       updateDrawing
     ]
@@ -2259,6 +2467,32 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 )}
               </View>
             ) : null}
+
+            {alignmentGuides.x !== null && (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.alignmentGuideVertical,
+                  {
+                    left: alignmentGuides.x,
+                    height: pageTrackHeight
+                  }
+                ]}
+              />
+            )}
+
+            {alignmentGuides.y !== null && (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.alignmentGuideHorizontal,
+                  {
+                    top: alignmentGuides.y,
+                    width: slideWidth
+                  }
+                ]}
+              />
+            )}
           </View>
         </View>
       </ScrollView>
@@ -2617,6 +2851,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 <Text style={{ color: colors.textPrimary, textDecorationLine: "line-through", fontSize: 18 }}>S</Text>
               </Pressable>
 
+              <Pressable
+                style={[styles.textTbBtn, selectedFontFamily === "monospace" && styles.activeBtn]}
+                onPress={toggleCodeTextStyle}
+              >
+                <Ionicons name="code-slash-outline" size={18} color={colors.textPrimary} />
+              </Pressable>
+
               <View style={[styles.verticalDivider, { backgroundColor: colors.border }]} />
 
               <Pressable
@@ -2858,6 +3099,20 @@ const styles = StyleSheet.create({
     position: "relative",
     alignItems: "center",
     justifyContent: "flex-start"
+  },
+  alignmentGuideVertical: {
+    position: "absolute",
+    top: 0,
+    width: 1,
+    backgroundColor: "#22D3EE",
+    zIndex: 999
+  },
+  alignmentGuideHorizontal: {
+    position: "absolute",
+    left: 0,
+    height: 1,
+    backgroundColor: "#22D3EE",
+    zIndex: 999
   },
   canvas: {
     position: "absolute",

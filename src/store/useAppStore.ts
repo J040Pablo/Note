@@ -7,6 +7,7 @@ interface AppState {
   selectedFolderId: ID | null;
   pinnedItems: PinnedItem[];
   recentItems: RecentItem[];
+  folderViewModes: Record<ID | "root", "grid" | "list">;
 }
 
 interface AppActions {
@@ -20,6 +21,7 @@ interface AppActions {
   setRecentItems: (items: RecentItem[]) => void;
   togglePinned: (type: PinnedItemType, id: ID) => PinnedItem[];
   pushRecent: (type: RecentItemType, id: ID) => RecentItem[];
+  setFolderViewMode: (folderId: ID | "root", mode: "grid" | "list") => void;
 }
 
 export const useAppStore = create<AppState & AppActions>()(
@@ -28,6 +30,7 @@ export const useAppStore = create<AppState & AppActions>()(
     selectedFolderId: null,
     pinnedItems: [],
     recentItems: [],
+    folderViewModes: { root: "grid" },
 
     setInitialData: (payload) =>
       set((state) => {
@@ -98,7 +101,12 @@ export const useAppStore = create<AppState & AppActions>()(
         state.recentItems = next;
       })
       return next;
-    }
+    },
+
+    setFolderViewMode: (folderId, mode) =>
+      set((state) => {
+        state.folderViewModes[folderId] = mode;
+      })
   }))
 );
 

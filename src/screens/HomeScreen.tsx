@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, FlatList, Animated } from "react-native";
+import { View, StyleSheet, Pressable, FlatList, Animated, Modal } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useFeedback } from "@components/FeedbackProvider";
@@ -7,11 +7,13 @@ import { Text } from "@components/Text";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { FolderNameModal } from "@components/FolderNameModal";
 import { useNotesStore } from "@store/useNotesStore";
+import { QuickNoteInput } from "@components/QuickNoteInput";
+import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useTasksStore } from "@store/useTasksStore";
 import { useAppStore } from "@store/useAppStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { getAllTasks, isTaskCompletedForDate, shouldAppearOnDate, toDateKey, toggleTaskForDate } from "@services/tasksService";
-import { getAllNotes } from "@services/notesService";
+import { createNote, getAllNotes, createQuickNote, updateQuickNote } from "@services/notesService";
 import { createFolder, getAllFolders } from "@services/foldersService";
 import { getAllFiles } from "@services/filesService";
 import { getPinnedItems, getRecentItems, savePinnedItems, saveRecentItems } from "@services/appMetaService";
@@ -22,7 +24,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { FolderIcon } from "@components/FolderIcon";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { useNavigationLock } from "@hooks/useNavigationLock";
-import { getRichNotePreviewLine } from "@utils/noteContent";
+import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
 
@@ -61,6 +63,7 @@ const HomeScreen: React.FC = () => {
 
   const notesMap = useNotesStore((s) => s.notes);
   const setNotes = useNotesStore((s) => s.setNotes);
+  const upsertNote = useNotesStore((s) => s.upsertNote);
   const filesMap = useFilesStore((s) => s.files);
   const setFiles = useFilesStore((s) => s.setFiles);
 
@@ -71,6 +74,8 @@ const HomeScreen: React.FC = () => {
   const [search, setSearch] = useState("");
   const [selectedPinned, setSelectedPinned] = useState<{ type: PinnedItemType; id: ID; label: string } | null>(null);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+  const [showQuickNoteModal, setShowQuickNoteModal] = useState(false);
+  const [quickNoteDraftId, setQuickNoteDraftId] = useState<string | null>(null);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -589,6 +594,16 @@ const HomeScreen: React.FC = () => {
             }
           },
           {
+            key: "quick-note",
+            label: "Quick Note",
+            icon: "flash-outline" as const,
+            onPress: () => {
+              closeFab();
+              setQuickNoteDraftId(null);
+              setShowQuickNoteModal(true);
+            }
+          },
+          {
             key: "folder",
             label: "Create Folder",
             icon: "folder-outline" as const,
@@ -706,6 +721,52 @@ const HomeScreen: React.FC = () => {
           }
         }}
       />
+
+      <Modal
+        visible={showQuickNoteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQuickNoteModal(false)}
+      >
+        <Pressable style={hsStyles.quickNoteBackdrop} onPress={() => setShowQuickNoteModal(false)}>
+          <Pressable
+            style={[hsStyles.quickNoteCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[hsStyles.quickNoteTitle, { color: theme.colors.textPrimary }]}>Quick Note</Text>
+            <QuickNoteInput
+              autoFocus
+              placeholder="Anote rápido..."
+              onCancel={() => {
+                setShowQuickNoteModal(false);
+                setQuickNoteDraftId(null);
+              }}
+              onSave={async (text) => {
+                const trimmed = text.trim();
+                if (!trimmed) return;
+                if (quickNoteDraftId) {
+                  await updateQuickNote(quickNoteDraftId, trimmed);
+                  useQuickNotesStore.getState().upsertQuickNote({
+                    ...(useQuickNotesStore.getState().quickNotes[quickNoteDraftId] ?? {
+                      id: quickNoteDraftId,
+                      folderId: null,
+                      createdAt: Date.now()
+                    }),
+                    content: trimmed,
+                    updatedAt: Date.now()
+                  });
+                  return;
+                }
+
+                const saved = await createQuickNote({ content: trimmed, folderId: null });
+                setQuickNoteDraftId(saved.id);
+                useQuickNotesStore.getState().upsertQuickNote(saved);
+                showToast("Quick note criada ✓");
+              }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -815,6 +876,24 @@ const hsStyles = StyleSheet.create({
   notePreview: {
     marginTop: 2,
     fontSize: 12
+  },
+  quickNoteBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    paddingHorizontal: spacing.md
+  },
+  quickNoteCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingTop: 12,
+    paddingBottom: 10
+  },
+  quickNoteTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    paddingHorizontal: 16,
+    marginBottom: 4
   },
   fabBackdrop: {
     ...StyleSheet.absoluteFillObject,

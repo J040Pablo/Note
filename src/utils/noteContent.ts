@@ -9,6 +9,7 @@ import type {
   CanvasTextElement,
   ID,
   NoteBlock,
+  NoteCodeBlock,
   NoteDrawingBlock,
   NoteTextBlock,
   RichNoteDocument
@@ -39,6 +40,15 @@ export const createImageBlock = (uri: string): NoteBlock => ({
   type: "image",
   uri,
   caption: ""
+});
+
+export const createCodeBlock = (code = "", language = "javascript"): NoteCodeBlock => ({
+  id: makeId(),
+  type: "code",
+  code,
+  language: language as NoteCodeBlock["language"],
+  theme: "dark",
+  showLineNumbers: true
 });
 
 export const createDrawingBlock = (backgroundUri: string | null = null): NoteDrawingBlock => ({

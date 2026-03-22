@@ -24,17 +24,19 @@ import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { NoteEditModal } from "@components/NoteEditModal";
 import { FileDetailsModal } from "@components/FileDetailsModal";
+import { QuickNoteInput } from "@components/QuickNoteInput";
 import { useTheme } from "@hooks/useTheme";
 import type { CompositeNavigationProp, RouteProp } from "@react-navigation/native";
 import type { FoldersStackParamList, RootStackParamList } from "@navigation/RootNavigator";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { useAppStore } from "@store/useAppStore";
 import { useNavigationLock } from "@hooks/useNavigationLock";
-import { getRichNotePreviewLine } from "@utils/noteContent";
+import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
 import { useNotesStore } from "@store/useNotesStore";
+import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
-import { deleteNote, getNotesByFolder, updateNote } from "@services/notesService";
+import { createNote, deleteNote, getNotesByFolder, updateNote, createQuickNote, updateQuickNote } from "@services/notesService";
 import {
   addRecentOpen,
   getPinnedItems,
@@ -84,12 +86,12 @@ const FolderDetailScreen: React.FC = () => {
   const togglePinned = useAppStore((s) => s.togglePinned);
   const setPinnedItems = useAppStore((s) => s.setPinnedItems);
   const setRecentItems = useAppStore((s) => s.setRecentItems);
+  const folderViewModes = useAppStore((s) => s.folderViewModes);
+  const setFolderViewMode = useAppStore((s) => s.setFolderViewMode);
   const notes = useNotesStore((s) => s.notes);
-  const setNotes = useNotesStore((s) => s.setNotes);
   const upsertNote = useNotesStore((s) => s.upsertNote);
   const removeNote = useNotesStore((s) => s.removeNote);
   const files = useFilesStore((s) => s.files);
-  const setFiles = useFilesStore((s) => s.setFiles);
   const upsertFile = useFilesStore((s) => s.upsertFile);
   const removeFile = useFilesStore((s) => s.removeFile);
   const reorderFilesInStore = useFilesStore((s) => s.reorderFilesInStore);
@@ -108,8 +110,11 @@ const FolderDetailScreen: React.FC = () => {
   const [pendingDelete, setPendingDelete] = useState<{ type: "folder" | "note" | "file"; id: string } | null>(null);
   const [showAddFileMenu, setShowAddFileMenu] = useState(false);
   const [showFileSortMenu, setShowFileSortMenu] = useState(false);
+  const [showQuickNoteModal, setShowQuickNoteModal] = useState(false);
+  const [quickNoteDraftId, setQuickNoteDraftId] = useState<string | null>(null);
   const [fileSortMode, setFileSortMode] = useState<FileSortMode>("custom");
   const [fileSizes, setFileSizes] = useState<Record<string, number>>({});
+  const [renderKey, setRenderKey] = useState(0);
   const [fabOpen, setFabOpen] = useState(false);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [noteSubmitting, setNoteSubmitting] = useState(false);
@@ -121,6 +126,7 @@ const FolderDetailScreen: React.FC = () => {
   const latestFileOrderRef = useRef<string[]>([]);
 
   const currentFolder = folderId ? folders[folderId] : undefined;
+  const currentViewMode = folderViewModes[folderId ?? "root"] ?? "grid";
 
   useEffect(() => {
     (async () => {
@@ -130,16 +136,19 @@ const FolderDetailScreen: React.FC = () => {
         getFilesByFolder(folderId ?? null)
       ]);
       childrenFolders.forEach(upsertFolder);
-      setNotes(folderNotes);
-      setFiles(folderFiles);
+      // Keep global stores immutable and additive so previous screens don't lose items.
+      folderNotes.forEach(upsertNote);
+      folderFiles.forEach(upsertFile);
       const [pinned, savedSort] = await Promise.all([
         getPinnedItems(),
         getSortPreference<FileSortMode>(fileSortScopeForFolder(folderId), "custom")
       ]);
       setPinnedItems(pinned);
       setFileSortMode(savedSort);
+      // Force re-render when folder changes
+      setRenderKey((prev) => prev + 1);
     })();
-  }, [folderId, setFiles, setNotes, setPinnedItems, upsertFolder]);
+  }, [folderId, setPinnedItems, upsertFile, upsertFolder, upsertNote]);
 
   useEffect(() => {
     (async () => {
@@ -266,9 +275,33 @@ const FolderDetailScreen: React.FC = () => {
     }
   }, [closeFab, fabOpen, openFab]);
 
+  const handleBackPress = useCallback(() => {
+    if (trailIds.length > 1) {
+      const prevFolderId = trailIds[trailIds.length - 2];
+      navigation.setParams({ folderId: prevFolderId, trail: trailIds.slice(0, -1) });
+      return;
+    }
+
+    if (trailIds.length === 1) {
+      navigation.setParams({ folderId: null, trail: [] });
+      return;
+    }
+
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    }
+  }, [navigation, trailIds]);
+
   return (
     <Screen>
       <View style={styles.headerRow}>
+        <Pressable
+          onPress={handleBackPress}
+          style={[styles.backButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+          hitSlop={8}
+        >
+          <Ionicons name="arrow-back" size={16} color={theme.colors.textPrimary} />
+        </Pressable>
         <View>
           <Text variant="title">{currentFolder?.name ?? "Home"}</Text>
           <Text muted>Subfolders, notes and files</Text>
@@ -364,103 +397,137 @@ const FolderDetailScreen: React.FC = () => {
       <View style={[styles.section, { borderColor: theme.colors.border }]}>
         <View style={styles.sectionHeaderRow}>
           <Text variant="subtitle">Items</Text>
-          <Pressable
-            onPress={() => setShowFileSortMenu(true)}
-            style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-          >
-            <Ionicons name="funnel-outline" size={15} color={theme.colors.textPrimary} />
-          </Pressable>
+          <View style={styles.headerActions}>
+            <View style={[styles.viewToggleWrap, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
+              <Pressable
+                onPress={() => setFolderViewMode(folderId ?? "root", "list")}
+                style={[
+                  styles.viewToggleBtn,
+                  folderViewModes[folderId ?? "root"] === "list" && { backgroundColor: theme.colors.primaryAlpha20 }
+                ]}
+              >
+                <Ionicons name="list-outline" size={14} color={folderViewModes[folderId ?? "root"] === "list" ? theme.colors.primary : theme.colors.textSecondary} />
+              </Pressable>
+              <Pressable
+                onPress={() => setFolderViewMode(folderId ?? "root", "grid")}
+                style={[
+                  styles.viewToggleBtn,
+                  folderViewModes[folderId ?? "root"] === "grid" && { backgroundColor: theme.colors.primaryAlpha20 }
+                ]}
+              >
+                <Ionicons name="grid-outline" size={14} color={folderViewModes[folderId ?? "root"] === "grid" ? theme.colors.primary : theme.colors.textSecondary} />
+              </Pressable>
+            </View>
+            <Pressable
+              onPress={() => setShowFileSortMenu(true)}
+              style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+            >
+              <Ionicons name="funnel-outline" size={15} color={theme.colors.textPrimary} />
+            </Pressable>
+          </View>
         </View>
-        <View style={styles.sectionListContent}>
-          {childFolders
-            .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
-            .map((folder) => (
-              <Pressable
-                key={folder.id}
-                onLongPress={() => setSelectedFolder(folder)}
-                delayLongPress={260}
-                style={({ pressed }) => [
-                  styles.itemCard,
-                  {
-                    borderColor: theme.colors.border,
-                    backgroundColor: theme.colors.card,
-                    shadowColor: theme.colors.textPrimary,
-                    transform: [{ scale: pressed ? 0.992 : 1 }],
-                    opacity: pressed ? 0.96 : 1
+        <ScrollView
+          key={`${folderId}-${currentViewMode}-${renderKey}`}
+          style={styles.sectionListContent}
+          contentContainerStyle={styles.sectionListContentContainer}
+          showsVerticalScrollIndicator={false}
+          scrollEnabled={true}
+          nestedScrollEnabled={true}
+        >
+          <View style={currentViewMode === "grid" ? styles.gridContainer : undefined}>
+            {childFolders
+              .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
+              .map((folder) => (
+                <Pressable
+                  key={folder.id}
+                  onLongPress={() => setSelectedFolder(folder)}
+                  delayLongPress={260}
+                  style={({ pressed }) => [
+                    styles.itemCard,
+                    {
+                      borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.card,
+                      shadowColor: theme.colors.textPrimary,
+                      transform: [{ scale: pressed ? 0.992 : 1 }],
+                      opacity: pressed ? 0.96 : 1
+                    },
+                    currentViewMode === "list" && { marginBottom: 8 }
+                  ]}
+                  onPress={() =>
+                    withLock(() => {
+                      navigation.push("FolderDetail", {
+                        folderId: folder.id,
+                        trail: [...trailIds, folder.id]
+                      });
+                      addRecentOpen("folder", folder.id).then((nextRecent) => setRecentItems(nextRecent));
+                    })
                   }
-                ]}
-                onPress={() =>
-                  withLock(() => {
-                    navigation.push("FolderDetail", {
-                      folderId: folder.id,
-                      trail: [...trailIds, folder.id]
-                    });
-                    addRecentOpen("folder", folder.id).then((nextRecent) => setRecentItems(nextRecent));
-                  })
-                }
-              >
-                {!!folder.bannerPath && (
-                  <Image source={{ uri: folder.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
-                )}
-                <View style={styles.cardBody}>
-                  {folder.photoPath ? (
-                    <Image source={{ uri: folder.photoPath }} style={styles.cardAvatar} resizeMode="cover" />
-                  ) : (
-                    <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} />
+                >
+                  {!!folder.bannerPath && (
+                    <Image source={{ uri: folder.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
                   )}
-                  <View style={styles.rowContent}>
-                    <Text style={styles.rowTitle}>{folder.name}</Text>
-                    {!!folder.description && (
-                      <Text muted variant="caption" numberOfLines={2}>
-                        {folder.description}
-                      </Text>
+                  <View style={styles.cardBody}>
+                    {folder.photoPath ? (
+                      <Image source={{ uri: folder.photoPath }} style={styles.cardAvatar} resizeMode="cover" />
+                    ) : (
+                      <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} />
                     )}
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowTitle}>{folder.name}</Text>
+                      {!!folder.description && (
+                        <Text muted variant="caption" numberOfLines={2}>
+                          {folder.description}
+                        </Text>
+                      )}
+                    </View>
                   </View>
-                </View>
-              </Pressable>
-            ))}
+                </Pressable>
+              ))}
 
-          {folderNotes
-            .sort((a, b) => b.updatedAt - a.updatedAt)
-            .map((note) => (
-              <Pressable
-                key={note.id}
-                onLongPress={() => setSelectedNote(note)}
-                delayLongPress={260}
-                style={({ pressed }) => [
-                  styles.itemCard,
-                  {
-                    borderColor: theme.colors.border,
-                    backgroundColor: theme.colors.card,
-                    shadowColor: theme.colors.textPrimary,
-                    transform: [{ scale: pressed ? 0.992 : 1 }],
-                    opacity: pressed ? 0.96 : 1
+            {folderNotes
+              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .map((note) => (
+                <Pressable
+                  key={note.id}
+                  onLongPress={() => setSelectedNote(note)}
+                  delayLongPress={260}
+                  style={({ pressed }) => [
+                    styles.itemCard,
+                    {
+                      borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.card,
+                      shadowColor: theme.colors.textPrimary,
+                      transform: [{ scale: pressed ? 0.992 : 1 }],
+                      opacity: pressed ? 0.96 : 1
+                    },
+                    currentViewMode === "list" && { marginBottom: 8 }
+                  ]}
+                  onPress={() =>
+                    withLock(() => {
+                      navigation.navigate("NoteEditor", { noteId: note.id });
+                      addRecentOpen("note", note.id).then((nextRecent) => setRecentItems(nextRecent));
+                    })
                   }
-                ]}
-                onPress={() =>
-                  withLock(() => {
-                    navigation.navigate("NoteEditor", { noteId: note.id });
-                    addRecentOpen("note", note.id).then((nextRecent) => setRecentItems(nextRecent));
-                  })
-                }
-              >
-                <View style={styles.cardBody}>
-                  <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                    <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
+                >
+                  <View style={styles.cardBody}>
+                    <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}>
+                      <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
+                    </View>
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowTitle}>{note.title}</Text>
+                      {!!firstLine(note.content) && (
+                        <Text muted variant="caption" numberOfLines={2}>
+                          {firstLine(note.content)}
+                        </Text>
+                      )}
+                    </View>
                   </View>
-                  <View style={styles.rowContent}>
-                    <Text style={styles.rowTitle}>{note.title}</Text>
-                    {!!firstLine(note.content) && (
-                      <Text muted variant="caption" numberOfLines={2}>
-                        {firstLine(note.content)}
-                      </Text>
-                    )}
-                  </View>
-                </View>
-              </Pressable>
-            ))}
+                </Pressable>
+              ))}
+          </View>
 
           <DraggableFlatList
+            key={`files-${folderId ?? "root"}-${renderKey}`}
             data={visibleFiles}
             keyExtractor={(item) => item.id}
             initialNumToRender={12}
@@ -562,7 +629,7 @@ const FolderDetailScreen: React.FC = () => {
               ) : null
             }
           />
-        </View>
+        </ScrollView>
       </View>
 
       <ContextActionMenu
@@ -661,6 +728,16 @@ const FolderDetailScreen: React.FC = () => {
             onPress: () => {
               closeFab();
               navigation.navigate("NoteEditor", { folderId: folderId ?? null });
+            }
+          },
+          {
+            key: "quick-note",
+            label: "Quick Note",
+            icon: "flash-outline" as const,
+            onPress: () => {
+              closeFab();
+              setQuickNoteDraftId(null);
+              setShowQuickNoteModal(true);
             }
           },
           {
@@ -780,6 +857,52 @@ const FolderDetailScreen: React.FC = () => {
           }
         }}
       />
+
+      <Modal
+        visible={showQuickNoteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowQuickNoteModal(false)}
+      >
+        <Pressable style={styles.quickNoteBackdrop} onPress={() => setShowQuickNoteModal(false)}>
+          <Pressable
+            style={[styles.quickNoteCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.quickNoteTitle, { color: theme.colors.textPrimary }]}>Quick Note</Text>
+            <QuickNoteInput
+              autoFocus
+              placeholder="Anote rápido nesta pasta..."
+              onCancel={() => {
+                setShowQuickNoteModal(false);
+                setQuickNoteDraftId(null);
+              }}
+              onSave={async (text) => {
+                const trimmed = text.trim();
+                if (!trimmed) return;
+                if (quickNoteDraftId) {
+                  await updateQuickNote(quickNoteDraftId, trimmed);
+                  useQuickNotesStore.getState().upsertQuickNote({
+                    ...(useQuickNotesStore.getState().quickNotes[quickNoteDraftId] ?? {
+                      id: quickNoteDraftId,
+                      folderId: folderId ?? null,
+                      createdAt: Date.now()
+                    }),
+                    content: trimmed,
+                    updatedAt: Date.now()
+                  });
+                  return;
+                }
+
+                const saved = await createQuickNote({ content: trimmed, folderId: folderId ?? null });
+                setQuickNoteDraftId(saved.id);
+                useQuickNotesStore.getState().upsertQuickNote(saved);
+                showToast("Quick note criada ✓");
+              }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <ContextActionMenu
         visible={!!selectedFolder}
@@ -1284,7 +1407,16 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: 10,
     marginBottom: 12
+  },
+  backButton: {
+    width: 34,
+    height: 34,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center"
   },
   pathCard: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -1344,13 +1476,32 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     padding: 12,
-    marginBottom: 16
+    marginBottom: 16,
+    flex: 1,
+    minHeight: 300
   },
   sectionHeaderRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 8
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  viewToggleWrap: {
+    flexDirection: "row",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 8,
+    overflow: "hidden"
+  },
+  viewToggleBtn: {
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    alignItems: "center",
+    justifyContent: "center"
   },
   sortButton: {
     width: 30,
@@ -1360,7 +1511,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
+  sectionListContent: {
+    flex: 1,
+    minHeight: 200
+  },
+  sectionListContentContainer: {
+    paddingBottom: 120
+  },
+  gridContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+    justifyContent: "flex-start"
+  },
   itemCard: {
+    flex: 1,
+    minWidth: "48%",
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 16,
     overflow: "hidden",
@@ -1404,10 +1570,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
     paddingVertical: 4,
     marginRight: 2
-  },
-  sectionListContent: {
-    paddingBottom: 8,
-    gap: 8
   },
   emptyText: {
     marginTop: 8
@@ -1453,6 +1615,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999
+  },
+  quickNoteBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    paddingHorizontal: 16
+  },
+  quickNoteCard: {
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingTop: 12,
+    paddingBottom: 10
+  },
+  quickNoteTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    paddingHorizontal: 16,
+    marginBottom: 4
   },
   fabBackdrop: {
     ...StyleSheet.absoluteFillObject,
