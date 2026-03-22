@@ -308,7 +308,17 @@ const HomeScreen: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         ListHeaderComponent={
           <View style={hsStyles.header}>
-            <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
+            <View style={hsStyles.headerTopRow}>
+              <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
+              <Pressable
+                onPress={() => showToast("QR Code em breve")}
+                style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+                accessibilityRole="button"
+                accessibilityLabel="Abrir QR Code"
+              >
+                <Ionicons name="qr-code-outline" size={20} color={theme.colors.textPrimary} />
+              </Pressable>
+            </View>
           </View>
         }
         renderItem={({ item }) => {
@@ -783,11 +793,23 @@ const hsStyles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm
   },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
   headerTitle: {
     fontSize: 30,
     fontWeight: "800",
-    letterSpacing: -0.5,
-    marginBottom: spacing.md
+    letterSpacing: -0.5
+  },
+  headerActionBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center"
   },
   card: {
     borderRadius: 16,
