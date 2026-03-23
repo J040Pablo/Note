@@ -7,6 +7,16 @@ let initializationPromise: Promise<void> | null = null;
 let initialized = false;
 let writeQueue: Promise<void> = Promise.resolve();
 
+const normalizeBindValue = (value: SQLite.SQLiteBindValue | undefined): SQLite.SQLiteBindValue => {
+  if (value === undefined || value === null) return null;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  return value;
+};
+
+const normalizeBindParams = (params: SQLite.SQLiteBindValue[]): SQLite.SQLiteBindValue[] => {
+  return params.map((p) => normalizeBindValue(p));
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const getErrorMessage = (error: unknown): string => {
@@ -53,9 +63,11 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
   await ensureColumn(db, "folders", "bannerPath", "TEXT");
 
   await ensureColumn(db, "tasks", "scheduledDate", "TEXT");
+  await ensureColumn(db, "tasks", "scheduledTime", "TEXT");
   await ensureColumn(db, "tasks", "orderIndex", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "tasks", "repeatDays", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, "tasks", "completedDates", "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, "tasks", "notificationIds", "TEXT NOT NULL DEFAULT '[]'");
 
   await ensureColumn(db, "files", "description", "TEXT");
   await ensureColumn(db, "files", "orderIndex", "INTEGER NOT NULL DEFAULT 0");
@@ -74,6 +86,10 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
     UPDATE tasks
     SET orderIndex = CAST(id AS INTEGER)
     WHERE orderIndex = 0;
+
+    UPDATE tasks
+    SET notificationIds = '[]'
+    WHERE notificationIds IS NULL OR notificationIds = '';
   `);
 };
 
@@ -126,7 +142,8 @@ const enqueueWrite = async <T>(scope: string, operation: (db: SQLite.SQLiteDatab
 };
 
 export const runDbWrite = async (sql: string, ...params: SQLite.SQLiteBindValue[]): Promise<void> => {
-  await enqueueWrite(`write: ${sql}`, (db) => db.runAsync(sql, ...params).then(() => undefined));
+  const normalized = normalizeBindParams(params);
+  await enqueueWrite(`write: ${sql}`, (db) => db.runAsync(sql, ...normalized).then(() => undefined));
 };
 
 export const withDbWriteTransaction = async <T>(

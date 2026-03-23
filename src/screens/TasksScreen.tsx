@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, Vibration } from "react-native";
+import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, Vibration, TouchableOpacity, Platform } from "react-native";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
@@ -54,6 +55,42 @@ const buildMonthCells = (monthDate: Date): Date[] => {
 const sameMonth = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
 
+const mergeDateAndTime = (date: Date, time: Date): Date => {
+  const next = new Date(date);
+  next.setHours(time.getHours());
+  next.setMinutes(time.getMinutes());
+  next.setSeconds(0, 0);
+  return next;
+};
+
+const parseDateTime = (dateKey?: string | null, time?: string | null): Date => {
+  const now = new Date();
+  if (!dateKey) return now;
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const parsed = new Date(y, (m || 1) - 1, d || 1);
+  if (time) {
+    const [hh, mm] = time.split(":").map(Number);
+    parsed.setHours(Number.isFinite(hh) ? hh : 8, Number.isFinite(mm) ? mm : 0, 0, 0);
+  } else {
+    parsed.setHours(8, 0, 0, 0);
+  }
+  return parsed;
+};
+
+const formatUiDate = (value: Date): string => {
+  return value.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const formatUiTime = (value: Date): string => {
+  return value.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+};
+
+const toTimeKey = (date: Date): string => {
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+};
+
 type TaskSortMode = "custom" | "recent" | "name_asc" | "name_desc";
 const TASK_SORT_SCOPE = "tasks.sort";
 
@@ -71,6 +108,13 @@ const TasksScreen: React.FC = () => {
   const [priority, setPriority] = useState<TaskPriority>(1);
   const [repeatDays, setRepeatDays] = useState<number[]>([]);
   const [scheduledDate, setScheduledDate] = useState<string>(toDateKey(new Date()));
+  const [scheduledAt, setScheduledAt] = useState<Date>(() => {
+    const now = new Date();
+    now.setHours(8, 0, 0, 0);
+    return now;
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(new Date()));
   const [monthCursor, setMonthCursor] = useState<Date>(new Date());
@@ -163,6 +207,9 @@ const TasksScreen: React.FC = () => {
     setPriority(1);
     setRepeatDays([]);
     setScheduledDate(selectedDate);
+    setScheduledAt(parseDateTime(selectedDate, "08:00"));
+    setShowDatePicker(false);
+    setShowTimePicker(false);
     setShowModal(true);
   };
 
@@ -172,6 +219,9 @@ const TasksScreen: React.FC = () => {
     setPriority((task.priority as TaskPriority) ?? 1);
     setRepeatDays(task.repeatDays ?? []);
     setScheduledDate(task.scheduledDate ?? selectedDate);
+    setScheduledAt(parseDateTime(task.scheduledDate ?? selectedDate, task.scheduledTime));
+    setShowDatePicker(false);
+    setShowTimePicker(false);
     setShowModal(true);
   };
 
@@ -367,7 +417,10 @@ const TasksScreen: React.FC = () => {
                 <Text muted variant="caption">Repeats: {item.repeatDays.map((d) => WEEKDAYS[d]).join(", ")}</Text>
               )}
               {!item.repeatDays?.length && !!item.scheduledDate && (
-                <Text muted variant="caption">Date: {item.scheduledDate}</Text>
+                <Text muted variant="caption">
+                  Date: {item.scheduledDate}
+                  {item.scheduledTime ? ` • ${item.scheduledTime}` : ""}
+                </Text>
               )}
             </View>
             <Pressable
@@ -519,12 +572,23 @@ const TasksScreen: React.FC = () => {
         }}
       />
 
-      <Modal transparent visible={showModal} animationType="fade">
+      <Modal transparent visible={showModal} animationType="fade" onRequestClose={() => setShowModal(false)}>
         <View style={styles.backdrop}>
-          <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
-            <Text variant="subtitle">{editingTask ? "Edit task" : "New task"}</Text>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+                shadowColor: "#000"
+              }
+            ]}
+          >
+            <Text variant="subtitle">{editingTask ? "Editar tarefa" : "Nova tarefa"}</Text>
+
             <TextInput
-              placeholder="Task description"
+              autoFocus
+              placeholder="Nova tarefa..."
               placeholderTextColor={theme.colors.textSecondary}
               value={newText}
               onChangeText={setNewText}
@@ -532,16 +596,84 @@ const TasksScreen: React.FC = () => {
                 styles.newTaskInput,
                 {
                   borderColor: theme.colors.border,
-                  color: theme.colors.textPrimary
+                  color: theme.colors.textPrimary,
+                  backgroundColor: theme.colors.background
                 }
               ]}
             />
-            <Text style={styles.priorityLabel}>Priority</Text>
+
+            <View style={styles.dateTimeRow}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowTimePicker(false);
+                  setShowDatePicker(true);
+                }}
+                style={[styles.dateTimeButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+              >
+                <Text muted variant="caption">Data</Text>
+                <Text>{scheduledDate ? formatUiDate(parseDateTime(scheduledDate, toTimeKey(scheduledAt))) : "Selecionar data"}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowDatePicker(false);
+                  setShowTimePicker(true);
+                }}
+                style={[styles.dateTimeButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+              >
+                <Text muted variant="caption">Hora</Text>
+                <Text>{scheduledDate ? formatUiTime(scheduledAt) : "Selecionar hora"}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {showDatePicker && (
+              <DateTimePicker
+                value={scheduledAt}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event: DateTimePickerEvent, selected) => {
+                  if (event.type === "dismissed") {
+                    setShowDatePicker(false);
+                    return;
+                  }
+                  const next = selected ?? scheduledAt;
+                  setScheduledAt((prev) => mergeDateAndTime(next, prev));
+                  setScheduledDate(toDateKey(next));
+                  if (Platform.OS !== "ios") {
+                    setShowDatePicker(false);
+                  }
+                }}
+              />
+            )}
+
+            {showTimePicker && (
+              <DateTimePicker
+                value={scheduledAt}
+                mode="time"
+                is24Hour
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event: DateTimePickerEvent, selected) => {
+                  if (event.type === "dismissed") {
+                    setShowTimePicker(false);
+                    return;
+                  }
+                  const time = selected ?? scheduledAt;
+                  setScheduledAt((prev) => mergeDateAndTime(prev, time));
+                  if (Platform.OS !== "ios") {
+                    setShowTimePicker(false);
+                  }
+                }}
+              />
+            )}
+
+            <Text style={styles.priorityLabel}>Prioridade</Text>
             <View style={styles.priorityGroup}>
               {([
-                { label: "Low", value: 0 },
-                { label: "Medium", value: 1 },
-                { label: "High", value: 2 }
+                { label: "Baixa", value: 0 },
+                { label: "Média", value: 1 },
+                { label: "Alta", value: 2 }
               ] as const).map((p) => (
                 <Pressable
                   key={p.value}
@@ -549,54 +681,19 @@ const TasksScreen: React.FC = () => {
                   style={[
                     styles.priorityChip,
                     {
-                      backgroundColor:
-                        priority === p.value ? theme.colors.primary : theme.colors.card,
+                      backgroundColor: priority === p.value ? theme.colors.primary : theme.colors.background,
                       borderColor: theme.colors.border
                     }
                   ]}
                 >
-                  <Text
-                    style={{
-                      color: priority === p.value ? theme.colors.onPrimary : theme.colors.textPrimary
-                    }}
-                  >
+                  <Text style={{ color: priority === p.value ? theme.colors.onPrimary : theme.colors.textPrimary }}>
                     {p.label}
                   </Text>
                 </Pressable>
               ))}
             </View>
 
-            <Text style={styles.priorityLabel}>Schedule date (YYYY-MM-DD)</Text>
-            <TextInput
-              value={scheduledDate}
-              onChangeText={setScheduledDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={theme.colors.textSecondary}
-              style={[
-                styles.newTaskInput,
-                {
-                  borderColor: theme.colors.border,
-                  color: theme.colors.textPrimary
-                }
-              ]}
-            />
-
-            <View style={styles.scheduleActions}>
-              <Pressable
-                onPress={() => setScheduledDate(selectedDate)}
-                style={[styles.smallAction, { borderColor: theme.colors.border }]}
-              >
-                <Text muted>Use selected day</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => setScheduledDate("")}
-                style={[styles.smallAction, { borderColor: theme.colors.border }]}
-              >
-                <Text muted>No date</Text>
-              </Pressable>
-            </View>
-
-            <Text style={styles.priorityLabel}>Repeat on weekdays</Text>
+            <Text style={styles.priorityLabel}>Repetir em</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.repeatRow}>
               {WEEKDAYS.map((label, idx) => {
                 const active = repeatDays.includes(idx);
@@ -611,20 +708,41 @@ const TasksScreen: React.FC = () => {
                     style={[
                       styles.repeatChip,
                       {
-                        backgroundColor: active ? theme.colors.primary : theme.colors.card,
+                        backgroundColor: active ? theme.colors.primary : theme.colors.background,
                         borderColor: theme.colors.border
                       }
                     ]}
                   >
-                    <Text
-                      style={{ color: active ? theme.colors.onPrimary : theme.colors.textPrimary }}
-                    >
+                    <Text style={{ color: active ? theme.colors.onPrimary : theme.colors.textPrimary }}>
                       {label}
                     </Text>
                   </Pressable>
                 );
               })}
             </ScrollView>
+
+            <View style={styles.scheduleActions}>
+              <Pressable
+                onPress={() => {
+                  const day = parseDateTime(selectedDate, toTimeKey(scheduledAt));
+                  setScheduledAt(day);
+                  setScheduledDate(selectedDate);
+                }}
+                style={[styles.smallAction, { borderColor: theme.colors.border }]}
+              >
+                <Text muted>Usar dia selecionado</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setScheduledDate("");
+                  setShowDatePicker(false);
+                  setShowTimePicker(false);
+                }}
+                style={[styles.smallAction, { borderColor: theme.colors.border }]}
+              >
+                <Text muted>Sem data</Text>
+              </Pressable>
+            </View>
 
             <View style={styles.actions}>
               <Pressable
@@ -635,19 +753,24 @@ const TasksScreen: React.FC = () => {
                 }}
                 style={[styles.secondaryButton, taskSubmitting && styles.disabledButton]}
               >
-                <Text muted>Cancel</Text>
+                <Text muted>Cancelar</Text>
               </Pressable>
-              <Pressable
+
+              <TouchableOpacity
+                activeOpacity={0.9}
                 onPress={async () => {
                   if (!newText.trim() || taskSubmitting) return;
                   setTaskSubmitting(true);
                   try {
+                    const dateForTask = repeatDays.length ? null : scheduledDate || null;
+                    const timeForTask = dateForTask ? toTimeKey(scheduledAt) : null;
                     if (editingTask) {
                       const updated = await updateTask({
                         ...editingTask,
                         text: newText.trim(),
                         priority,
-                        scheduledDate: repeatDays.length ? null : scheduledDate || null,
+                        scheduledDate: dateForTask,
+                        scheduledTime: timeForTask,
                         repeatDays
                       });
                       upsertTask(updated);
@@ -656,34 +779,39 @@ const TasksScreen: React.FC = () => {
                       const created = await createTask({
                         text: newText.trim(),
                         priority,
-                        scheduledDate: repeatDays.length ? null : scheduledDate || null,
+                        scheduledDate: dateForTask,
+                        scheduledTime: timeForTask,
                         repeatDays
                       });
                       upsertTask(created);
                     }
                     setShowModal(false);
-                    showToast("Task saved ✓");
+                    showToast("Task salva ✓");
                   } catch (error) {
                     console.error("[task] save failed", error);
-                    showToast("Could not save task", "error");
+                    showToast("Não foi possível salvar", "error");
                   } finally {
                     setTaskSubmitting(false);
                   }
                 }}
                 disabled={taskSubmitting}
-                style={[styles.primaryButton, { backgroundColor: theme.colors.primary }, taskSubmitting && styles.disabledButton]}
+                style={[
+                  styles.primaryCreateButton,
+                  { backgroundColor: theme.colors.primary },
+                  taskSubmitting && styles.disabledButton
+                ]}
               >
                 {taskSubmitting ? (
                   <>
                     <ActivityIndicator size="small" color={theme.colors.onPrimary} />
-                    <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>Saving...</Text>
+                    <Text style={{ color: theme.colors.onPrimary, fontWeight: "700" }}>Salvando...</Text>
                   </>
                 ) : (
-                  <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>
-                    {editingTask ? "Save" : "Add"}
+                  <Text style={{ color: theme.colors.onPrimary, fontWeight: "700" }}>
+                    {editingTask ? "Salvar" : "Criar Task"}
                   </Text>
                 )}
-              </Pressable>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -820,21 +948,40 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 16
+    justifyContent: "flex-end",
+    paddingHorizontal: 14,
+    paddingBottom: 18
   },
   card: {
     width: "100%",
-    borderRadius: 16,
-    padding: 16
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10
   },
   newTaskInput: {
     marginTop: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    fontSize: 18
+  },
+  dateTimeRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 10
+  },
+  dateTimeButton: {
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 2
   },
   priorityGroup: {
     flexDirection: "row",
@@ -891,6 +1038,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8
+  },
+  primaryCreateButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minWidth: 132
   },
   disabledButton: {
     opacity: 0.7

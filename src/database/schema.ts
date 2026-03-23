@@ -40,8 +40,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority INTEGER NOT NULL DEFAULT 0,
   noteId TEXT REFERENCES notes(id) ON DELETE CASCADE,
   scheduledDate TEXT,
+  scheduledTime TEXT,
   repeatDays TEXT NOT NULL DEFAULT '[]',
-  completedDates TEXT NOT NULL DEFAULT '[]'
+  completedDates TEXT NOT NULL DEFAULT '[]',
+  notificationIds TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS attachments (

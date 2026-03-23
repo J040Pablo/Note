@@ -56,9 +56,18 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
   }, [initialBannerPath, initialColor, initialDescription, initialName, initialPhotoPath, visible]);
 
   return (
-    <Modal transparent visible={visible} animationType="fade">
+    <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
       <View style={styles.backdrop}>
-        <View style={[styles.card, { backgroundColor: theme.colors.card }]}>
+        <View
+          style={[
+            styles.card,
+            {
+              backgroundColor: theme.colors.card,
+              borderColor: theme.colors.border,
+              shadowColor: "#000"
+            }
+          ]}
+        >
           <ScrollView contentContainerStyle={styles.content}>
             <Text variant="subtitle">{title}</Text>
             <Text muted style={{ marginTop: spacing.xs }}>
@@ -75,7 +84,8 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
                 styles.input,
                 {
                   borderColor: theme.colors.border,
-                  color: theme.colors.textPrimary
+                  color: theme.colors.textPrimary,
+                  backgroundColor: theme.colors.background
                 }
               ]}
             />
@@ -90,7 +100,8 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
                 styles.textArea,
                 {
                   borderColor: theme.colors.border,
-                  color: theme.colors.textPrimary
+                  color: theme.colors.textPrimary,
+                  backgroundColor: theme.colors.background
                 }
               ]}
             />
@@ -203,33 +214,39 @@ const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: spacing.md
+    justifyContent: "flex-end",
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md
   },
   card: {
     width: "100%",
-    borderRadius: 16,
+    borderRadius: 22,
     padding: spacing.md,
-    maxHeight: "88%"
+    maxHeight: "88%",
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10
   },
   content: {
     paddingBottom: spacing.sm
   },
   input: {
     marginTop: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical: 12,
     paddingHorizontal: spacing.sm,
-    borderRadius: 10,
-    borderWidth: StyleSheet.hairlineWidth
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    fontSize: 18
   },
   textArea: {
     marginTop: spacing.sm,
     minHeight: 78,
     textAlignVertical: "top",
-    paddingVertical: spacing.sm,
+    paddingVertical: 12,
     paddingHorizontal: spacing.sm,
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: StyleSheet.hairlineWidth
   },
   colorRow: {
@@ -245,7 +262,7 @@ const styles = StyleSheet.create({
   },
   mediaButton: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.sm
   },
@@ -282,12 +299,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm
   },
   primaryButton: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.sm
+    justifyContent: "center",
+    gap: spacing.sm,
+    minWidth: 132
   },
   disabledButton: {
     opacity: 0.7

@@ -727,7 +727,9 @@ const FolderDetailScreen: React.FC = () => {
             icon: "document-text-outline" as const,
             onPress: () => {
               closeFab();
-              navigation.navigate("NoteEditor", { folderId: folderId ?? null });
+              withLock(() => {
+                navigation.navigate("NoteEditor", { folderId: folderId ?? null });
+              });
             }
           },
           {

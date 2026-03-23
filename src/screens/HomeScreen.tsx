@@ -600,7 +600,9 @@ const HomeScreen: React.FC = () => {
             icon: "document-text-outline" as const,
             onPress: () => {
               closeFab();
-              navigation.navigate("NoteEditor", { folderId: null });
+              withLock(() => {
+                navigation.navigate("NoteEditor", { folderId: null });
+              });
             }
           },
           {

@@ -7,6 +7,7 @@ import RootNavigator from "@navigation/RootNavigator";
 import { ThemeProvider, useTheme } from "@hooks/useTheme";
 import { DatabaseProvider } from "@database/DatabaseProvider";
 import { FeedbackProvider } from "@components/FeedbackProvider";
+import { useNotificationSetup } from "@hooks/useNotificationSetup";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 
 const navRef = createNavigationContainerRef<RootStackParamList>();
@@ -37,6 +38,9 @@ const parseDeepLinkToRoute = (url: string): { uri: string; name?: string; mimeTy
 
 const ThemedNavigation: React.FC = () => {
   const { theme } = useTheme();
+
+  // Initialize notifications on app startup
+  useNotificationSetup();
 
   React.useEffect(() => {
     const handleUrl = (incoming: string | null) => {

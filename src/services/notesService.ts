@@ -8,22 +8,25 @@ export const createNote = async (payload: {
 }): Promise<Note> => {
   const now = Date.now();
   const id = String(now);
+  const safeTitle = (payload.title ?? "").trim() || "Untitled";
+  const safeContent = typeof payload.content === "string" ? payload.content : "";
+  const safeFolderId = payload.folderId ?? null;
 
   await runDbWrite(
     "INSERT INTO notes (id, title, content, folderId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
     id,
-    payload.title,
-    payload.content,
-    payload.folderId,
+    safeTitle,
+    safeContent,
+    safeFolderId,
     now,
     now
   );
 
   return {
     id,
-    title: payload.title,
-    content: payload.content,
-    folderId: payload.folderId,
+    title: safeTitle,
+    content: safeContent,
+    folderId: safeFolderId,
     createdAt: now,
     updatedAt: now
   };
@@ -31,17 +34,20 @@ export const createNote = async (payload: {
 
 export const updateNote = async (note: Note): Promise<Note> => {
   const updatedAt = Date.now();
+  const safeTitle = (note.title ?? "").trim() || "Untitled";
+  const safeContent = typeof note.content === "string" ? note.content : "";
+  const safeFolderId = note.folderId ?? null;
 
   await runDbWrite(
     "UPDATE notes SET title = ?, content = ?, folderId = ?, updatedAt = ? WHERE id = ?",
-    note.title,
-    note.content,
-    note.folderId,
+    safeTitle,
+    safeContent,
+    safeFolderId,
     updatedAt,
     note.id
   );
 
-  return { ...note, updatedAt };
+  return { ...note, title: safeTitle, content: safeContent, folderId: safeFolderId, updatedAt };
 };
 
 export const getNotesByFolder = async (folderId: ID | null): Promise<Note[]> => {

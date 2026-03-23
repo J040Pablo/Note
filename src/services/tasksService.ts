@@ -1,5 +1,10 @@
 import { getDB, runDbWrite, withDbWriteTransaction } from "@db/database";
 import type { Task, ID } from "@models/types";
+import {
+  scheduleTaskNotifications,
+  cancelTaskNotifications,
+  rescheduleTaskNotifications,
+} from "@services/notificationService";
 
 export type TaskPriority = 0 | 1 | 2; // 0 = low, 1 = medium, 2 = high
 
@@ -34,13 +39,15 @@ export const weekdayFromDateKey = (dateKey: string): number => {
   return new Date(y, (m || 1) - 1, d || 1).getDay();
 };
 
-const parseTask = (row: Task & { repeatDays?: string; completedDates?: string }): Task => ({
+const parseTask = (row: Task & { repeatDays?: string; completedDates?: string; notificationIds?: string }): Task => ({
   ...row,
   completed: !!row.completed,
   priority: row.priority as TaskPriority,
   scheduledDate: row.scheduledDate ?? null,
+  scheduledTime: row.scheduledTime ?? null,
   repeatDays: safeJsonNumberArray(row.repeatDays),
-  completedDates: safeJsonArray(row.completedDates)
+  completedDates: safeJsonArray(row.completedDates),
+  notificationIds: safeJsonArray(row.notificationIds),
 });
 
 export const isTaskCompletedForDate = (task: Task, dateKey: string): boolean => {
@@ -68,6 +75,7 @@ export const createTask = async (payload: {
   priority: TaskPriority;
   noteId?: ID | null;
   scheduledDate?: string | null;
+  scheduledTime?: string | null;
   repeatDays?: number[];
 }): Promise<Task> => {
   return withDbWriteTransaction("createTask", async (db) => {
@@ -79,20 +87,8 @@ export const createTask = async (payload: {
     );
     const orderIndex = Number(nextOrderRow?.next ?? 1);
 
-    await db.runAsync(
-      "INSERT INTO tasks (id, text, completed, orderIndex, priority, noteId, scheduledDate, repeatDays, completedDates) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      id,
-      payload.text,
-      0,
-      orderIndex,
-      payload.priority,
-      payload.noteId ?? null,
-      payload.scheduledDate ?? null,
-      JSON.stringify(repeatDays),
-      JSON.stringify(completedDates)
-    );
-
-    return {
+    // Create task object for notification scheduling
+    const task: Task = {
       id,
       text: payload.text,
       completed: false,
@@ -100,14 +96,43 @@ export const createTask = async (payload: {
       priority: payload.priority,
       noteId: payload.noteId ?? null,
       scheduledDate: payload.scheduledDate ?? null,
+      scheduledTime: payload.scheduledTime ?? null,
       repeatDays,
-      completedDates
+      completedDates,
+      notificationIds: [],
     };
+
+    // Schedule notifications if task has a scheduled date
+    if (payload.scheduledDate) {
+      task.notificationIds = await scheduleTaskNotifications(task);
+    }
+
+    await db.runAsync(
+      "INSERT INTO tasks (id, text, completed, orderIndex, priority, noteId, scheduledDate, scheduledTime, repeatDays, completedDates, notificationIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      id,
+      payload.text,
+      0,
+      orderIndex,
+      payload.priority,
+      payload.noteId ?? null,
+      payload.scheduledDate ?? null,
+      payload.scheduledTime ?? null,
+      JSON.stringify(repeatDays),
+      JSON.stringify(completedDates),
+      JSON.stringify(task.notificationIds ?? [])
+    );
+
+    return task;
   });
 };
 
 export const toggleTask = async (task: Task): Promise<Task> => {
   const updated = { ...task, completed: !task.completed };
+
+  // Cancel notifications when task is marked as completed
+  if (updated.completed && task.notificationIds && task.notificationIds.length > 0) {
+    await cancelTaskNotifications(task.notificationIds);
+  }
 
   await runDbWrite("UPDATE tasks SET completed = ? WHERE id = ?", updated.completed ? 1 : 0, task.id);
   return updated;
@@ -122,16 +147,26 @@ export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Ta
   }
 
   const completedDates = new Set(task.completedDates ?? []);
-  if (completedDates.has(dateKey)) {
-    completedDates.delete(dateKey);
-  } else {
+  const isCompleting = !completedDates.has(dateKey);
+  
+  if (isCompleting) {
     completedDates.add(dateKey);
+  } else {
+    completedDates.delete(dateKey);
   }
 
   const updated: Task = {
     ...task,
     completedDates: Array.from(completedDates)
   };
+
+  // Cancel notifications when all instances are completed
+  if (isCompleting && task.notificationIds && task.notificationIds.length > 0) {
+    // For recurring tasks, only cancel if this is the only instance
+    if (repeats.length === 0) {
+      await cancelTaskNotifications(task.notificationIds);
+    }
+  }
 
   await runDbWrite(
     "UPDATE tasks SET completedDates = ? WHERE id = ?",
@@ -150,28 +185,57 @@ export const updateTaskPriority = async (task: Task, priority: TaskPriority): Pr
 };
 
 export const updateTask = async (task: Task): Promise<Task> => {
+  // Reschedule notifications if scheduledDate changed or task was unmarked as completed
+  let updatedTask = { ...task };
+  
+  if (task.scheduledDate && !task.completed) {
+    // Reschedule notifications (this cancels old ones and creates new ones)
+    updatedTask.notificationIds = await rescheduleTaskNotifications(task);
+  } else if (task.completed && task.notificationIds && task.notificationIds.length > 0) {
+    // Cancel notifications if task is marked as completed
+    await cancelTaskNotifications(task.notificationIds);
+    updatedTask.notificationIds = [];
+  }
+
   await runDbWrite(
-    "UPDATE tasks SET text = ?, completed = ?, orderIndex = ?, priority = ?, noteId = ?, scheduledDate = ?, repeatDays = ?, completedDates = ? WHERE id = ?",
-    task.text,
-    task.completed ? 1 : 0,
-    task.orderIndex,
-    task.priority,
-    task.noteId ?? null,
-    task.scheduledDate ?? null,
-    JSON.stringify(task.repeatDays ?? []),
-    JSON.stringify(task.completedDates ?? []),
-    task.id
+    "UPDATE tasks SET text = ?, completed = ?, orderIndex = ?, priority = ?, noteId = ?, scheduledDate = ?, scheduledTime = ?, repeatDays = ?, completedDates = ?, notificationIds = ? WHERE id = ?",
+    updatedTask.text,
+    updatedTask.completed ? 1 : 0,
+    updatedTask.orderIndex,
+    updatedTask.priority,
+    updatedTask.noteId ?? null,
+    updatedTask.scheduledDate ?? null,
+    updatedTask.scheduledTime ?? null,
+    JSON.stringify(updatedTask.repeatDays ?? []),
+    JSON.stringify(updatedTask.completedDates ?? []),
+    JSON.stringify(updatedTask.notificationIds ?? []),
+    updatedTask.id
   );
-  return task;
+  return updatedTask;
 };
 
 export const deleteTask = async (taskId: ID): Promise<void> => {
+  // First get task to retrieve notification IDs
+  const db = await getDB();
+  const row = await db.getFirstAsync<Task & { notificationIds?: string }>(
+    "SELECT * FROM tasks WHERE id = ?",
+    taskId
+  );
+  
+  // Cancel notifications before deleting
+  if (row && row.notificationIds) {
+    const notificationIds = safeJsonArray(row.notificationIds);
+    if (notificationIds.length > 0) {
+      await cancelTaskNotifications(notificationIds);
+    }
+  }
+  
   await runDbWrite("DELETE FROM tasks WHERE id = ?", taskId);
 };
 
 export const getAllTasks = async (): Promise<Task[]> => {
   const db = await getDB();
-  const rows = await db.getAllAsync<Task & { repeatDays?: string; completedDates?: string }>(
+  const rows = await db.getAllAsync<Task & { repeatDays?: string; completedDates?: string; notificationIds?: string }>(
     "SELECT * FROM tasks ORDER BY orderIndex ASC, id DESC"
   );
   return rows.map(parseTask);

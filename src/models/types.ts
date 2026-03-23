@@ -183,10 +183,14 @@ export interface Task {
   noteId: ID | null;
   /** Optional scheduled day (YYYY-MM-DD) */
   scheduledDate?: string | null;
+  /** Optional scheduled time (HH:mm) */
+  scheduledTime?: string | null;
   /** Weekdays where task repeats. 0=Sun ... 6=Sat */
   repeatDays?: number[];
   /** Completed day keys (YYYY-MM-DD) used by recurring/scheduled tasks */
   completedDates?: string[];
+  /** Notification IDs for scheduled reminders (night before + morning of) */
+  notificationIds?: string[];
 }
 
 export type AppFileType = "pdf" | "image" | "document";
