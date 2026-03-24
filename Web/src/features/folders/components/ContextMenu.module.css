@@ -1,0 +1,59 @@
+.viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+}
+
+.menu {
+  position: fixed;
+  width: 220px;
+  border-radius: 14px;
+  border: 1px solid #263244;
+  background: #0b1220;
+  box-shadow: 0 20px 36px rgba(2, 6, 23, 0.56);
+  padding: 6px;
+  display: grid;
+  gap: 2px;
+  animation: menuIn 170ms ease;
+  transform-origin: top right;
+}
+
+@keyframes menuIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.item {
+  height: 36px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #dbe7ff;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  padding: 0 10px;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.item:hover {
+  background: #111827;
+  color: #f8fafc;
+}
+
+.danger {
+  color: #fca5a5;
+}
+
+.danger:hover {
+  background: #3f1018;
+  color: #fecaca;
+}

@@ -1,0 +1,154 @@
+.searchShell {
+  width: min(920px, 100%);
+  display: grid;
+  gap: 14px;
+}
+
+.searchInputWrap {
+  height: 56px;
+  border-radius: 18px;
+  border: 1px solid #1f2937;
+  background: #111317;
+  color: #64748b;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color 170ms ease, box-shadow 170ms ease;
+}
+
+.searchInputWrap:focus-within {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px #3b82f62a;
+}
+
+.searchInputWrap input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  outline: none;
+  color: #e2e8f0;
+  font-size: 1.1rem;
+}
+
+.searchInputWrap input::placeholder {
+  color: #6b7280;
+}
+
+.chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid #1f2937;
+  background: #111317;
+  color: #a1a1aa;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease,
+    transform 160ms ease;
+}
+
+.chip:hover {
+  transform: translateY(-1px);
+  color: #e2e8f0;
+  border-color: #273244;
+}
+
+.chipActive {
+  color: #f8fafc;
+  background: #1f2937;
+  border-color: #334155;
+}
+
+.emptyState {
+  min-height: 320px;
+  display: grid;
+  place-items: center;
+  color: #71717a;
+  font-size: 1.95rem;
+  text-align: center;
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+.results {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.resultItem {
+  border-radius: 14px;
+  border: 1px solid #1f2937;
+  background: #0f172a;
+  padding: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  transition: border-color 170ms ease, transform 170ms ease, background-color 170ms ease;
+}
+
+.resultItem:hover {
+  border-color: #334155;
+  background: #101b2f;
+  transform: translateY(-1px);
+}
+
+.resultMain h3 {
+  margin: 6px 0 0;
+  font-size: 1.02rem;
+  color: #f8fafc;
+}
+
+.resultMain p {
+  margin: 6px 0 0;
+  color: #94a3b8;
+  max-width: 640px;
+}
+
+.resultType {
+  text-transform: capitalize;
+  display: inline-flex;
+  width: fit-content;
+  border: 1px solid #1e3a8a;
+  background: #172554;
+  color: #93c5fd;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.74rem;
+}
+
+.resultMeta {
+  display: grid;
+  gap: 4px;
+  text-align: right;
+  color: #64748b;
+  font-size: 0.84rem;
+  min-width: 180px;
+}
+
+@media (max-width: 840px) {
+  .resultItem {
+    display: grid;
+    gap: 10px;
+  }
+
+  .resultMeta {
+    min-width: 0;
+    text-align: left;
+  }
+}

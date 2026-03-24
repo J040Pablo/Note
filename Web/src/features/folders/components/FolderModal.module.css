@@ -1,0 +1,237 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.64);
+  display: grid;
+  place-items: center;
+  z-index: 120;
+  padding: 24px;
+}
+
+.modal {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 56px);
+  overflow: auto;
+  background: #0f172a;
+  border: 1px solid #263244;
+  border-radius: 20px;
+  box-shadow: 0 28px 48px rgba(2, 6, 23, 0.58);
+}
+
+.header {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid #1f2a3a;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 1.6rem;
+  color: #f8fafc;
+}
+
+.header p {
+  margin: 6px 0 0;
+  color: #94a3b8;
+}
+
+.closeButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid #2a3a52;
+  background: #111827;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.body {
+  padding: 18px 20px;
+  display: grid;
+  gap: 14px;
+}
+
+.field {
+  display: grid;
+  gap: 8px;
+}
+
+.field span {
+  color: #cbd5e1;
+}
+
+.field input,
+.field textarea {
+  width: 100%;
+  border: 1px solid #263244;
+  border-radius: 12px;
+  background: #0b1220;
+  color: #f8fafc;
+  font: inherit;
+  padding: 11px 12px;
+  outline: none;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus {
+  border-color: #3b82f6;
+}
+
+.uploadGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.uploadField {
+  display: grid;
+  gap: 8px;
+}
+
+.uploadField > span {
+  color: #cbd5e1;
+}
+
+.uploadField input {
+  display: none;
+}
+
+.uploadButton {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px dashed #334155;
+  background: #111827;
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.previewSmall,
+.previewBanner {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid #263244;
+  object-fit: cover;
+}
+
+.previewSmall {
+  max-height: 120px;
+}
+
+.previewBanner {
+  max-height: 140px;
+}
+
+.colorSection {
+  display: grid;
+  gap: 10px;
+}
+
+.colorSection > span {
+  color: #cbd5e1;
+}
+
+.colorRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.colorSwatch {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #0f172a;
+  box-shadow: 0 0 0 1px #334155;
+  cursor: pointer;
+}
+
+.colorSwatchSelected {
+  box-shadow: 0 0 0 2px #f8fafc;
+}
+
+.wheelPicker {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #2a3a52;
+  background: #111827;
+}
+
+.wheelPicker input {
+  width: 28px;
+  height: 28px;
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.colorPreview {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #94a3b8;
+}
+
+.previewDot {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 1px solid #f8fafc40;
+}
+
+.error {
+  margin: 0;
+  color: #fca5a5;
+  font-weight: 600;
+}
+
+.footer {
+  padding: 14px 20px 18px;
+  border-top: 1px solid #1f2a3a;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cancelButton,
+.createButton {
+  height: 40px;
+  border-radius: 11px;
+  border: 1px solid;
+  padding: 0 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cancelButton {
+  border-color: #2a3a52;
+  background: #111827;
+  color: #cbd5e1;
+}
+
+.createButton {
+  border-color: #3b82f6;
+  background: #2563eb;
+  color: #eff6ff;
+}
+
+@media (max-width: 860px) {
+  .uploadGrid {
+    grid-template-columns: 1fr;
+  }
+}

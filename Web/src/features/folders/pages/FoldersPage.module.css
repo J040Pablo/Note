@@ -1,0 +1,311 @@
+.createButton {
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid #f8fafc;
+  background: #f8fafc;
+  color: #020617;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 180ms ease, filter 180ms ease;
+}
+
+.createButton:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+}
+
+.backButton {
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid #273244;
+  background: #0b1220;
+  color: #dbe7ff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: border-color 170ms ease, background-color 170ms ease,
+    transform 170ms ease;
+}
+
+.backButton:hover {
+  border-color: #3b82f6;
+  background: #111827;
+  transform: translateX(-1px);
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.meta {
+  color: #94a3b8;
+  font-size: 0.95rem;
+}
+
+.actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.contentViewport {
+  position: relative;
+  overflow: hidden;
+  min-height: 320px;
+}
+
+.content {
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.contentGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.contentList {
+  display: grid;
+  gap: 12px;
+}
+
+.emptyState {
+  min-height: 220px;
+  border-radius: 14px;
+  border: 1px dashed #273244;
+  display: grid;
+  place-items: center;
+  color: #94a3b8;
+  text-align: center;
+  padding: 20px;
+}
+
+.emptyState p {
+  margin: 0;
+  font-size: 1.02rem;
+  color: #cbd5e1;
+}
+
+.emptyState span {
+  margin-top: 7px;
+  display: block;
+}
+
+.leavingForward {
+  animation: leaveForward 190ms ease both;
+}
+
+.enteringForward {
+  animation: enterForward 190ms ease both;
+}
+
+.leavingBackward {
+  animation: leaveBackward 190ms ease both;
+}
+
+.enteringBackward {
+  animation: enterBackward 190ms ease both;
+}
+
+@keyframes leaveForward {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+}
+
+@keyframes enterForward {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes leaveBackward {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+}
+
+@keyframes enterBackward {
+  from {
+    transform: translateX(-24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 145;
+  background: rgba(2, 6, 23, 0.6);
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.inlineModal {
+  width: min(580px, 100%);
+  border-radius: 18px;
+  border: 1px solid #263244;
+  background: #0b1220;
+  box-shadow: 0 24px 42px rgba(2, 6, 23, 0.62);
+}
+
+.inlineHeader {
+  height: 62px;
+  padding: 0 16px;
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.inlineHeader h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #f8fafc;
+}
+
+.iconButton {
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid #263244;
+  background: #111827;
+  color: #dbe7ff;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.modalBody {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.modalField {
+  display: grid;
+  gap: 6px;
+}
+
+.modalField > span {
+  color: #cbd5e1;
+  font-size: 0.95rem;
+}
+
+.modalField input,
+.modalField select,
+.modalField textarea {
+  width: 100%;
+  border: 1px solid #263244;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #eff6ff;
+  padding: 10px 11px;
+  font: inherit;
+  outline: none;
+}
+
+.modalField textarea {
+  resize: vertical;
+}
+
+.modalField input:focus,
+.modalField select:focus,
+.modalField textarea:focus {
+  border-color: #3b82f6;
+}
+
+.previewGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.previewGrid img {
+  width: 100%;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #263244;
+}
+
+.inlineFooter {
+  height: 66px;
+  border-top: 1px solid #1f2937;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cancelInline,
+.saveInline {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.cancelInline {
+  background: #111827;
+  border-color: #263244;
+  color: #cbd5e1;
+}
+
+.saveInline {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #eff6ff;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+  .contentGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions {
+    justify-content: space-between;
+  }
+}

@@ -1,0 +1,21 @@
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.title {
+  margin: 0;
+  font-size: 2rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: #f8fafc;
+}
+
+.subtitle {
+  margin: 8px 0 0;
+  color: #94a3b8;
+  font-size: 0.95rem;
+}

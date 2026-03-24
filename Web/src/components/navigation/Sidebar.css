@@ -1,0 +1,31 @@
+.sidebar {
+  width: 240px;
+  min-height: 100vh;
+  background: #1f2937;
+  color: #ffffff;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.sidebar__logo h1 {
+  font-size: 1.2rem;
+  margin: 0 0 1rem;
+}
+
+.sidebar__menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.sidebar__menu a {
+  color: #e5e7eb;
+  text-decoration: none;
+}
+
+.sidebar__menu a:hover {
+  color: #ffffff;
+}

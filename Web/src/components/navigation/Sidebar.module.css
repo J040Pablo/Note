@@ -1,0 +1,145 @@
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 252px;
+  padding: 20px 14px;
+  border-right: 1px solid #1f2937;
+  background: #0b1019;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  transition: width 200ms ease;
+  z-index: 20;
+}
+
+.sidebarCollapsed {
+  width: 84px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px;
+}
+
+.edgeToggleButton {
+  position: absolute;
+  top: 20px;
+  right: -14px;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid #1f2937;
+  background: #111827;
+  color: #cbd5e1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(2, 6, 23, 0.42);
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease,
+    transform 180ms ease;
+}
+
+.edgeToggleButton:hover {
+  background: #1f2937;
+  border-color: #3b82f6;
+  color: #f8fafc;
+  transform: translateX(1px);
+}
+
+.edgeToggleIcon {
+  display: inline-grid;
+  place-items: center;
+  transform: rotate(0deg);
+  transition: transform 190ms ease;
+}
+
+.edgeToggleIconExpanded {
+  transform: rotate(180deg);
+}
+
+.brandMark {
+  width: 34px;
+  height: 34px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(140deg, #2563eb, #7c3aed);
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.brandTitle {
+  margin: 0;
+  color: #f9fafb;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.brandSubtitle {
+  margin: 2px 0 0;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: #cbd5e1;
+  transition: background-color 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.navItemCollapsed {
+  justify-content: center;
+  padding: 0;
+}
+
+.navItem:hover {
+  background: #111827;
+  color: #f3f4f6;
+  transform: translateX(1px);
+}
+
+.navItemActive {
+  background: #111827;
+  color: #ffffff;
+  box-shadow: inset 0 0 0 1px #1e293b;
+}
+
+.icon {
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.navLabel {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (max-width: 1080px) {
+  .sidebar {
+    width: 224px;
+  }
+
+  .sidebarCollapsed {
+    width: 76px;
+  }
+}

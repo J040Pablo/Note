@@ -1,0 +1,62 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  border: 0;
+  background: rgba(2, 6, 23, 0.2);
+  backdrop-filter: blur(1px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 190ms ease;
+  z-index: 120;
+}
+
+.backdropVisible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.root {
+  position: fixed;
+  right: 32px;
+  bottom: 28px;
+  z-index: 130;
+  display: grid;
+  justify-items: end;
+  gap: 10px;
+}
+
+.trigger {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  border: 1px solid #3b82f6;
+  background: linear-gradient(180deg, #3b82f6, #2563eb);
+  color: #eff6ff;
+  box-shadow: 0 16px 32px rgba(37, 99, 235, 0.45);
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  transition: transform 190ms ease, box-shadow 190ms ease, filter 190ms ease;
+}
+
+.trigger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 36px rgba(37, 99, 235, 0.5);
+  filter: brightness(1.05);
+}
+
+.triggerOpen {
+  transform: rotate(90deg);
+}
+
+.iconWrap {
+  display: inline-grid;
+  place-items: center;
+}
+
+@media (max-width: 1100px) {
+  .root {
+    right: 22px;
+    bottom: 20px;
+  }
+}

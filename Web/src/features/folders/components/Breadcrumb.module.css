@@ -1,0 +1,44 @@
+.root {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.segment {
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  cursor: pointer;
+  transition: background-color 170ms ease, color 170ms ease, border-color 170ms ease;
+}
+
+.segment:hover:not(:disabled) {
+  color: #e2e8f0;
+  background: #111827;
+  border-color: #1f2937;
+}
+
+.segment:disabled {
+  cursor: default;
+}
+
+.current {
+  color: #f8fafc;
+  background: #111827;
+  border-color: #273244;
+}
+
+.separator {
+  color: #475569;
+  display: inline-grid;
+  place-items: center;
+}

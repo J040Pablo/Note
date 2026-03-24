@@ -1,0 +1,230 @@
+.grid {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  align-items: start;
+}
+
+.card {
+  background: #0f172a;
+  border: 1px solid #1f2937;
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.35);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.cardHeader h2 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+}
+
+.badge {
+  font-size: 12px;
+  border-radius: 999px;
+  padding: 4px 8px;
+  color: #0f172a;
+  background: #93c5fd;
+  font-weight: 700;
+}
+
+.muted {
+  margin: 0;
+  color: #94a3b8;
+}
+
+.pinnedGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+}
+
+.pinnedCard {
+  border: 1px solid #243142;
+  border-radius: 12px;
+  background: #0b1220;
+  text-align: left;
+  padding: 10px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+}
+
+.pinnedCard:hover {
+  transform: translateY(-1px);
+  border-color: #3b82f6;
+  background: #0f172a;
+}
+
+.pinnedTopRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pinnedTitle {
+  margin: 10px 0 4px;
+  font-weight: 700;
+}
+
+.pinnedSubtitle {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.progressMeta {
+  margin-bottom: 8px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.progressTrack {
+  height: 8px;
+  width: 100%;
+  border-radius: 999px;
+  background: #1e293b;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #3b82f6, #22d3ee);
+  transition: width 180ms ease;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.listItem,
+.listItemStatic {
+  border-radius: 12px;
+  padding: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+}
+
+.listItem {
+  border: 1px solid #243142;
+  background: #0b1220;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+
+.listItem:hover {
+  border-color: #334155;
+  transform: translateY(-1px);
+}
+
+.listItemStatic {
+  border: 1px solid #1f2a3a;
+  background: #0b1220;
+}
+
+.noteItem {
+  align-items: flex-start;
+}
+
+.noteTitle,
+.folderName {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.notePreview,
+.folderMeta {
+  margin: 4px 0 0;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.checkbox {
+  width: 20px;
+  height: 20px;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: #0f172a;
+  background: #e2e8f0;
+}
+
+.taskDone {
+  text-decoration: line-through;
+  color: #94a3b8;
+}
+
+.pinAction {
+  opacity: 0.9;
+  cursor: pointer;
+  transition: transform 140ms ease;
+}
+
+.pinAction:hover {
+  transform: scale(1.08);
+}
+
+.quickNoteWrap {
+  display: grid;
+  gap: 10px;
+}
+
+.quickNoteInput {
+  width: 100%;
+  min-height: 110px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid #243142;
+  background: #0b1220;
+  color: #e2e8f0;
+  padding: 12px;
+  font: inherit;
+  outline: none;
+}
+
+.quickNoteInput:focus {
+  border-color: #3b82f6;
+}
+
+.primaryButton {
+  height: 40px;
+  border-radius: 10px;
+  border: 1px solid #2563eb;
+  background: #1d4ed8;
+  color: #eff6ff;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 160ms ease, transform 160ms ease;
+}
+
+.primaryButton:hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+@media (max-width: 1120px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

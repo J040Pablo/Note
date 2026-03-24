@@ -1,0 +1,33 @@
+.root {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #273244;
+  border-radius: 12px;
+  padding: 4px;
+  background: #0b1220;
+  gap: 4px;
+}
+
+.button {
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #94a3b8;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px;
+  cursor: pointer;
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+.button:hover {
+  color: #e2e8f0;
+  background: #111827;
+}
+
+.active {
+  color: #f8fafc;
+  background: #1f2937;
+}

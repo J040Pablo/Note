@@ -1,0 +1,90 @@
+.root {
+  position: relative;
+}
+
+.trigger {
+  height: 42px;
+  border-radius: 11px;
+  border: 1px solid #263244;
+  background: #0f172a;
+  color: #dbeafe;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 180ms ease, background-color 180ms ease;
+}
+
+.trigger:hover {
+  border-color: #3b82f6;
+  background: #111f34;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 280px;
+  background: #0f172a;
+  border: 1px solid #243142;
+  border-radius: 14px;
+  box-shadow: 0 16px 36px rgba(2, 6, 23, 0.42);
+  padding: 14px;
+  z-index: 20;
+  display: grid;
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.label {
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.searchWrap {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #263244;
+  background: #0b1220;
+  color: #94a3b8;
+  padding: 0 10px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.searchWrap input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #e2e8f0;
+  font: inherit;
+}
+
+.field select {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #263244;
+  background: #0b1220;
+  color: #e2e8f0;
+  padding: 0 10px;
+}
+
+.resetButton {
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid #2a3a52;
+  background: #111827;
+  color: #cbd5e1;
+  cursor: pointer;
+}
+
+.resetButton:hover {
+  border-color: #3b82f6;
+}

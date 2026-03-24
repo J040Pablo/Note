@@ -1,0 +1,20 @@
+.qrButton {
+  height: 40px;
+  border-radius: 11px;
+  border: 1px solid #263244;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 160ms ease, transform 160ms ease, background-color 160ms ease;
+}
+
+.qrButton:hover {
+  border-color: #3b82f6;
+  background: #111f34;
+  transform: translateY(-1px);
+}
