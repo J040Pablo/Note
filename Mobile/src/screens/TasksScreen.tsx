@@ -1,0 +1,1074 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, Vibration, TouchableOpacity, Platform } from "react-native";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import { useFeedback } from "@components/FeedbackProvider";
+import { Screen } from "@components/Layout";
+import { Text } from "@components/Text";
+import { PrimaryButton } from "@components/PrimaryButton";
+import { ContextActionMenu } from "@components/ContextActionMenu";
+import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
+import { useTheme } from "@hooks/useTheme";
+import { useTasksStore } from "@store/useTasksStore";
+import {
+  createTask,
+  deleteTask,
+  getAllTasks,
+  isTaskCompletedForDate,
+  reorderTasks,
+  shouldAppearOnDate,
+  toDateKey,
+  toggleTaskForDate,
+  updateTask,
+  updateTaskPriority,
+  weekdayFromDateKey,
+  TaskPriority
+} from "@services/tasksService";
+import {
+  getSortPreference,
+  saveSortPreference
+} from "@services/appMetaService";
+import { Ionicons } from "@expo/vector-icons";
+import type { Task } from "@models/types";
+import { useNavigation, useRoute } from "@react-navigation/native";
+import type { RouteProp } from "@react-navigation/native";
+import type { TabsParamList } from "@navigation/RootNavigator";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
+import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
+
+type TasksRoute = RouteProp<TabsParamList, "Tasks">;
+type TasksNav = BottomTabNavigationProp<TabsParamList, "Tasks">;
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+const buildMonthCells = (monthDate: Date): Date[] => {
+  const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const start = new Date(first);
+  start.setDate(first.getDate() - first.getDay());
+
+  return Array.from({ length: 42 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+};
+
+const sameMonth = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+
+const mergeDateAndTime = (date: Date, time: Date): Date => {
+  const next = new Date(date);
+  next.setHours(time.getHours());
+  next.setMinutes(time.getMinutes());
+  next.setSeconds(0, 0);
+  return next;
+};
+
+const parseDateTime = (dateKey?: string | null, time?: string | null): Date => {
+  const now = new Date();
+  if (!dateKey) return now;
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const parsed = new Date(y, (m || 1) - 1, d || 1);
+  if (time) {
+    const [hh, mm] = time.split(":").map(Number);
+    parsed.setHours(Number.isFinite(hh) ? hh : 8, Number.isFinite(mm) ? mm : 0, 0, 0);
+  } else {
+    parsed.setHours(8, 0, 0, 0);
+  }
+  return parsed;
+};
+
+const formatUiDate = (value: Date): string => {
+  return value.toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const formatUiTime = (value: Date): string => {
+  return value.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+};
+
+const toTimeKey = (date: Date): string => {
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  return `${hh}:${mm}`;
+};
+
+type TaskSortMode = "custom" | "recent" | "name_asc" | "name_desc";
+const TASK_SORT_SCOPE = "tasks.sort";
+
+const TasksScreen: React.FC = () => {
+  const { theme } = useTheme();
+  const route = useRoute<TasksRoute>();
+  const navigation = useNavigation<TasksNav>();
+  const { showToast } = useFeedback();
+  const tasksMap = useTasksStore((s) => s.tasks);
+  const setTasks = useTasksStore((s) => s.setTasks);
+  const upsertTask = useTasksStore((s) => s.upsertTask);
+  const removeTask = useTasksStore((s) => s.removeTask);
+
+  const [newText, setNewText] = useState("");
+  const [priority, setPriority] = useState<TaskPriority>(1);
+  const [repeatDays, setRepeatDays] = useState<number[]>([]);
+  const [scheduledDate, setScheduledDate] = useState<string>(toDateKey(new Date()));
+  const [scheduledAt, setScheduledAt] = useState<Date>(() => {
+    const now = new Date();
+    now.setHours(8, 0, 0, 0);
+    return now;
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<string>(toDateKey(new Date()));
+  const [monthCursor, setMonthCursor] = useState<Date>(new Date());
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [sortMode, setSortMode] = useState<TaskSortMode>("custom");
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const [taskDeleting, setTaskDeleting] = useState(false);
+  const taskSubmittingRef = useRef(false);
+
+  useEffect(() => {
+    (async () => {
+      const [all, savedSort] = await Promise.all([
+        getAllTasks(),
+        getSortPreference<TaskSortMode>(TASK_SORT_SCOPE, "custom")
+      ]);
+      setTasks(all);
+      setSortMode(savedSort);
+    })();
+  }, [setTasks]);
+
+  useEffect(() => {
+    const focusTaskId = route.params?.focusTaskId;
+    const targetDate = route.params?.dateKey;
+    if (route.params?.openCreate) {
+      openCreateModal();
+      navigation.setParams({ openCreate: undefined });
+      return;
+    }
+    if (targetDate) {
+      setSelectedDate(targetDate);
+      return;
+    }
+    if (!focusTaskId) return;
+    const task = tasksMap[focusTaskId];
+    if (!task) return;
+    if (task.scheduledDate) {
+      setSelectedDate(task.scheduledDate);
+    } else {
+      setSelectedDate(toDateKey(new Date()));
+    }
+  }, [navigation, route.params?.dateKey, route.params?.focusTaskId, route.params?.openCreate, tasksMap]);
+
+  const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
+
+  const monthCells = useMemo(() => buildMonthCells(monthCursor), [monthCursor]);
+
+  const tasksForSelectedDate = useMemo(
+    () => tasks.filter((task) => shouldAppearOnDate(task, selectedDate)),
+    [selectedDate, tasks]
+  );
+
+  const sortedTasksForSelectedDate = useMemo(() => {
+    if (sortMode === "name_asc") return [...tasksForSelectedDate].sort((a, b) => a.text.localeCompare(b.text));
+    if (sortMode === "name_desc") return [...tasksForSelectedDate].sort((a, b) => b.text.localeCompare(a.text));
+    if (sortMode === "recent") {
+      return [...tasksForSelectedDate].sort((a, b) => {
+        const ad = a.scheduledDate ? Number(a.scheduledDate.replace(/-/g, "")) : 0;
+        const bd = b.scheduledDate ? Number(b.scheduledDate.replace(/-/g, "")) : 0;
+        if (bd !== ad) return bd - ad;
+        return Number(b.id) - Number(a.id);
+      });
+    }
+    return [...tasksForSelectedDate].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  }, [sortMode, tasksForSelectedDate]);
+
+  const completedToday = useMemo(
+    () => tasksForSelectedDate.filter((task) => isTaskCompletedForDate(task, selectedDate)).length,
+    [selectedDate, tasksForSelectedDate]
+  );
+
+  const progressPct =
+    tasksForSelectedDate.length === 0 ? 0 : Math.round((completedToday / tasksForSelectedDate.length) * 100);
+
+  const dayHasTasks = useMemo(() => {
+    const map = new Set<string>();
+    monthCells.forEach((d) => {
+      const key = toDateKey(d);
+      if (tasks.some((task) => shouldAppearOnDate(task, key))) {
+        map.add(key);
+      }
+    });
+    return map;
+  }, [monthCells, tasks]);
+
+  const openCreateModal = () => {
+    setEditingTask(null);
+    setNewText("");
+    setPriority(1);
+    setRepeatDays([]);
+    setScheduledDate(selectedDate);
+    setScheduledAt(parseDateTime(selectedDate, "08:00"));
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+    setShowModal(true);
+  };
+
+  const openEditModal = (task: Task) => {
+    setEditingTask(task);
+    setNewText(task.text);
+    setPriority((task.priority as TaskPriority) ?? 1);
+    setRepeatDays(task.repeatDays ?? []);
+    setScheduledDate(task.scheduledDate ?? selectedDate);
+    setScheduledAt(parseDateTime(task.scheduledDate ?? selectedDate, task.scheduledTime));
+    setShowDatePicker(false);
+    setShowTimePicker(false);
+    setShowModal(true);
+  };
+
+  const handleTaskLongPress = useCallback((task: Task) => {
+    Vibration.vibrate(10);
+    setSelectedTask(task);
+  }, []);
+
+  return (
+    <Screen>
+      <View style={styles.headerRow}>
+        <View>
+          <Text variant="title">Tasks</Text>
+          <Text muted>Daily productivity</Text>
+        </View>
+        <View style={styles.headerActions}>
+          <Pressable
+            onPress={() => setShowSortMenu(true)}
+            style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+          >
+            <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
+          </Pressable>
+          <PrimaryButton
+            label="+ Task"
+            onPress={openCreateModal}
+          />
+        </View>
+      </View>
+
+      <View style={[styles.progressCard, { backgroundColor: theme.colors.card }]}> 
+        <View style={styles.progressHeader}>
+          <Text variant="subtitle">Today&apos;s progress</Text>
+          <Text muted>
+            {completedToday} / {tasksForSelectedDate.length}
+          </Text>
+        </View>
+        <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}> 
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${progressPct}%`,
+                backgroundColor: theme.colors.primary
+              }
+            ]}
+          />
+        </View>
+        <Text muted style={styles.progressMeta}>{progressPct}% completed</Text>
+      </View>
+
+      <View style={[styles.calendarCard, { backgroundColor: theme.colors.card }]}> 
+        <View style={styles.calendarHeader}>
+          <Pressable
+            onPress={() =>
+              setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+            }
+            style={styles.monthArrow}
+          >
+            <Ionicons name="chevron-back" size={18} color={theme.colors.textPrimary} />
+          </Pressable>
+          <Text variant="subtitle">
+            {monthCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+          </Text>
+          <Pressable
+            onPress={() =>
+              setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+            }
+            style={styles.monthArrow}
+          >
+            <Ionicons name="chevron-forward" size={18} color={theme.colors.textPrimary} />
+          </Pressable>
+        </View>
+
+        <View style={styles.weekHeaderRow}>
+          {WEEKDAYS.map((day) => (
+            <Text key={day} muted style={styles.weekHeaderLabel}>
+              {day}
+            </Text>
+          ))}
+        </View>
+
+        <View style={styles.grid}>
+          {monthCells.map((day) => {
+            const key = toDateKey(day);
+            const isSelected = key === selectedDate;
+            const inMonth = sameMonth(day, monthCursor);
+            const hasTasks = dayHasTasks.has(key);
+
+            return (
+              <Pressable
+                key={key}
+                onPress={() => setSelectedDate(key)}
+                style={[
+                  styles.dayCell,
+                  isSelected && { backgroundColor: theme.colors.primaryAlpha20 }
+                ]}
+              >
+                <Text
+                  style={{
+                    color: isSelected
+                      ? theme.colors.primary
+                      : inMonth
+                      ? theme.colors.textPrimary
+                      : theme.colors.textSecondary,
+                    fontWeight: isSelected ? "700" : "400"
+                  }}
+                >
+                  {day.getDate()}
+                </Text>
+                {hasTasks && (
+                  <View style={[styles.dayDot, { backgroundColor: theme.colors.primary }]} />
+                )}
+              </Pressable>
+            );
+          })}
+        </View>
+      </View>
+
+      <View style={styles.dayTitleRow}>
+        <Text variant="subtitle">{selectedDate === toDateKey(new Date()) ? "Today’s Tasks" : `Tasks • ${selectedDate}`}</Text>
+      </View>
+
+      <DraggableFlatList
+        data={sortedTasksForSelectedDate}
+        keyExtractor={(item) => item.id}
+        activationDistance={12}
+        initialNumToRender={12}
+        maxToRenderPerBatch={10}
+        windowSize={9}
+        removeClippedSubviews
+        onDragEnd={async ({ data }) => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setSortMode("custom");
+          await saveSortPreference(TASK_SORT_SCOPE, "custom");
+          await reorderTasks(data.map((x) => x.id));
+          const refreshed = await getAllTasks();
+          setTasks(refreshed);
+        }}
+        ItemSeparatorComponent={() => (
+          <View
+            style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border }}
+          />
+        )}
+        renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => (
+          <Pressable
+            style={[
+              styles.taskRow,
+              selectedTask?.id === item.id && {
+                borderWidth: 2,
+                borderColor: theme.colors.secondary,
+                borderRadius: 10,
+                paddingHorizontal: 8
+              },
+              isActive && {
+                backgroundColor: theme.colors.card,
+                elevation: 6,
+                shadowColor: theme.colors.textPrimary,
+                shadowOpacity: 0.2,
+                shadowRadius: 8,
+                shadowOffset: { width: 0, height: 4 }
+              }
+            ]}
+            onLongPress={() => handleTaskLongPress(item)}
+            delayLongPress={300}
+          >
+            <Pressable
+              onPress={async () => {
+                const updated = await toggleTaskForDate(item, selectedDate);
+                upsertTask(updated);
+              }}
+              style={[
+                styles.checkbox,
+                {
+                  borderColor: theme.colors.primary,
+                  backgroundColor:
+                    isTaskCompletedForDate(item, selectedDate) ? theme.colors.primary : "transparent"
+                }
+              ]}
+            />
+            <View style={styles.taskTextWrapper}>
+              <Text
+                style={[
+                  styles.taskText,
+                  isTaskCompletedForDate(item, selectedDate) && {
+                    textDecorationLine: "line-through",
+                    opacity: 0.6
+                  }
+                ]}
+              >
+                {item.text}
+              </Text>
+              {!!item.repeatDays?.length && (
+                <Text muted variant="caption">Repeats: {item.repeatDays.map((d) => WEEKDAYS[d]).join(", ")}</Text>
+              )}
+              {!item.repeatDays?.length && !!item.scheduledDate && (
+                <Text muted variant="caption">
+                  Date: {item.scheduledDate}
+                  {item.scheduledTime ? ` • ${item.scheduledTime}` : ""}
+                </Text>
+              )}
+            </View>
+            <Pressable
+              onPress={async () => {
+                const nextPriority = ((item.priority + 1) % 3) as TaskPriority;
+                const updated = await updateTaskPriority(item, nextPriority);
+                upsertTask(updated);
+              }}
+              style={styles.priorityPill}
+            >
+              <View
+                style={[
+                  styles.priorityBadge,
+                  {
+                    backgroundColor:
+                      item.priority === 0
+                        ? theme.colors.priorityLow
+                        : item.priority === 1
+                        ? theme.colors.priorityMedium
+                        : theme.colors.priorityHigh
+                  }
+                ]}
+              >
+                <Text style={{ color: theme.colors.onPrimary, fontSize: 10 }}>
+                  {item.priority === 0 ? "LOW" : item.priority === 1 ? "MED" : "HIGH"}
+                </Text>
+              </View>
+            </Pressable>
+            <Pressable
+              onPressIn={(event) => event.stopPropagation()}
+              onLongPress={(event) => {
+                event.stopPropagation();
+                drag();
+              }}
+              delayLongPress={220}
+              hitSlop={8}
+              style={styles.dragHandle}
+            >
+              <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
+            </Pressable>
+          </Pressable>
+        )}
+        ListEmptyComponent={
+          <Text muted style={styles.emptyText}>
+            No tasks for this day.
+          </Text>
+        }
+      />
+
+      <ContextActionMenu
+        visible={showSortMenu}
+        title="Sort tasks"
+        onClose={() => setShowSortMenu(false)}
+        actions={[
+          { key: "custom", label: "Custom order", icon: "reorder-three-outline", onPress: async () => {
+            setSortMode("custom");
+            await saveSortPreference(TASK_SORT_SCOPE, "custom");
+          } },
+          { key: "recent", label: "Most recent", icon: "time-outline", onPress: async () => {
+            setSortMode("recent");
+            await saveSortPreference(TASK_SORT_SCOPE, "recent");
+          } },
+          { key: "az", label: "Name (A-Z)", icon: "text-outline", onPress: async () => {
+            setSortMode("name_asc");
+            await saveSortPreference(TASK_SORT_SCOPE, "name_asc");
+          } },
+          { key: "za", label: "Name (Z-A)", icon: "text-outline", onPress: async () => {
+            setSortMode("name_desc");
+            await saveSortPreference(TASK_SORT_SCOPE, "name_desc");
+          } }
+        ]}
+      />
+
+      <ContextActionMenu
+        visible={!!selectedTask}
+        title={selectedTask?.text}
+        onClose={() => setSelectedTask(null)}
+        actions={[
+          {
+            key: "edit",
+            label: "Edit",
+            icon: "pencil",
+            onPress: () => {
+              if (!selectedTask) return;
+              openEditModal(selectedTask);
+            }
+          },
+          {
+            key: "complete",
+            label:
+              selectedTask && isTaskCompletedForDate(selectedTask, selectedDate)
+                ? "Mark as pending"
+                : "Mark as completed",
+            icon:
+              selectedTask && isTaskCompletedForDate(selectedTask, selectedDate)
+                ? "refresh-outline"
+                : "checkmark-circle-outline",
+            onPress: async () => {
+              if (!selectedTask) return;
+              const updated = await toggleTaskForDate(selectedTask, selectedDate);
+              upsertTask(updated);
+            }
+          },
+          {
+            key: "move",
+            label: "Move position",
+            icon: "swap-vertical-outline",
+            onPress: async () => {
+              setSortMode("custom");
+              await saveSortPreference(TASK_SORT_SCOPE, "custom");
+              showToast("Long press reorder icon to move task");
+            }
+          },
+          {
+            key: "delete",
+            label: "Delete",
+            icon: "trash-outline",
+            destructive: true,
+            onPress: () => {
+              if (!selectedTask) return;
+              setPendingDeleteTask(selectedTask);
+            }
+          }
+        ]}
+      />
+
+      <DeleteConfirmModal
+        visible={!!pendingDeleteTask}
+        itemLabel="task"
+        loading={taskDeleting}
+        onCancel={() => {
+          if (taskDeleting) return;
+          setPendingDeleteTask(null);
+        }}
+        onConfirm={async () => {
+          if (!pendingDeleteTask || taskDeleting) return;
+          setTaskDeleting(true);
+          try {
+            await deleteTask(pendingDeleteTask.id);
+            removeTask(pendingDeleteTask.id);
+            setPendingDeleteTask(null);
+            showToast("Deleted ✓");
+          } catch (error) {
+            console.error("[task] delete failed", error);
+            showToast("Could not delete task", "error");
+          } finally {
+            setTaskDeleting(false);
+          }
+        }}
+      />
+
+      <Modal transparent visible={showModal} animationType="fade" onRequestClose={() => setShowModal(false)}>
+        <View style={styles.backdrop}>
+          <View
+            style={[
+              styles.card,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+                shadowColor: "#000"
+              }
+            ]}
+          >
+            <Text variant="subtitle">{editingTask ? "Editar tarefa" : "Nova tarefa"}</Text>
+
+            <TextInput
+              autoFocus
+              placeholder="Nova tarefa..."
+              placeholderTextColor={theme.colors.textSecondary}
+              value={newText}
+              onChangeText={setNewText}
+              style={[
+                styles.newTaskInput,
+                {
+                  borderColor: theme.colors.border,
+                  color: theme.colors.textPrimary,
+                  backgroundColor: theme.colors.background
+                }
+              ]}
+            />
+
+            <View style={styles.dateTimeRow}>
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowTimePicker(false);
+                  setShowDatePicker(true);
+                }}
+                style={[styles.dateTimeButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+              >
+                <Text muted variant="caption">Data</Text>
+                <Text>{scheduledDate ? formatUiDate(parseDateTime(scheduledDate, toTimeKey(scheduledAt))) : "Selecionar data"}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.85}
+                onPress={() => {
+                  setShowDatePicker(false);
+                  setShowTimePicker(true);
+                }}
+                style={[styles.dateTimeButton, { backgroundColor: theme.colors.background, borderColor: theme.colors.border }]}
+              >
+                <Text muted variant="caption">Hora</Text>
+                <Text>{scheduledDate ? formatUiTime(scheduledAt) : "Selecionar hora"}</Text>
+              </TouchableOpacity>
+            </View>
+
+            {showDatePicker && (
+              <DateTimePicker
+                value={scheduledAt}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event: DateTimePickerEvent, selected) => {
+                  if (event.type === "dismissed") {
+                    setShowDatePicker(false);
+                    return;
+                  }
+                  const next = selected ?? scheduledAt;
+                  setScheduledAt((prev) => mergeDateAndTime(next, prev));
+                  setScheduledDate(toDateKey(next));
+                  if (Platform.OS !== "ios") {
+                    setShowDatePicker(false);
+                  }
+                }}
+              />
+            )}
+
+            {showTimePicker && (
+              <DateTimePicker
+                value={scheduledAt}
+                mode="time"
+                is24Hour
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(event: DateTimePickerEvent, selected) => {
+                  if (event.type === "dismissed") {
+                    setShowTimePicker(false);
+                    return;
+                  }
+                  const time = selected ?? scheduledAt;
+                  setScheduledAt((prev) => mergeDateAndTime(prev, time));
+                  if (Platform.OS !== "ios") {
+                    setShowTimePicker(false);
+                  }
+                }}
+              />
+            )}
+
+            <Text style={styles.priorityLabel}>Prioridade</Text>
+            <View style={styles.priorityGroup}>
+              {([
+                { label: "Baixa", value: 0 },
+                { label: "Média", value: 1 },
+                { label: "Alta", value: 2 }
+              ] as const).map((p) => (
+                <Pressable
+                  key={p.value}
+                  onPress={() => setPriority(p.value)}
+                  style={[
+                    styles.priorityChip,
+                    {
+                      backgroundColor: priority === p.value ? theme.colors.primary : theme.colors.background,
+                      borderColor: theme.colors.border
+                    }
+                  ]}
+                >
+                  <Text style={{ color: priority === p.value ? theme.colors.onPrimary : theme.colors.textPrimary }}>
+                    {p.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <Text style={styles.priorityLabel}>Repetir em</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.repeatRow}>
+              {WEEKDAYS.map((label, idx) => {
+                const active = repeatDays.includes(idx);
+                return (
+                  <Pressable
+                    key={label}
+                    onPress={() => {
+                      setRepeatDays((prev) =>
+                        prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx]
+                      );
+                    }}
+                    style={[
+                      styles.repeatChip,
+                      {
+                        backgroundColor: active ? theme.colors.primary : theme.colors.background,
+                        borderColor: theme.colors.border
+                      }
+                    ]}
+                  >
+                    <Text style={{ color: active ? theme.colors.onPrimary : theme.colors.textPrimary }}>
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.scheduleActions}>
+              <Pressable
+                onPress={() => {
+                  const day = parseDateTime(selectedDate, toTimeKey(scheduledAt));
+                  setScheduledAt(day);
+                  setScheduledDate(selectedDate);
+                }}
+                style={[styles.smallAction, { borderColor: theme.colors.border }]}
+              >
+                <Text muted>Usar dia selecionado</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setScheduledDate("");
+                  setShowDatePicker(false);
+                  setShowTimePicker(false);
+                }}
+                style={[styles.smallAction, { borderColor: theme.colors.border }]}
+              >
+                <Text muted>Sem data</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.actions}>
+              <Pressable
+                disabled={taskSubmitting}
+                onPress={() => {
+                  if (taskSubmitting) return;
+                  setShowModal(false);
+                }}
+                style={[styles.secondaryButton, taskSubmitting && styles.disabledButton]}
+              >
+                <Text muted>Cancelar</Text>
+              </Pressable>
+
+              <TouchableOpacity
+                activeOpacity={0.9}
+                onPress={async () => {
+                  // Validate title before any action
+                  const trimmedText = newText.trim();
+                  if (!trimmedText) {
+                    showToast("Task title cannot be empty", "error");
+                    return;
+                  }
+
+                  // Prevent duplicate submissions
+                  if (taskSubmittingRef.current || taskSubmitting) return;
+                  
+                  taskSubmittingRef.current = true;
+                  setTaskSubmitting(true);
+                  console.log("[task] Creating task:", trimmedText);
+                  
+                  try {
+                    const dateForTask = repeatDays.length ? null : scheduledDate || null;
+                    const timeForTask = dateForTask ? toTimeKey(scheduledAt) : null;
+                    
+                    if (editingTask) {
+                      const updated = await updateTask({
+                        ...editingTask,
+                        text: trimmedText,
+                        priority,
+                        scheduledDate: dateForTask,
+                        scheduledTime: timeForTask,
+                        repeatDays
+                      });
+                      upsertTask(updated);
+                      setEditingTask(null);
+                    } else {
+                      const created = await createTask({
+                        text: trimmedText,
+                        priority,
+                        scheduledDate: dateForTask,
+                        scheduledTime: timeForTask,
+                        repeatDays
+                      });
+                      console.log("[task] Task created successfully:", created.id);
+                      upsertTask(created);
+                    }
+                    setShowModal(false);
+                    showToast("Task salva ✓");
+                  } catch (error) {
+                    console.error("[task] save failed", error);
+                    showToast("Não foi possível salvar", "error");
+                  } finally {
+                    taskSubmittingRef.current = false;
+                    setTaskSubmitting(false);
+                  }
+                }}
+                disabled={taskSubmitting}
+                style={[
+                  styles.primaryCreateButton,
+                  { backgroundColor: theme.colors.primary },
+                  taskSubmitting && styles.disabledButton
+                ]}
+              >
+                {taskSubmitting ? (
+                  <>
+                    <ActivityIndicator size="small" color={theme.colors.onPrimary} />
+                    <Text style={{ color: theme.colors.onPrimary, fontWeight: "700" }}>Salvando...</Text>
+                  </>
+                ) : (
+                  <Text style={{ color: theme.colors.onPrimary, fontWeight: "700" }}>
+                    {editingTask ? "Salvar" : "Criar Task"}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </Screen>
+  );
+};
+
+const styles = StyleSheet.create({
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  sortButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  progressCard: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12
+  },
+  progressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  progressTrack: {
+    height: 8,
+    borderRadius: 999,
+    overflow: "hidden",
+    marginTop: 10
+  },
+  progressFill: {
+    height: "100%",
+    borderRadius: 999
+  },
+  progressMeta: {
+    marginTop: 6
+  },
+  calendarCard: {
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10
+  },
+  calendarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8
+  },
+  monthArrow: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  weekHeaderRow: {
+    flexDirection: "row",
+    marginBottom: 4
+  },
+  weekHeaderLabel: {
+    flex: 1,
+    textAlign: "center",
+    fontSize: 11
+  },
+  grid: {
+    flexDirection: "row",
+    flexWrap: "wrap"
+  },
+  dayCell: {
+    width: "14.285%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    borderRadius: 8
+  },
+  dayDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 999,
+    marginTop: 4
+  },
+  dayTitleRow: {
+    marginBottom: 8
+  },
+  taskRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10
+  },
+  checkbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    marginRight: 10
+  },
+  taskTextWrapper: {
+    flex: 1
+  },
+  taskText: {
+    fontSize: 14
+  },
+  priorityPill: {
+    paddingHorizontal: 4,
+    paddingVertical: 2
+  },
+  dragHandle: {
+    marginLeft: 6,
+    paddingHorizontal: 2,
+    paddingVertical: 4
+  },
+  priorityBadge: {
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 2
+  },
+  emptyText: {
+    marginTop: 24,
+    textAlign: "center"
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+    paddingHorizontal: 14,
+    paddingBottom: 18
+  },
+  card: {
+    width: "100%",
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowOpacity: 0.16,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 10
+  },
+  newTaskInput: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    fontSize: 18
+  },
+  dateTimeRow: {
+    marginTop: 12,
+    flexDirection: "row",
+    gap: 10
+  },
+  dateTimeButton: {
+    flex: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    gap: 2
+  },
+  priorityGroup: {
+    flexDirection: "row",
+    marginTop: 12,
+    justifyContent: "space-between"
+  },
+  priorityChip: {
+    flex: 1,
+    marginHorizontal: 4,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center"
+  },
+  priorityLabel: {
+    marginTop: 12,
+    fontSize: 13
+  },
+  scheduleActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 8
+  },
+  smallAction: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  repeatRow: {
+    marginTop: 8,
+    gap: 8
+  },
+  repeatChip: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6
+  },
+  actions: {
+    marginTop: 16,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8
+  },
+  secondaryButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 8
+  },
+  primaryButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 999,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
+  primaryCreateButton: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    minWidth: 132
+  },
+  disabledButton: {
+    opacity: 0.7
+  }
+});
+
+export default TasksScreen;
+

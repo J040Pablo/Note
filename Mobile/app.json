@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "Life Organizer",
+    "slug": "life-organizer",
+    "version": "0.1.0",
+    "scheme": "lifeorganizer",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.lifeorganizer"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0f172a"
+      },
+      "package": "com.example.lifeorganizer"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7f97a7d5-adfc-4d42-9320-1ddd6bd69eb8"
+      }
+    },
+    "plugins": [
+      "expo-font",
+      "@react-native-community/datetimepicker"
+    ]
+  }
+}
