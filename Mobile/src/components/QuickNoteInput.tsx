@@ -5,86 +5,119 @@ import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
 
 interface QuickNoteInputProps {
-  initialValue?: string;
-  onSave: (text: string) => Promise<void>;
+  initialTitle?: string;
+  initialContent?: string;
+  onSave: (payload: { title: string; content: string }) => Promise<void>;
   onCancel?: () => void;
-  placeholder?: string;
+  titlePlaceholder?: string;
+  contentPlaceholder?: string;
   autoFocus?: boolean;
+  titleMaxLength?: number;
   maxLength?: number;
 }
 
-/**
- * QuickNoteInput - Controlled text input with autosave
- * Saves automatically as user types (debounced)
- */
 export const QuickNoteInput = ({
-  initialValue = "",
+  initialTitle = "",
+  initialContent = "",
   onSave,
   onCancel,
-  placeholder = "Quick note...",
+  titlePlaceholder = "Title",
+  contentPlaceholder = "Write a quick note...",
   autoFocus = true,
+  titleMaxLength = 80,
   maxLength = 500
 }: QuickNoteInputProps) => {
   const { theme } = useTheme();
-  const [text, setText] = useState(initialValue);
+  const [title, setTitle] = useState(initialTitle);
+  const [content, setContent] = useState(initialContent);
   const [isSaving, setIsSaving] = useState(false);
-  const inputRef = useRef<TextInput>(null);
+  const [lastSavedKey, setLastSavedKey] = useState("");
+  const titleInputRef = useRef<TextInput>(null);
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveInFlightRef = useRef(false);
 
-  // Auto-save with 1 second debounce
+  useEffect(() => {
+    setTitle(initialTitle);
+  }, [initialTitle]);
+
+  useEffect(() => {
+    setContent(initialContent);
+  }, [initialContent]);
+
+  const runSave = async () => {
+    const safeTitle = title.trim();
+    const safeContent = content.trim();
+    const normalizedTitle = safeTitle || "Quick Note";
+    const nextKey = `${normalizedTitle}::${safeContent}`;
+
+    if (!safeTitle && !safeContent) return;
+    if (nextKey === lastSavedKey) return;
+    if (saveInFlightRef.current) return;
+
+    saveInFlightRef.current = true;
+    setIsSaving(true);
+    try {
+      await onSave({ title: normalizedTitle, content: safeContent });
+      setLastSavedKey(nextKey);
+    } finally {
+      saveInFlightRef.current = false;
+      setIsSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
 
     saveTimeoutRef.current = setTimeout(() => {
-      if (text.trim() && text !== initialValue) {
-        setIsSaving(true);
-        onSave(text)
-          .catch((err) => console.error("Quick note save error:", err))
-          .finally(() => setIsSaving(false));
-      }
-    }, 1000);
+      runSave();
+    }, 800);
 
     return () => {
-      if (saveTimeoutRef.current !== null) {
+      if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
       }
     };
-  }, [text, initialValue, onSave]);
-
-  const handleChangeText = (newText: string) => {
-    setText(newText);
-  };
-
-  const handleSave = async () => {
-    if (text.trim()) {
-      setIsSaving(true);
-      try {
-        await onSave(text);
-        setText("");
-        Keyboard.dismiss();
-      } finally {
-        setIsSaving(false);
-      }
-    }
-  };
+  }, [title, content]);
 
   const handleCancel = () => {
-    setText("");
+    setTitle("");
+    setContent("");
     Keyboard.dismiss();
     onCancel?.();
   };
 
+  const canClear = title.trim().length > 0 || content.trim().length > 0;
+
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.card }]}>
       <TextInput
-        ref={inputRef}
+        ref={titleInputRef}
+        value={title}
+        onChangeText={setTitle}
+        placeholder={titlePlaceholder}
+        placeholderTextColor={theme.colors.textSecondary}
+        style={[
+          styles.titleInput,
+          {
+            color: theme.colors.textPrimary,
+            borderColor: theme.colors.border
+          }
+        ]}
+        autoFocus={autoFocus}
+        maxLength={titleMaxLength}
+        returnKeyType="next"
+        onBlur={runSave}
+      />
+
+      <TextInput
         multiline
         maxLength={maxLength}
-        value={text}
-        onChangeText={handleChangeText}
-        placeholder={placeholder}
+        value={content}
+        onChangeText={setContent}
+        placeholder={contentPlaceholder}
         placeholderTextColor={theme.colors.textSecondary}
         style={[
           styles.input,
@@ -93,15 +126,16 @@ export const QuickNoteInput = ({
             borderColor: theme.colors.border
           }
         ]}
-        autoFocus={autoFocus}
+        autoFocus={false}
         scrollEnabled={true}
         textAlignVertical="top"
+        onBlur={runSave}
       />
 
       <View style={styles.footer}>
         <View style={styles.charCount}>
           <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>
-            {text.length}/{maxLength}
+            {content.length}/{maxLength}
           </Text>
           {isSaving && (
             <Text style={{ fontSize: 12, color: theme.colors.primary, marginLeft: 8 }}>
@@ -111,7 +145,7 @@ export const QuickNoteInput = ({
         </View>
 
         <View style={styles.actions}>
-          {text.trim().length > 0 && (
+          {canClear && (
             <Pressable onPress={handleCancel} style={styles.actionButton}>
               <Ionicons name="close" size={16} color={theme.colors.textSecondary} />
               <Text variant="caption" muted>
@@ -119,24 +153,6 @@ export const QuickNoteInput = ({
               </Text>
             </Pressable>
           )}
-
-          <Pressable
-            onPress={handleSave}
-            style={[
-              styles.actionButton,
-              text.trim().length === 0 && { opacity: 0.5 }
-            ]}
-            disabled={text.trim().length === 0 || isSaving}
-          >
-            <Ionicons
-              name="checkmark-done"
-              size={16}
-              color={text.trim().length > 0 ? theme.colors.primary : theme.colors.textSecondary}
-            />
-            <Text variant="caption" style={{ color: text.trim().length > 0 ? theme.colors.primary : theme.colors.textSecondary }}>
-              Done
-            </Text>
-          </Pressable>
         </View>
       </View>
     </View>
@@ -145,13 +161,21 @@ export const QuickNoteInput = ({
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
     borderRadius: 12,
-    overflow: "hidden",
-    borderWidth: StyleSheet.hairlineWidth
+    borderWidth: StyleSheet.hairlineWidth,
+    minHeight: 280,
+    maxHeight: 420
+  },
+  titleInput: {
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 16,
+    fontWeight: "600",
+    borderBottomWidth: StyleSheet.hairlineWidth
   },
   input: {
-    flex: 1,
+    minHeight: 160,
+    maxHeight: 260,
     paddingHorizontal: 12,
     paddingVertical: 12,
     fontSize: 16,
@@ -179,6 +203,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 8,
     paddingVertical: 6,
-    borderRadius: 6
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.03)"
   }
 });

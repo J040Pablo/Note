@@ -7,14 +7,20 @@ interface FolderIconProps {
   color?: string | null;
   fallbackColor: string;
   size?: number;
+  plain?: boolean;
 }
 
 export const FolderIcon: React.FC<FolderIconProps> = ({
   color,
   fallbackColor,
-  size = 18
+  size = 18,
+  plain = false
 }) => {
   const iconColor = getFolderColorHex(color, fallbackColor);
+
+  if (plain) {
+    return <Ionicons name="folder-outline" size={size} color={iconColor} />;
+  }
 
   return (
     <View style={[styles.wrapper, { backgroundColor: `${iconColor}18` }]}>

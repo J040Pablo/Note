@@ -89,6 +89,7 @@ export interface RichNoteDocument {
 
 export interface QuickNote {
   id: ID;
+  title: string;
   content: string;
   folderId: ID | null;
   createdAt: number;
@@ -177,6 +178,7 @@ export interface Task {
   id: ID;
   text: string;
   completed: boolean;
+  updatedAt: number;
   orderIndex: number;
   /** 0 = low, 1 = medium, 2 = high */
   priority: number;
@@ -189,9 +191,13 @@ export interface Task {
   repeatDays?: number[];
   /** Completed day keys (YYYY-MM-DD) used by recurring/scheduled tasks */
   completedDates?: string[];
-  /** Notification IDs for scheduled reminders (night before + morning of) */
+  /** Reminder presets for notifications */
+  reminders?: TaskReminderType[];
+  /** Notification IDs for scheduled reminders */
   notificationIds?: string[];
 }
+
+export type TaskReminderType = "AT_TIME" | "10_MIN_BEFORE" | "1_HOUR_BEFORE" | "1_DAY_BEFORE";
 
 export type AppFileType = "pdf" | "image" | "document";
 

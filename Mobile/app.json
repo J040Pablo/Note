@@ -15,13 +15,19 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.example.lifeorganizer"
+      "bundleIdentifier": "com.example.lifeorganizer",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Use camera to scan QR codes and pair with Web on local network."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0f172a"
       },
-      "package": "com.example.lifeorganizer"
+      "package": "com.example.lifeorganizer",
+      "permissions": [
+        "CAMERA"
+      ]
     },
     "web": {
       "bundler": "metro"
@@ -33,7 +39,8 @@
     },
     "plugins": [
       "expo-font",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-camera"
     ]
   }
 }

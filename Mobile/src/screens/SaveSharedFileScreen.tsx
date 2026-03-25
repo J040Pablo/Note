@@ -40,7 +40,7 @@ const SaveSharedFileScreen: React.FC = () => {
       await importFileFromUri(route.params.uri, {
         fileName: route.params.name,
         mimeType: route.params.mimeType,
-        parentFolderId: selectedFolderId
+        parentFolderId: selectedFolderId ?? null
       });
       navigation.navigate("Tabs", {
         screen: "Folders",

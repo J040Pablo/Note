@@ -60,7 +60,8 @@ export const createFileRecord = async (payload: {
   return withDbWriteTransaction("createFileRecord", async (db) => {
     const id = String(Date.now()) + Math.floor(Math.random() * 1000);
     const createdAt = Date.now();
-    const orderIndex = await getNextFileOrderIndex(db, payload.parentFolderId);
+    const safeParentFolderId = payload.parentFolderId ?? null;
+    const orderIndex = await getNextFileOrderIndex(db, safeParentFolderId);
 
     await db.runAsync(
       "INSERT INTO files (id, name, type, path, createdAt, orderIndex, parentFolderId, description, thumbnailPath, bannerPath) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -70,7 +71,7 @@ export const createFileRecord = async (payload: {
       payload.path,
       createdAt,
       orderIndex,
-      payload.parentFolderId,
+      safeParentFolderId,
       payload.description ?? null,
       payload.thumbnailPath ?? null,
       payload.bannerPath ?? null
@@ -83,7 +84,7 @@ export const createFileRecord = async (payload: {
       path: payload.path,
       createdAt,
       orderIndex,
-      parentFolderId: payload.parentFolderId,
+      parentFolderId: safeParentFolderId,
       description: payload.description ?? null,
       thumbnailPath: payload.thumbnailPath ?? null,
       bannerPath: payload.bannerPath ?? null
@@ -100,6 +101,7 @@ export const importFileFromUri = async (
   }
 ): Promise<AppFile> => {
   await ensureDir();
+  const safeParentFolderId = opts.parentFolderId ?? null;
 
   const sourceName = opts.fileName || uri.split("/").pop() || `file-${Date.now()}`;
   const fileName = sanitizeName(sourceName);
@@ -111,7 +113,7 @@ export const importFileFromUri = async (
     name: sourceName,
     type: normalizeFileType(sourceName, opts.mimeType),
     path: destination,
-    parentFolderId: opts.parentFolderId
+    parentFolderId: safeParentFolderId
   });
 };
 

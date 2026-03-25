@@ -7,6 +7,7 @@ import SearchScreen from "@screens/SearchScreen";
 import FoldersScreen from "@screens/FoldersScreen";
 import FolderDetailScreen from "@screens/FolderDetailScreen";
 import NoteEditorScreen from "@screens/NoteEditorScreen";
+import QuickNoteScreen from "@screens/QuickNoteScreen";
 import PdfViewerScreen from "@screens/PdfViewerScreen";
 import ImageViewerScreen from "@screens/ImageViewerScreen";
 import SaveSharedFileScreen from "@screens/SaveSharedFileScreen";
@@ -18,6 +19,7 @@ import { Ionicons } from "@expo/vector-icons";
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabsParamList> | undefined;
   NoteEditor: { noteId?: string; folderId?: string | null };
+  QuickNote: { quickNoteId?: string; folderId?: string | null };
   PdfViewer: { path: string; name: string };
   ImageViewer: { path: string; name: string };
   SaveSharedFile: { uri: string; name?: string; mimeType?: string | null };
@@ -65,6 +67,7 @@ const FoldersStackNavigator = () => {
         name="FolderDetail"
         component={FolderDetailScreen}
         options={{
+          headerShown: false,
           title: "Folder",
           animation: "slide_from_right",
           animationDuration: 85
@@ -142,6 +145,16 @@ const RootNavigator = () => {
         options={{
           headerShown: false,
           title: "Note",
+          animation: "slide_from_right",
+          animationDuration: 140
+        }}
+      />
+      <RootStack.Screen
+        name="QuickNote"
+        component={QuickNoteScreen}
+        options={{
+          headerShown: false,
+          title: "Quick Note",
           animation: "slide_from_right",
           animationDuration: 140
         }}

@@ -21,13 +21,13 @@ export const useFilesStore = create<FilesState & FilesActions>()(
       set((state) => {
         state.files = {};
         for (const file of list) {
-          state.files[file.id] = file;
+          state.files[file.id] = { ...file, parentFolderId: file.parentFolderId ?? null };
         }
       }),
 
     upsertFile: (file) =>
       set((state) => {
-        state.files[file.id] = file;
+        state.files[file.id] = { ...file, parentFolderId: file.parentFolderId ?? null };
       }),
 
     removeFile: (fileId) =>

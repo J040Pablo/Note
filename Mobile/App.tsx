@@ -8,6 +8,7 @@ import { ThemeProvider, useTheme } from "@hooks/useTheme";
 import { DatabaseProvider } from "@database/DatabaseProvider";
 import { FeedbackProvider } from "@components/FeedbackProvider";
 import { useNotificationSetup } from "@hooks/useNotificationSetup";
+import { useTaskSyncServer } from "@hooks/useTaskSyncServer";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 
 const navRef = createNavigationContainerRef<RootStackParamList>();
@@ -41,6 +42,7 @@ const ThemedNavigation: React.FC = () => {
 
   // Initialize notifications on app startup
   useNotificationSetup();
+  useTaskSyncServer();
 
   React.useEffect(() => {
     const handleUrl = (incoming: string | null) => {

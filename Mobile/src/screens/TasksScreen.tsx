@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, Vibration, TouchableOpacity, Platform } from "react-native";
+import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, Vibration, TouchableOpacity, Platform, Animated } from "react-native";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
-import { PrimaryButton } from "@components/PrimaryButton";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { useTheme } from "@hooks/useTheme";
@@ -28,7 +27,7 @@ import {
   saveSortPreference
 } from "@services/appMetaService";
 import { Ionicons } from "@expo/vector-icons";
-import type { Task } from "@models/types";
+import type { Task, TaskReminderType } from "@models/types";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 import type { TabsParamList } from "@navigation/RootNavigator";
@@ -39,6 +38,12 @@ type TasksRoute = RouteProp<TabsParamList, "Tasks">;
 type TasksNav = BottomTabNavigationProp<TabsParamList, "Tasks">;
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const REMINDER_OPTIONS: Array<{ label: string; value: TaskReminderType }> = [
+  { label: "At task time", value: "AT_TIME" },
+  { label: "10 minutes before", value: "10_MIN_BEFORE" },
+  { label: "1 hour before", value: "1_HOUR_BEFORE" },
+  { label: "1 day before", value: "1_DAY_BEFORE" }
+];
 
 const buildMonthCells = (monthDate: Date): Date[] => {
   const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
@@ -113,6 +118,7 @@ const TasksScreen: React.FC = () => {
     now.setHours(8, 0, 0, 0);
     return now;
   });
+  const [reminders, setReminders] = useState<TaskReminderType[]>(["AT_TIME"]);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -123,9 +129,11 @@ const TasksScreen: React.FC = () => {
   const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [sortMode, setSortMode] = useState<TaskSortMode>("custom");
+  const [fabOpen, setFabOpen] = useState(false);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [taskDeleting, setTaskDeleting] = useState(false);
   const taskSubmittingRef = useRef(false);
+  const fabAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     (async () => {
@@ -209,6 +217,7 @@ const TasksScreen: React.FC = () => {
     setRepeatDays([]);
     setScheduledDate(selectedDate);
     setScheduledAt(parseDateTime(selectedDate, "08:00"));
+    setReminders(["AT_TIME"]);
     setShowDatePicker(false);
     setShowTimePicker(false);
     setShowModal(true);
@@ -221,6 +230,7 @@ const TasksScreen: React.FC = () => {
     setRepeatDays(task.repeatDays ?? []);
     setScheduledDate(task.scheduledDate ?? selectedDate);
     setScheduledAt(parseDateTime(task.scheduledDate ?? selectedDate, task.scheduledTime));
+    setReminders((task.reminders?.length ? task.reminders : ["AT_TIME"]).slice(0, 4));
     setShowDatePicker(false);
     setShowTimePicker(false);
     setShowModal(true);
@@ -230,6 +240,34 @@ const TasksScreen: React.FC = () => {
     Vibration.vibrate(10);
     setSelectedTask(task);
   }, []);
+
+  const openFab = useCallback(() => {
+    setFabOpen(true);
+    Animated.spring(fabAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 24,
+      bounciness: 6
+    }).start();
+  }, [fabAnim]);
+
+  const closeFab = useCallback(() => {
+    Animated.timing(fabAnim, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: true
+    }).start(({ finished }) => {
+      if (finished) setFabOpen(false);
+    });
+  }, [fabAnim]);
+
+  const toggleFab = useCallback(() => {
+    if (fabOpen) {
+      closeFab();
+    } else {
+      openFab();
+    }
+  }, [closeFab, fabOpen, openFab]);
 
   return (
     <Screen>
@@ -245,10 +283,6 @@ const TasksScreen: React.FC = () => {
           >
             <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
           </Pressable>
-          <PrimaryButton
-            label="+ Task"
-            onPress={openCreateModal}
-          />
         </View>
       </View>
 
@@ -669,6 +703,37 @@ const TasksScreen: React.FC = () => {
               />
             )}
 
+            <Text style={styles.priorityLabel}>Reminders</Text>
+            <View style={styles.remindersGroup}>
+              {REMINDER_OPTIONS.map((option) => {
+                const active = reminders.includes(option.value);
+                return (
+                  <Pressable
+                    key={option.value}
+                    onPress={() => {
+                      setReminders((prev) => {
+                        if (prev.includes(option.value)) {
+                          return prev.filter((value) => value !== option.value);
+                        }
+                        if (prev.length >= 4) {
+                          return prev;
+                        }
+                        return [...prev, option.value];
+                      });
+                    }}
+                    style={[styles.reminderOption, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
+                  >
+                    <Ionicons
+                      name={active ? "checkbox" : "square-outline"}
+                      size={18}
+                      color={active ? theme.colors.primary : theme.colors.textSecondary}
+                    />
+                    <Text>{option.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
             <Text style={styles.priorityLabel}>Prioridade</Text>
             <View style={styles.priorityGroup}>
               {([
@@ -785,7 +850,8 @@ const TasksScreen: React.FC = () => {
                         priority,
                         scheduledDate: dateForTask,
                         scheduledTime: timeForTask,
-                        repeatDays
+                        repeatDays,
+                        reminders
                       });
                       upsertTask(updated);
                       setEditingTask(null);
@@ -795,7 +861,8 @@ const TasksScreen: React.FC = () => {
                         priority,
                         scheduledDate: dateForTask,
                         scheduledTime: timeForTask,
-                        repeatDays
+                        repeatDays,
+                        reminders
                       });
                       console.log("[task] Task created successfully:", created.id);
                       upsertTask(created);
@@ -832,6 +899,77 @@ const TasksScreen: React.FC = () => {
           </View>
         </View>
       </Modal>
+
+      {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
+
+      <View style={styles.fabRoot} pointerEvents="box-none">
+        <Animated.View
+          pointerEvents={fabOpen ? "auto" : "none"}
+          style={[
+            styles.fabMenuItemWrap,
+            {
+              transform: [
+                {
+                  translateY: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, -58]
+                  })
+                },
+                {
+                  scale: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.84, 1]
+                  })
+                }
+              ],
+              opacity: fabAnim
+            }
+          ]}
+        >
+          <Pressable
+            onPress={() => {
+              closeFab();
+              openCreateModal();
+            }}
+            style={[
+              styles.fabMenuItem,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border
+              }
+            ]}
+          >
+            <Ionicons name="checkmark-done-outline" size={16} color={theme.colors.primary} />
+            <Text style={[styles.fabMenuLabel, { color: theme.colors.textPrimary }]}>Create Task</Text>
+          </Pressable>
+        </Animated.View>
+
+        <Pressable
+          onPress={toggleFab}
+          style={[
+            styles.fabMain,
+            {
+              backgroundColor: theme.colors.primary,
+              shadowColor: theme.colors.textPrimary
+            }
+          ]}
+        >
+          <Animated.View
+            style={{
+              transform: [
+                {
+                  rotate: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0deg", "45deg"]
+                  })
+                }
+              ]
+            }}
+          >
+            <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
+          </Animated.View>
+        </Pressable>
+      </View>
     </Screen>
   );
 };
@@ -1016,6 +1154,19 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 13
   },
+  remindersGroup: {
+    marginTop: 8,
+    gap: 8
+  },
+  reminderOption: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
+  },
   scheduleActions: {
     flexDirection: "row",
     gap: 8,
@@ -1067,6 +1218,45 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.7
+  },
+  fabBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.12)"
+  },
+  fabRoot: {
+    position: "absolute",
+    right: 16,
+    bottom: 24
+  },
+  fabMenuItemWrap: {
+    position: "absolute",
+    right: 0,
+    bottom: 0
+  },
+  fabMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minWidth: 148
+  },
+  fabMenuLabel: {
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  fabMain: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6
   }
 });
 

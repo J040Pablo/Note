@@ -24,7 +24,6 @@ import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { NoteEditModal } from "@components/NoteEditModal";
 import { FileDetailsModal } from "@components/FileDetailsModal";
-import { QuickNoteInput } from "@components/QuickNoteInput";
 import { useTheme } from "@hooks/useTheme";
 import type { CompositeNavigationProp, RouteProp } from "@react-navigation/native";
 import type { FoldersStackParamList, RootStackParamList } from "@navigation/RootNavigator";
@@ -33,10 +32,9 @@ import { useAppStore } from "@store/useAppStore";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
 import { useNotesStore } from "@store/useNotesStore";
-import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
-import { createNote, deleteNote, getNotesByFolder, updateNote, createQuickNote, updateQuickNote } from "@services/notesService";
+import { createNote, deleteNote, getNotesByFolder, updateNote } from "@services/notesService";
 import {
   addRecentOpen,
   getPinnedItems,
@@ -77,7 +75,8 @@ const FolderDetailScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
-  const { folderId, trail: routeTrail } = route.params;
+  const folderId = route.params?.folderId ?? null;
+  const routeTrail = route.params?.trail;
 
   const folders = useAppStore((s) => s.folders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);
@@ -110,8 +109,6 @@ const FolderDetailScreen: React.FC = () => {
   const [pendingDelete, setPendingDelete] = useState<{ type: "folder" | "note" | "file"; id: string } | null>(null);
   const [showAddFileMenu, setShowAddFileMenu] = useState(false);
   const [showFileSortMenu, setShowFileSortMenu] = useState(false);
-  const [showQuickNoteModal, setShowQuickNoteModal] = useState(false);
-  const [quickNoteDraftId, setQuickNoteDraftId] = useState<string | null>(null);
   const [fileSortMode, setFileSortMode] = useState<FileSortMode>("custom");
   const [fileSizes, setFileSizes] = useState<Record<string, number>>({});
   const [renderKey, setRenderKey] = useState(0);
@@ -152,7 +149,7 @@ const FolderDetailScreen: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      const visible = Object.values(files).filter((f) => f.parentFolderId === folderId);
+      const visible = Object.values(files).filter((f) => (f.parentFolderId ?? null) === folderId);
       const pairs = await Promise.all(
         visible.map(async (file) => {
           try {
@@ -205,17 +202,17 @@ const FolderDetailScreen: React.FC = () => {
   );
 
   const childFolders = useMemo(
-    () => Object.values(folders).filter((f) => f.parentId === folderId),
+    () => Object.values(folders).filter((f) => (f.parentId ?? null) === folderId),
     [folderId, folders]
   );
 
   const folderNotes = useMemo(
-    () => Object.values(notes).filter((n) => n.folderId === folderId),
+    () => Object.values(notes).filter((n) => (n.folderId ?? null) === folderId),
     [folderId, notes]
   );
 
   const folderFiles = useMemo(
-    () => Object.values(files).filter((f) => f.parentFolderId === folderId),
+    () => Object.values(files).filter((f) => (f.parentFolderId ?? null) === folderId),
     [files, folderId]
   );
 
@@ -293,7 +290,7 @@ const FolderDetailScreen: React.FC = () => {
   }, [navigation, trailIds]);
 
   return (
-    <Screen>
+    <Screen edges={["top", "right", "left"]} style={styles.screenRoot}>
       <View style={styles.headerRow}>
         <Pressable
           onPress={handleBackPress}
@@ -444,14 +441,14 @@ const FolderDetailScreen: React.FC = () => {
                   delayLongPress={260}
                   style={({ pressed }) => [
                     styles.itemCard,
+                    currentViewMode === "grid" ? styles.gridItemCard : styles.listItemCard,
                     {
                       borderColor: theme.colors.border,
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
                       opacity: pressed ? 0.96 : 1
-                    },
-                    currentViewMode === "list" && { marginBottom: 8 }
+                    }
                   ]}
                   onPress={() =>
                     withLock(() => {
@@ -470,7 +467,9 @@ const FolderDetailScreen: React.FC = () => {
                     {folder.photoPath ? (
                       <Image source={{ uri: folder.photoPath }} style={styles.cardAvatar} resizeMode="cover" />
                     ) : (
-                      <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} />
+                      <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
+                        <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} plain />
+                      </View>
                     )}
                     <View style={styles.rowContent}>
                       <Text style={styles.rowTitle}>{folder.name}</Text>
@@ -493,14 +492,14 @@ const FolderDetailScreen: React.FC = () => {
                   delayLongPress={260}
                   style={({ pressed }) => [
                     styles.itemCard,
+                    currentViewMode === "grid" ? styles.gridItemCard : styles.listItemCard,
                     {
                       borderColor: theme.colors.border,
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
                       opacity: pressed ? 0.96 : 1
-                    },
-                    currentViewMode === "list" && { marginBottom: 8 }
+                    }
                   ]}
                   onPress={() =>
                     withLock(() => {
@@ -533,7 +532,7 @@ const FolderDetailScreen: React.FC = () => {
             initialNumToRender={12}
             maxToRenderPerBatch={10}
             windowSize={9}
-            removeClippedSubviews
+            removeClippedSubviews={false}
             activationDistance={12}
             scrollEnabled={false}
             onDragEnd={({ data }) => {
@@ -559,6 +558,7 @@ const FolderDetailScreen: React.FC = () => {
                 delayLongPress={260}
                 style={({ pressed }) => [
                   styles.itemCard,
+                  currentViewMode === "grid" ? styles.gridItemCard : styles.listItemCard,
                   {
                     borderColor: theme.colors.border,
                     backgroundColor: theme.colors.card,
@@ -738,8 +738,9 @@ const FolderDetailScreen: React.FC = () => {
             icon: "flash-outline" as const,
             onPress: () => {
               closeFab();
-              setQuickNoteDraftId(null);
-              setShowQuickNoteModal(true);
+              withLock(() => {
+                navigation.getParent()?.getParent()?.navigate("QuickNote", { folderId: folderId ?? null });
+              });
             }
           },
           {
@@ -859,52 +860,6 @@ const FolderDetailScreen: React.FC = () => {
           }
         }}
       />
-
-      <Modal
-        visible={showQuickNoteModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowQuickNoteModal(false)}
-      >
-        <Pressable style={styles.quickNoteBackdrop} onPress={() => setShowQuickNoteModal(false)}>
-          <Pressable
-            style={[styles.quickNoteCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Text style={[styles.quickNoteTitle, { color: theme.colors.textPrimary }]}>Quick Note</Text>
-            <QuickNoteInput
-              autoFocus
-              placeholder="Anote rápido nesta pasta..."
-              onCancel={() => {
-                setShowQuickNoteModal(false);
-                setQuickNoteDraftId(null);
-              }}
-              onSave={async (text) => {
-                const trimmed = text.trim();
-                if (!trimmed) return;
-                if (quickNoteDraftId) {
-                  await updateQuickNote(quickNoteDraftId, trimmed);
-                  useQuickNotesStore.getState().upsertQuickNote({
-                    ...(useQuickNotesStore.getState().quickNotes[quickNoteDraftId] ?? {
-                      id: quickNoteDraftId,
-                      folderId: folderId ?? null,
-                      createdAt: Date.now()
-                    }),
-                    content: trimmed,
-                    updatedAt: Date.now()
-                  });
-                  return;
-                }
-
-                const saved = await createQuickNote({ content: trimmed, folderId: folderId ?? null });
-                setQuickNoteDraftId(saved.id);
-                useQuickNotesStore.getState().upsertQuickNote(saved);
-                showToast("Quick note criada ✓");
-              }}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       <ContextActionMenu
         visible={!!selectedFolder}
@@ -1406,11 +1361,17 @@ const FolderDetailScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  screenRoot: {
+    paddingTop: 0
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    marginBottom: 12
+    marginTop: 2,
+    marginBottom: 12,
+    zIndex: 4,
+    elevation: 4
   },
   backButton: {
     width: 34,
@@ -1475,10 +1436,13 @@ const styles = StyleSheet.create({
     height: 1
   },
   section: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 0,
     borderRadius: 12,
-    padding: 12,
+    paddingHorizontal: 0,
+    paddingTop: 4,
+    paddingBottom: 0,
     marginBottom: 16,
+    marginTop: 2,
     flex: 1,
     minHeight: 300
   },
@@ -1486,7 +1450,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginBottom: 8
+    marginBottom: 10,
+    paddingHorizontal: 2
   },
   headerActions: {
     flexDirection: "row",
@@ -1524,18 +1489,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 12,
-    justifyContent: "flex-start"
+    justifyContent: "space-between"
   },
   itemCard: {
-    flex: 1,
-    minWidth: "48%",
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 16,
     overflow: "hidden",
+    minHeight: 88,
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 2
+  },
+  gridItemCard: {
+    width: "48%",
+    marginBottom: 10
+  },
+  listItemCard: {
+    width: "100%",
+    marginBottom: 8
   },
   cardBanner: {
     width: "100%",
@@ -1617,24 +1589,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999
-  },
-  quickNoteBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.35)",
-    justifyContent: "center",
-    paddingHorizontal: 16
-  },
-  quickNoteCard: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingTop: 12,
-    paddingBottom: 10
-  },
-  quickNoteTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    paddingHorizontal: 16,
-    marginBottom: 4
   },
   fabBackdrop: {
     ...StyleSheet.absoluteFillObject,

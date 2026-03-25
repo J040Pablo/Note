@@ -20,13 +20,13 @@ export const useQuickNotesStore = create<QuickNotesState & QuickNotesActions>()(
       set((state) => {
         state.quickNotes = {};
         for (const note of list) {
-          state.quickNotes[note.id] = note;
+          state.quickNotes[note.id] = { ...note, folderId: note.folderId ?? null };
         }
       }),
 
     upsertQuickNote: (note) =>
       set((state) => {
-        state.quickNotes[note.id] = note;
+        state.quickNotes[note.id] = { ...note, folderId: note.folderId ?? null };
       }),
 
     removeQuickNote: (noteId) =>

@@ -25,13 +25,14 @@ export const createFolder = async (
   return withDbWriteTransaction("createFolder", async (db) => {
     const now = Date.now();
     const id = String(now);
-    const orderIndex = await getNextFolderOrderIndex(db, parentId);
+    const safeParentId = parentId ?? null;
+    const orderIndex = await getNextFolderOrderIndex(db, safeParentId);
 
     await db.runAsync(
       "INSERT INTO folders (id, name, parentId, orderIndex, color, description, photoPath, bannerPath, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       id,
       name,
-      parentId,
+      safeParentId,
       orderIndex,
       color,
       description,
@@ -40,7 +41,7 @@ export const createFolder = async (
       now
     );
 
-    return { id, name, parentId, orderIndex, color, description, photoPath, bannerPath, createdAt: now };
+    return { id, name, parentId: safeParentId, orderIndex, color, description, photoPath, bannerPath, createdAt: now };
   });
 };
 

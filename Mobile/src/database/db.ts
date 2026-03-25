@@ -26,7 +26,12 @@ const getErrorMessage = (error: unknown): string => {
 
 const isRetryableLockError = (error: unknown): boolean => {
   const message = getErrorMessage(error).toLowerCase();
-  return message.includes("database is locked") || message.includes("nativedatabase.execasync rejected");
+  return (
+    message.includes("database is locked") ||
+    message.includes("nativedatabase.execasync rejected") ||
+    message.includes("nativedatabase.prepareasync rejected") ||
+    message.includes("nullpointerexception")
+  );
 };
 
 const logDbError = (scope: string, error: unknown): void => {
@@ -62,11 +67,15 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
   await ensureColumn(db, "folders", "photoPath", "TEXT");
   await ensureColumn(db, "folders", "bannerPath", "TEXT");
 
+  await ensureColumn(db, "quick_notes", "title", "TEXT NOT NULL DEFAULT ''");
+
   await ensureColumn(db, "tasks", "scheduledDate", "TEXT");
   await ensureColumn(db, "tasks", "scheduledTime", "TEXT");
   await ensureColumn(db, "tasks", "orderIndex", "INTEGER NOT NULL DEFAULT 0");
+  await ensureColumn(db, "tasks", "updatedAt", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "tasks", "repeatDays", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, "tasks", "completedDates", "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, "tasks", "reminders", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, "tasks", "notificationIds", "TEXT NOT NULL DEFAULT '[]'");
 
   await ensureColumn(db, "files", "description", "TEXT");
@@ -90,6 +99,21 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
     UPDATE tasks
     SET notificationIds = '[]'
     WHERE notificationIds IS NULL OR notificationIds = '';
+
+    UPDATE tasks
+    SET reminders = '[]'
+    WHERE reminders IS NULL OR reminders = '';
+
+    UPDATE tasks
+    SET updatedAt = CASE
+      WHEN CAST(id AS INTEGER) > 0 THEN CAST(id AS INTEGER)
+      ELSE strftime('%s','now') * 1000
+    END
+    WHERE updatedAt IS NULL OR updatedAt = 0;
+
+    UPDATE quick_notes
+    SET title = 'Quick Note'
+    WHERE title IS NULL OR title = '';
   `);
 };
 

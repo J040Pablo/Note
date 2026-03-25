@@ -1,32 +1,42 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 import type { Task } from '@models/types';
+import type { TaskReminderType } from '@models/types';
 
 // Dynamically import expo-notifications with error handling
 let Notifications: any = null;
 let notificationsAvailable = false;
 
-try {
-  Notifications = require('expo-notifications');
-  
-  // Try to configure - will fail in Expo Go
+const isExpoGo =
+  Constants.executionEnvironment === 'storeClient' ||
+  Constants.appOwnership === 'expo';
+
+if (isExpoGo) {
+  console.warn('[Notifications] Expo Go detected. Local scheduling is disabled in this environment.');
+  notificationsAvailable = false;
+} else {
   try {
-    Notifications.setNotificationHandler({
-      handleNotification: async () => ({
-        shouldShowAlert: true,
-        shouldPlaySound: true,
-        shouldSetBadge: true,
-        shouldShowBanner: true,
-        shouldShowList: true,
-      }),
-    });
-    notificationsAvailable = true;
+    Notifications = require('expo-notifications');
+
+    try {
+      Notifications.setNotificationHandler({
+        handleNotification: async () => ({
+          shouldShowAlert: true,
+          shouldPlaySound: true,
+          shouldSetBadge: true,
+          shouldShowBanner: true,
+          shouldShowList: true,
+        }),
+      });
+      notificationsAvailable = true;
+    } catch (error) {
+      console.warn('[Notifications] Service not fully available. Using fallback mode.');
+      notificationsAvailable = false;
+    }
   } catch (error) {
-    console.warn('[Notifications] Service not fully available. Using fallback mode.');
+    console.warn('[Notifications] Module not available. Notifications disabled.');
     notificationsAvailable = false;
   }
-} catch (error) {
-  console.warn('[Notifications] Module not available. Notifications will not work in Expo Go.');
-  notificationsAvailable = false;
 }
 
 /**
@@ -49,6 +59,26 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
 };
 
 /**
+ * Ensure Android notification channel exists (no-op on iOS)
+ */
+export const ensureTaskNotificationChannel = async (): Promise<void> => {
+  if (!notificationsAvailable || !Notifications) return;
+
+  try {
+    if (Platform.OS !== 'android') return;
+    await Notifications.setNotificationChannelAsync('tasks', {
+      name: 'Tasks',
+      importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default',
+      vibrationPattern: [0, 250, 250, 250],
+      enableVibrate: true,
+    });
+  } catch (error) {
+    console.error('Error creating notification channel:', error);
+  }
+};
+
+/**
  * Check if notification permissions are granted
  */
 export const hasNotificationPermission = async (): Promise<boolean> => {
@@ -65,39 +95,38 @@ export const hasNotificationPermission = async (): Promise<boolean> => {
   }
 };
 
-/**
- * Calculate night before date at 20:00
- */
-const getNightBeforeNotificationTime = (dueDate: string): number => {
-  const [year, month, day] = dueDate.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  date.setDate(date.getDate() - 1); // Night before
-  date.setHours(20, 0, 0, 0);
-  return Math.floor(date.getTime() / 1000); // Return seconds since epoch
+const buildTriggerDate = (scheduledDate: string, scheduledTime: string): Date | null => {
+  const [y, m, d] = scheduledDate.split('-').map(Number);
+  const [hh, mm] = scheduledTime.split(':').map(Number);
+
+  if (![y, m, d, hh, mm].every(Number.isFinite)) return null;
+
+  const triggerDate = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, 0, 0);
+  if (Number.isNaN(triggerDate.getTime())) return null;
+  return triggerDate;
+};
+
+const REMINDER_OFFSETS: Record<TaskReminderType, number> = {
+  AT_TIME: 0,
+  '10_MIN_BEFORE': 10 * 60 * 1000,
+  '1_HOUR_BEFORE': 60 * 60 * 1000,
+  '1_DAY_BEFORE': 24 * 60 * 60 * 1000,
+};
+
+const normalizeTaskReminders = (task: Task): TaskReminderType[] => {
+  const raw = task.reminders;
+  const defaultReminder: TaskReminderType[] = ['AT_TIME'];
+  const source = Array.isArray(raw) ? raw : defaultReminder;
+
+  const deduped = Array.from(new Set(source.map(String)));
+  return deduped
+    .filter((value): value is TaskReminderType => value in REMINDER_OFFSETS)
+    .slice(0, 4);
 };
 
 /**
- * Calculate morning of date at 08:00
- */
-const getMorningNotificationTime = (dueDate: string): number => {
-  const [year, month, day] = dueDate.split('-').map(Number);
-  const date = new Date(year, month - 1, day);
-  date.setHours(8, 0, 0, 0);
-  return Math.floor(date.getTime() / 1000); // Return seconds since epoch
-};
-
-/**
- * Check if date is today (same day as task creation)
- */
-const isToday = (dateStr: string): boolean => {
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  return dateStr === todayKey;
-};
-
-/**
- * Schedule task notifications (night before + morning of)
- * Returns array of notification IDs
+ * Schedule task notification at exact task date/time
+ * Returns array with notification ID
  * 
  * Note: Only works with development build or physical device with Expo app.
  * Expo Go on SDK 53+ does not support notifications.
@@ -105,8 +134,8 @@ const isToday = (dateStr: string): boolean => {
 export const scheduleTaskNotifications = async (task: Task): Promise<string[]> => {
   // If notifications not available, return empty array
   if (!notificationsAvailable || !Notifications) {
-    if (task.scheduledDate) {
-      console.log(`[Notifications] Would schedule reminders for: ${task.text}`);
+    if (task.scheduledDate && task.scheduledTime) {
+      console.log(`[Notifications] Would schedule reminder for: ${task.text} (${task.scheduledDate} ${task.scheduledTime})`);
       console.log('[Notifications] To enable notifications:');
       console.log('  1. Run: eas build --platform android --profile preview');
       console.log('  2. Install the development build on your device');
@@ -116,58 +145,67 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
   }
 
   try {
-    const hasPermission = await hasNotificationPermission();
+    await ensureTaskNotificationChannel();
+
+    let hasPermission = await hasNotificationPermission();
+    if (!hasPermission) {
+      hasPermission = await requestNotificationPermission();
+    }
+
     if (!hasPermission) {
       console.warn('[Notifications] Permission not granted');
       return [];
     }
 
-    if (!task.scheduledDate || task.completed) {
+    if (!task.scheduledDate || !task.scheduledTime || task.completed) {
       return [];
     }
 
-    const notificationIds: string[] = [];
-    const now = new Date();
-    const currentTimeSeconds = Math.floor(now.getTime() / 1000);
-
-    // Schedule morning notification (always)
-    const morningTimeSeconds = getMorningNotificationTime(task.scheduledDate);
-    
-    // Only schedule if time is in the future
-    if (morningTimeSeconds > currentTimeSeconds) {
-      const morningId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Hoje: Tarefas Pendentes 📋',
-          body: `Hoje: ${task.text}`,
-          sound: true,
-          vibrate: [0, 250, 250, 250],
-        },
-        trigger: {
-          seconds: morningTimeSeconds - currentTimeSeconds,
-        } as any,
-      });
-      notificationIds.push(String(morningId));
+    const triggerDate = buildTriggerDate(task.scheduledDate, task.scheduledTime);
+    if (!triggerDate) {
+      console.warn('[Notifications] Invalid scheduled date/time');
+      return [];
     }
 
-    // Schedule night before notification (skip if task is created same day)
-    if (!isToday(task.scheduledDate)) {
-      const nightBeforeTimeSeconds = getNightBeforeNotificationTime(task.scheduledDate);
-      
-      // Only schedule if time is in the future
-      if (nightBeforeTimeSeconds > currentTimeSeconds) {
-        const nightId = await Notifications.scheduleNotificationAsync({
-          content: {
-            title: 'Você tem tarefas amanhã 👀',
-            body: `Amanhã: ${task.text}`,
-            sound: true,
-            vibrate: [0, 250, 250, 250],
-          },
-          trigger: {
-            seconds: nightBeforeTimeSeconds - currentTimeSeconds,
-          } as any,
-        });
-        notificationIds.push(String(nightId));
+    if (triggerDate.getTime() <= Date.now()) {
+      console.log('[Notifications] Skipping past trigger date');
+      return [];
+    }
+
+    const reminders = normalizeTaskReminders(task);
+    if (reminders.length === 0) {
+      return [];
+    }
+
+    const now = Date.now();
+    const seenTimestamps = new Set<number>();
+    const notificationIds: string[] = [];
+
+    for (const reminder of reminders) {
+      const offsetMs = REMINDER_OFFSETS[reminder];
+      const reminderDate = new Date(triggerDate.getTime() - offsetMs);
+      const reminderTs = reminderDate.getTime();
+
+      if (reminderTs <= now) {
+        continue;
       }
+
+      if (seenTimestamps.has(reminderTs)) {
+        continue;
+      }
+      seenTimestamps.add(reminderTs);
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Task reminder',
+          body: `You need to: ${task.text}`,
+          sound: true,
+          ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
+        },
+        trigger: reminderDate as any,
+      });
+
+      notificationIds.push(String(notificationId));
     }
 
     return notificationIds;

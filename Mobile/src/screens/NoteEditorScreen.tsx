@@ -29,9 +29,9 @@ const NoteEditorScreen: React.FC = () => {
   const initialContentRef = useRef<string>(serializeCanvasNoteContent(createEmptyCanvasNote()));
 
   const [currentNote, setCurrentNote] = useState(existing);
-  const [title, setTitle] = useState(existing?.title ?? "");
+  const [title, setTitle] = useState(existing?.title ?? "Untitled");
   const [content, setContent] = useState(existing?.content ?? initialContentRef.current);
-  const [lastSavedTitle, setLastSavedTitle] = useState(existing?.title ?? "");
+  const [lastSavedTitle, setLastSavedTitle] = useState(existing?.title ?? "Untitled");
   const [lastSavedContent, setLastSavedContent] = useState(existing?.content ?? initialContentRef.current);
   const [saving, setSaving] = useState(false);
   const [isReadMode, setIsReadMode] = useState(false);
@@ -45,9 +45,9 @@ const NoteEditorScreen: React.FC = () => {
   useEffect(() => {
     if (!existing) return;
     setCurrentNote(existing);
-    setTitle(existing.title ?? "");
+    setTitle(existing.title ?? "Untitled");
     setContent(existing.content ?? initialContentRef.current);
-    setLastSavedTitle(existing.title ?? "");
+    setLastSavedTitle(existing.title ?? "Untitled");
     setLastSavedContent(existing.content ?? initialContentRef.current);
   }, [existing]);
 
@@ -64,11 +64,13 @@ const NoteEditorScreen: React.FC = () => {
       saveTimerRef.current = null;
     }
 
-    const normalizedTitle = title.trim();
+    const normalizedTitle = title.trim() || "Untitled";
     const normalizedContent = typeof content === "string" ? content : "";
-    if (!normalizedTitle) {
+    const hasMeaningfulContent = normalizedContent.trim().length > 0;
+    const hasMeaningfulTitle = title.trim().length > 0;
+    if (!currentNote && !hasMeaningfulTitle && !hasMeaningfulContent) {
       if (showValidationError) {
-        showToast("Title cannot be empty", "error");
+        showToast("Start typing to create a note", "error");
       }
       return null;
     }
@@ -93,7 +95,6 @@ const NoteEditorScreen: React.FC = () => {
       }
 
       creatingRef.current = true;
-      console.log("createNote called");
       const saved = await createNote({
         title: normalizedTitle,
         content: normalizedContent,
@@ -103,8 +104,8 @@ const NoteEditorScreen: React.FC = () => {
       setCurrentNote(saved);
       setLastSavedTitle(saved.title);
       setLastSavedContent(saved.content);
-      skipBeforeRemoveRef.current = true;
-      navigation.replace("NoteEditor", { noteId: saved.id, folderId: saved.folderId });
+      // Keep local state as source of truth. Avoid setParams after async save,
+      // because the screen may already be unfocused/unmounted when user leaves quickly.
       return saved;
     } catch (error) {
       console.error("[note] save failed", error);
@@ -115,9 +116,8 @@ const NoteEditorScreen: React.FC = () => {
       savingRef.current = false;
       setSaving(false);
     }
-  }, [content, currentNote, folderId, navigation, showToast, title, upsertNote]);
+  }, [content, currentNote, folderId, showToast, title, upsertNote]);
 
-  // Keep persistNote ref in sync
   useEffect(() => {
     persistNoteRef.current = persistNote;
   }, [persistNote]);
@@ -128,9 +128,7 @@ const NoteEditorScreen: React.FC = () => {
 
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
-      if (currentNote) {
-        persistNote();
-      }
+      persistNote({ allowCreate: true });
     }, 900);
 
     return () => {
@@ -141,15 +139,9 @@ const NoteEditorScreen: React.FC = () => {
     };
   }, [currentNote, hasPendingChanges, persistNote]);
 
-  const handleSave = useCallback(async () => {
-    const saved = await persistNote({ allowCreate: true, showValidationError: true });
-    if (!saved) return;
-    showToast("Note saved ✓");
-  }, [persistNote, showToast]);
-
   const handleBack = useCallback(() => {
-    if (hasPendingChanges && currentNote) {
-      persistNote();
+    if (hasPendingChanges) {
+      persistNote({ allowCreate: true });
     }
     if (navigation.canGoBack()) {
       navigation.goBack();
@@ -170,8 +162,8 @@ const NoteEditorScreen: React.FC = () => {
   useEffect(() => {
     const unsub = navigation.addListener("beforeRemove", (e) => {
       if (skipBeforeRemoveRef.current || savingRef.current) return;
-      if (hasPendingChanges && currentNote && persistNoteRef.current) {
-        persistNoteRef.current();
+      if (hasPendingChanges && persistNoteRef.current) {
+        persistNoteRef.current({ allowCreate: true });
       }
     });
 
@@ -202,6 +194,11 @@ const NoteEditorScreen: React.FC = () => {
           <TextInput
             value={title}
             onChangeText={setTitle}
+            onBlur={() => {
+              if (persistNoteRef.current) {
+                persistNoteRef.current({ allowCreate: true });
+              }
+            }}
             editable={!isReadMode}
             placeholder="Title"
             placeholderTextColor={theme.colors.textSecondary}
@@ -228,20 +225,7 @@ const NoteEditorScreen: React.FC = () => {
               <Ionicons name={isReadMode ? "create-outline" : "eye-outline"} size={20} color={theme.colors.textPrimary} />
             </Pressable>
 
-            {!isReadMode && (
-              <Pressable
-                disabled={saving}
-                onPress={handleSave}
-                hitSlop={8}
-                style={[styles.saveButton, saving && styles.disabledButton]}
-              >
-                {saving ? (
-                  <ActivityIndicator size="small" color={theme.colors.primary} />
-                ) : (
-                  <Ionicons name="save-outline" size={18} color={theme.colors.primary} />
-                )}
-              </Pressable>
-            )}
+            {!isReadMode && saving ? <ActivityIndicator size="small" color={theme.colors.primary} /> : null}
           </View>
         </View>
       </View>
@@ -306,13 +290,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.08)"
-  },
-  saveButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: "center",
-    justifyContent: "center"
   },
   disabledButton: {
     opacity: 0.6

@@ -46,13 +46,13 @@ export const useAppStore = create<AppState & AppActions>()(
       set((state) => {
         state.folders = {};
         for (const folder of list) {
-          state.folders[folder.id] = folder;
+          state.folders[folder.id] = { ...folder, parentId: folder.parentId ?? null };
         }
       }),
 
     upsertFolder: (folder) =>
       set((state) => {
-        state.folders[folder.id] = folder;
+        state.folders[folder.id] = { ...folder, parentId: folder.parentId ?? null };
       }),
 
     removeFolder: (folderId) =>

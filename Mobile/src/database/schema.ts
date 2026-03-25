@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS notes (
 
 CREATE TABLE IF NOT EXISTS quick_notes (
   id TEXT PRIMARY KEY NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
   content TEXT NOT NULL,
   folderId TEXT REFERENCES folders(id) ON DELETE SET NULL,
   createdAt INTEGER NOT NULL,
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   id TEXT PRIMARY KEY NOT NULL,
   text TEXT NOT NULL,
   completed INTEGER NOT NULL DEFAULT 0,
+  updatedAt INTEGER NOT NULL DEFAULT 0,
   orderIndex INTEGER NOT NULL DEFAULT 0,
   priority INTEGER NOT NULL DEFAULT 0,
   noteId TEXT REFERENCES notes(id) ON DELETE CASCADE,
@@ -43,6 +45,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   scheduledTime TEXT,
   repeatDays TEXT NOT NULL DEFAULT '[]',
   completedDates TEXT NOT NULL DEFAULT '[]',
+  reminders TEXT NOT NULL DEFAULT '[]',
   notificationIds TEXT NOT NULL DEFAULT '[]'
 );
 

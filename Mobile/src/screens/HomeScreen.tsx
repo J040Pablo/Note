@@ -1,19 +1,18 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, FlatList, Animated, Modal } from "react-native";
+import { View, StyleSheet, Pressable, FlatList, Animated } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Text } from "@components/Text";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { FolderNameModal } from "@components/FolderNameModal";
+import QRScanner from "@components/QRScanner";
 import { useNotesStore } from "@store/useNotesStore";
-import { QuickNoteInput } from "@components/QuickNoteInput";
-import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useTasksStore } from "@store/useTasksStore";
 import { useAppStore } from "@store/useAppStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { getAllTasks, isTaskCompletedForDate, shouldAppearOnDate, toDateKey, toggleTaskForDate } from "@services/tasksService";
-import { createNote, getAllNotes, createQuickNote, updateQuickNote } from "@services/notesService";
+import { createNote, getAllNotes } from "@services/notesService";
 import { createFolder, getAllFolders } from "@services/foldersService";
 import { getAllFiles } from "@services/filesService";
 import { getPinnedItems, getRecentItems, savePinnedItems, saveRecentItems } from "@services/appMetaService";
@@ -25,6 +24,7 @@ import { FolderIcon } from "@components/FolderIcon";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
+import { connectTaskSyncClient } from "@services/sync/taskSyncClient";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
 
@@ -74,8 +74,7 @@ const HomeScreen: React.FC = () => {
   const [search, setSearch] = useState("");
   const [selectedPinned, setSelectedPinned] = useState<{ type: PinnedItemType; id: ID; label: string } | null>(null);
   const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
-  const [showQuickNoteModal, setShowQuickNoteModal] = useState(false);
-  const [quickNoteDraftId, setQuickNoteDraftId] = useState<string | null>(null);
+  const [openScanner, setOpenScanner] = useState(false);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
@@ -311,7 +310,7 @@ const HomeScreen: React.FC = () => {
             <View style={hsStyles.headerTopRow}>
               <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
               <Pressable
-                onPress={() => showToast("QR Code em breve")}
+                onPress={() => setOpenScanner(true)}
                 style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
                 accessibilityRole="button"
                 accessibilityLabel="Abrir QR Code"
@@ -611,8 +610,9 @@ const HomeScreen: React.FC = () => {
             icon: "flash-outline" as const,
             onPress: () => {
               closeFab();
-              setQuickNoteDraftId(null);
-              setShowQuickNoteModal(true);
+              withLock(() => {
+                navigation.navigate("QuickNote", { folderId: null });
+              });
             }
           },
           {
@@ -734,51 +734,26 @@ const HomeScreen: React.FC = () => {
         }}
       />
 
-      <Modal
-        visible={showQuickNoteModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowQuickNoteModal(false)}
-      >
-        <Pressable style={hsStyles.quickNoteBackdrop} onPress={() => setShowQuickNoteModal(false)}>
-          <Pressable
-            style={[hsStyles.quickNoteCard, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Text style={[hsStyles.quickNoteTitle, { color: theme.colors.textPrimary }]}>Quick Note</Text>
-            <QuickNoteInput
-              autoFocus
-              placeholder="Anote rápido..."
-              onCancel={() => {
-                setShowQuickNoteModal(false);
-                setQuickNoteDraftId(null);
-              }}
-              onSave={async (text) => {
-                const trimmed = text.trim();
-                if (!trimmed) return;
-                if (quickNoteDraftId) {
-                  await updateQuickNote(quickNoteDraftId, trimmed);
-                  useQuickNotesStore.getState().upsertQuickNote({
-                    ...(useQuickNotesStore.getState().quickNotes[quickNoteDraftId] ?? {
-                      id: quickNoteDraftId,
-                      folderId: null,
-                      createdAt: Date.now()
-                    }),
-                    content: trimmed,
-                    updatedAt: Date.now()
-                  });
-                  return;
-                }
+      {openScanner && (
+        <QRScanner
+          onClose={() => setOpenScanner(false)}
+          onScan={(data) => {
+            const scannedUrl = String(data ?? "").trim();
+            console.log("QR scanned:", scannedUrl);
 
-                const saved = await createQuickNote({ content: trimmed, folderId: null });
-                setQuickNoteDraftId(saved.id);
-                useQuickNotesStore.getState().upsertQuickNote(saved);
-                showToast("Quick note criada ✓");
-              }}
-            />
-          </Pressable>
-        </Pressable>
-      </Modal>
+            if (!/^wss?:\/\//i.test(scannedUrl)) {
+              showToast("Invalid QR: use ws://IP:PORT", "error");
+              return;
+            }
+
+            connectTaskSyncClient(scannedUrl)
+              .then(() => showToast("Paired with Web ✓"))
+              .catch(() => showToast("Could not connect to scanned URL", "error"));
+
+            setOpenScanner(false);
+          }}
+        />
+      )}
     </SafeAreaView>
   );
 };

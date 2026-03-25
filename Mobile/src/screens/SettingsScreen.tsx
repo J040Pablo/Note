@@ -5,6 +5,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import ColorPicker from "react-native-wheel-color-picker";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
+import QRScanner from "@components/QRScanner";
 import { useTheme } from "@hooks/useTheme";
 import { getAllFolders } from "@services/foldersService";
 import { getAllNotes } from "@services/notesService";
@@ -12,6 +13,7 @@ import { getAllTasks } from "@services/tasksService";
 import { getAllFiles } from "@services/filesService";
 import { getPinnedItems, getRecentItems } from "@services/appMetaService";
 import { getTaskPreferences, saveTaskPreferences } from "@services/settingsService";
+import { connectTaskSyncClient } from "@services/sync/taskSyncClient";
 
 const PRESET_COLORS = [
   "#FFFFFF",
@@ -46,6 +48,7 @@ const SettingsScreen: React.FC = () => {
   const [useAdvancedPicker, setUseAdvancedPicker] = useState(false);
   const [editing, setEditing] = useState<"primary" | "secondary">("primary");
   const [customHex, setCustomHex] = useState(primaryColor);
+  const [openScanner, setOpenScanner] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -300,6 +303,19 @@ const SettingsScreen: React.FC = () => {
 
         <View style={[styles.section, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
           <View style={styles.sectionHeader}>
+            <Ionicons name="qr-code-outline" size={16} color={theme.colors.textSecondary} />
+            <Text variant="subtitle">Web pairing</Text>
+          </View>
+
+          <Pressable onPress={() => setOpenScanner(true)} style={[styles.actionRow, { borderColor: theme.colors.border }]}> 
+            <Ionicons name="scan-outline" size={16} color={theme.colors.textSecondary} />
+            <Text style={{ flex: 1 }}>Scan QR to pair with Web</Text>
+            <Ionicons name="chevron-forward" size={15} color={theme.colors.textSecondary} />
+          </Pressable>
+        </View>
+
+        <View style={[styles.section, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
+          <View style={styles.sectionHeader}>
             <Ionicons name="archive-outline" size={16} color={theme.colors.textSecondary} />
             <Text variant="subtitle">Backup</Text>
           </View>
@@ -340,6 +356,25 @@ const SettingsScreen: React.FC = () => {
           <Text muted style={{ marginTop: 4 }}>Manage notes, folders, tasks, files and PDFs with a clean workflow.</Text>
         </View>
       </ScrollView>
+
+      {openScanner && (
+        <QRScanner
+          onClose={() => setOpenScanner(false)}
+          onScan={(data) => {
+            const scannedUrl = String(data ?? "").trim();
+            if (!/^wss?:\/\//i.test(scannedUrl)) {
+              Alert.alert("Invalid QR", "Expected format: ws://IP:PORT");
+              return;
+            }
+
+            console.log("QR scanned:", scannedUrl);
+            connectTaskSyncClient(scannedUrl).catch(() => {
+              Alert.alert("Connection failed", "Could not connect to scanned WebSocket URL.");
+            });
+            setOpenScanner(false);
+          }}
+        />
+      )}
     </Screen>
   );
 };

@@ -20,13 +20,13 @@ export const useNotesStore = create<NotesState & NotesActions>()(
       set((state) => {
         state.notes = {};
         for (const note of list) {
-          state.notes[note.id] = note;
+          state.notes[note.id] = { ...note, folderId: note.folderId ?? null };
         }
       }),
 
     upsertNote: (note) =>
       set((state) => {
-        state.notes[note.id] = note;
+        state.notes[note.id] = { ...note, folderId: note.folderId ?? null };
       }),
 
     removeNote: (noteId) =>

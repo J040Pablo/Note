@@ -1,9 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, Image, LayoutAnimation } from "react-native";
+import { View, StyleSheet, Pressable, Image, LayoutAnimation, Animated } from "react-native";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
-import { PrimaryButton } from "@components/PrimaryButton";
 import { FolderIcon } from "@components/FolderIcon";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
@@ -54,8 +53,10 @@ const FoldersScreen: React.FC = () => {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [sortMode, setSortMode] = useState<FolderSortMode>("custom");
   const [viewMode, setViewMode] = useState<FolderViewMode>("grid");
+  const [fabOpen, setFabOpen] = useState(false);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [folderDeleting, setFolderDeleting] = useState(false);
+  const fabAnim = useRef(new Animated.Value(0)).current;
 
   // Debounce refs — ensure rapid drags only trigger one DB write (last-wins).
   const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,6 +90,34 @@ const FoldersScreen: React.FC = () => {
     setSortMode(mode);
     await saveSortPreference(FOLDER_SORT_SCOPE, mode);
   };
+
+  const openFab = useCallback(() => {
+    setFabOpen(true);
+    Animated.spring(fabAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 24,
+      bounciness: 6
+    }).start();
+  }, [fabAnim]);
+
+  const closeFab = useCallback(() => {
+    Animated.timing(fabAnim, {
+      toValue: 0,
+      duration: 160,
+      useNativeDriver: true
+    }).start(({ finished }) => {
+      if (finished) setFabOpen(false);
+    });
+  }, [fabAnim]);
+
+  const toggleFab = useCallback(() => {
+    if (fabOpen) {
+      closeFab();
+    } else {
+      openFab();
+    }
+  }, [closeFab, fabOpen, openFab]);
 
   return (
     <Screen>
@@ -124,7 +153,6 @@ const FoldersScreen: React.FC = () => {
           >
             <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
           </Pressable>
-          <PrimaryButton label="+ Folder" onPress={() => setShowCreateModal(true)} />
         </View>
       </View>
 
@@ -226,7 +254,11 @@ const FoldersScreen: React.FC = () => {
                 }
                 style={[
                   styles.folderGridCard,
-                  { borderColor: theme.colors.border, backgroundColor: theme.colors.card },
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.card,
+                    shadowColor: theme.colors.textPrimary
+                  },
                   isActive && { opacity: 0.6, backgroundColor: theme.colors.primaryAlpha20 }
                 ]}
               >
@@ -238,29 +270,28 @@ const FoldersScreen: React.FC = () => {
                   />
                 )}
                 <View style={styles.gridFolderBody}>
-                  <View style={styles.gridIconSection}>
-                    {item.photoPath ? (
-                      <Image
-                        source={{ uri: item.photoPath }}
-                        style={styles.gridAvatar}
-                        resizeMode="cover"
+                  {item.photoPath ? (
+                    <Image
+                      source={{ uri: item.photoPath }}
+                      style={styles.gridAvatar}
+                      resizeMode="cover"
+                    />
+                  ) : (
+                      <View style={[styles.gridAvatarPlaceholder, { backgroundColor: theme.colors.surfaceElevated }]}> 
+                      <FolderIcon
+                        color={item.color}
+                        fallbackColor={theme.colors.primary}
+                        size={18}
+                          plain
                       />
-                    ) : (
-                      <View style={[styles.gridAvatarPlaceholder, { backgroundColor: theme.colors.primaryAlpha20 }]}>
-                        <FolderIcon
-                          color={item.color}
-                          fallbackColor={theme.colors.primary}
-                          size={18}
-                        />
-                      </View>
-                    )}
-                  </View>
-                  <View style={styles.gridTextSection}>
-                    <Text style={styles.gridFolderTitle} numberOfLines={2}>
+                    </View>
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.gridFolderTitle} numberOfLines={1}>
                       {item.name}
                     </Text>
                     {!!item.description && (
-                      <Text muted variant="caption" numberOfLines={1} style={styles.gridDescription}>
+                      <Text muted variant="caption" numberOfLines={2} style={styles.gridDescription}>
                         {item.description}
                       </Text>
                     )}
@@ -446,6 +477,110 @@ const FoldersScreen: React.FC = () => {
           }
         }}
       />
+
+      {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
+
+      <View style={styles.fabRoot} pointerEvents="box-none">
+        {([
+          {
+            key: "note",
+            label: "Create Note",
+            icon: "document-text-outline" as const,
+            onPress: () => {
+              closeFab();
+              withLock(() => {
+                navigation.getParent()?.getParent()?.navigate("NoteEditor", { folderId: null });
+              });
+            }
+          },
+          {
+            key: "quick-note",
+            label: "Quick Note",
+            icon: "flash-outline" as const,
+            onPress: () => {
+              closeFab();
+              withLock(() => {
+                navigation.getParent()?.getParent()?.navigate("QuickNote", { folderId: null });
+              });
+            }
+          },
+          {
+            key: "folder",
+            label: "Create Folder",
+            icon: "folder-outline" as const,
+            onPress: () => {
+              closeFab();
+              setShowCreateModal(true);
+            }
+          }
+        ] as const).map((item, index) => (
+          <Animated.View
+            key={item.key}
+            pointerEvents={fabOpen ? "auto" : "none"}
+            style={[
+              styles.fabMenuItemWrap,
+              {
+                transform: [
+                  {
+                    translateY: fabAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -((index + 1) * 58)]
+                    })
+                  },
+                  {
+                    scale: fabAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.84, 1]
+                    })
+                  }
+                ],
+                opacity: fabAnim
+              }
+            ]}
+          >
+            <Pressable
+              onPress={item.onPress}
+              style={[
+                styles.fabMenuItem,
+                {
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border
+                }
+              ]}
+            >
+              <Ionicons name={item.icon} size={16} color={theme.colors.primary} />
+              <Text style={[styles.fabMenuLabel, { color: theme.colors.textPrimary }]}>{item.label}</Text>
+            </Pressable>
+          </Animated.View>
+        ))}
+
+        <Pressable
+          onPress={toggleFab}
+          style={[
+            styles.fabMain,
+            {
+              backgroundColor: theme.colors.primary,
+              shadowColor: theme.colors.textPrimary
+            }
+          ]}
+        >
+          <Animated.View
+            style={{
+              transform: [
+                {
+                  rotate: fabAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ["0deg", "45deg"]
+                  })
+                }
+              ]
+            }}
+          >
+            <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
+          </Animated.View>
+        </Pressable>
+      </View>
+
     </Screen>
   );
 };
@@ -493,50 +628,48 @@ const styles = StyleSheet.create({
     marginHorizontal: 0,
   },
   gridItem: {
-    paddingHorizontal: 6,
+    paddingHorizontal: 0
   },
   folderGridCard: {
-    borderWidth: 1,
-    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 16,
     overflow: "hidden",
-    minHeight: 180,
+    minHeight: 120,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 2
   },
   gridBanner: {
     width: "100%",
-    height: 90,
+    height: 86
   },
   gridFolderBody: {
-    flex: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    justifyContent: "space-between",
-  },
-  gridIconSection: {
-    marginBottom: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 12
   },
   gridAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 38,
+    height: 38,
+    borderRadius: 12
   },
   gridAvatarPlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-  },
-  gridTextSection: {
-    flex: 1,
+    overflow: "hidden"
   },
   gridFolderTitle: {
     fontWeight: "600",
-    fontSize: 13,
-    lineHeight: 16,
-    marginBottom: 3,
+    marginBottom: 2
   },
   gridDescription: {
-    fontSize: 11,
+    marginTop: 0
   },
   emptyText: {
     marginTop: 24,
@@ -574,6 +707,45 @@ const styles = StyleSheet.create({
   dragHandle: {
     paddingHorizontal: 2,
     paddingVertical: 4
+  },
+  fabBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.12)"
+  },
+  fabRoot: {
+    position: "absolute",
+    right: 16,
+    bottom: 24
+  },
+  fabMenuItemWrap: {
+    position: "absolute",
+    right: 0,
+    bottom: 0
+  },
+  fabMenuItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    minWidth: 156
+  },
+  fabMenuLabel: {
+    fontSize: 13,
+    fontWeight: "600"
+  },
+  fabMain: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6
   }
 });
 
