@@ -68,6 +68,7 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
   await ensureColumn(db, "folders", "bannerPath", "TEXT");
 
   await ensureColumn(db, "quick_notes", "title", "TEXT NOT NULL DEFAULT ''");
+  await ensureColumn(db, "quick_notes", "folderId", "TEXT");
 
   await ensureColumn(db, "tasks", "scheduledDate", "TEXT");
   await ensureColumn(db, "tasks", "scheduledTime", "TEXT");

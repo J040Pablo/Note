@@ -26,6 +26,7 @@ const QuickNoteScreen: React.FC = () => {
   const existing = quickNoteId ? quickNotes[quickNoteId] : undefined;
 
   const [currentId, setCurrentId] = useState<string | null>(quickNoteId ?? null);
+  const [currentFolderId, setCurrentFolderId] = useState<string | null>(existing?.folderId ?? folderId ?? null);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [content, setContent] = useState(existing?.content ?? "");
   const [lastSavedTitle, setLastSavedTitle] = useState(existing?.title ?? "");
@@ -46,6 +47,7 @@ const QuickNoteScreen: React.FC = () => {
       if (!mounted || !fetched) return;
       upsertQuickNote(fetched);
       setCurrentId(fetched.id);
+      setCurrentFolderId(fetched.folderId ?? null);
       setTitle(fetched.title ?? "");
       setContent(fetched.content ?? "");
       setLastSavedTitle(fetched.title ?? "");
@@ -60,6 +62,7 @@ const QuickNoteScreen: React.FC = () => {
   useEffect(() => {
     if (!existing) return;
     setCurrentId(existing.id);
+    setCurrentFolderId(existing.folderId ?? null);
     setTitle(existing.title ?? "");
     setContent(existing.content ?? "");
     setLastSavedTitle(existing.title ?? "");
@@ -73,6 +76,11 @@ const QuickNoteScreen: React.FC = () => {
 
   const persistQuickNote = useCallback(async (opts?: { allowCreate?: boolean }) => {
     if (savingRef.current) return;
+
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
 
     const allowCreate = opts?.allowCreate ?? false;
     if (!allowCreate && !currentId) return;
@@ -88,13 +96,13 @@ const QuickNoteScreen: React.FC = () => {
 
     try {
       if (currentId) {
-        await updateQuickNote(currentId, { title: safeTitle, content: safeContent });
+        await updateQuickNote(currentId, { title: safeTitle, content: safeContent, folderId: currentFolderId });
         const previous = quickNotes[currentId];
         upsertQuickNote({
           id: currentId,
           title: safeTitle,
           content: safeContent,
-          folderId: previous?.folderId ?? folderId ?? null,
+          folderId: currentFolderId,
           createdAt: previous?.createdAt ?? Date.now(),
           updatedAt: Date.now()
         });
@@ -102,9 +110,10 @@ const QuickNoteScreen: React.FC = () => {
         const created = await createQuickNote({
           title: safeTitle,
           content: safeContent,
-          folderId: folderId ?? null
+          folderId: currentFolderId
         });
         setCurrentId(created.id);
+        setCurrentFolderId(created.folderId ?? null);
         upsertQuickNote(created);
       }
 
@@ -114,8 +123,7 @@ const QuickNoteScreen: React.FC = () => {
       savingRef.current = false;
       setSaving(false);
     }
-  }, [content, currentId, folderId, hasPendingChanges, quickNotes, title, upsertQuickNote]);
-
+  }, [content, currentFolderId, currentId, hasPendingChanges, quickNotes, title, upsertQuickNote]);
   useEffect(() => {
     persistRef.current = persistQuickNote;
   }, [persistQuickNote]);
@@ -153,6 +161,17 @@ const QuickNoteScreen: React.FC = () => {
     }
   }, [navigation]);
 
+  const handleSaveAndClose = useCallback(async () => {
+    if (persistRef.current) {
+      await persistRef.current({ allowCreate: true });
+    }
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else {
+      navigation.navigate("Tabs");
+    }
+  }, [navigation]);
+
   return (
     <Screen style={styles.screen}>
       <View style={[styles.headerRow, { borderBottomColor: theme.colors.border + "55" }]}> 
@@ -172,7 +191,17 @@ const QuickNoteScreen: React.FC = () => {
           numberOfLines={1}
         />
 
-        {saving ? <ActivityIndicator size="small" color={theme.colors.primary} /> : <View style={{ width: 20 }} />}
+        <View style={styles.headerActions}>
+          <Pressable
+            disabled={saving}
+            onPress={handleSaveAndClose}
+            hitSlop={8}
+            style={[styles.saveCloseButton, { borderColor: theme.colors.border }]}
+          >
+            <Ionicons name="checkmark" size={14} color={theme.colors.textPrimary} />
+          </Pressable>
+          {saving ? <ActivityIndicator size="small" color={theme.colors.primary} /> : <View style={{ width: 16 }} />}
+        </View>
       </View>
 
       <View style={[styles.editorWrap, { backgroundColor: theme.colors.background }]}> 
@@ -223,6 +252,19 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     paddingVertical: 0,
     letterSpacing: 0.2
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6
+  },
+  saveCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center"
   },
   editorWrap: {
     flex: 1,

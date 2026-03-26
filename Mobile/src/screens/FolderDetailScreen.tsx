@@ -32,9 +32,10 @@ import { useAppStore } from "@store/useAppStore";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
 import { useNotesStore } from "@store/useNotesStore";
+import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
-import { createNote, deleteNote, getNotesByFolder, updateNote } from "@services/notesService";
+import { createNote, deleteNote, getNotesByFolder, getQuickNotesByFolder, updateNote } from "@services/notesService";
 import {
   addRecentOpen,
   getPinnedItems,
@@ -53,7 +54,7 @@ import {
   updateFileDetails
 } from "@services/filesService";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { AppFile, Folder, Note } from "@models/types";
+import type { AppFile, Folder, Note, QuickNote } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 
@@ -90,6 +91,8 @@ const FolderDetailScreen: React.FC = () => {
   const notes = useNotesStore((s) => s.notes);
   const upsertNote = useNotesStore((s) => s.upsertNote);
   const removeNote = useNotesStore((s) => s.removeNote);
+  const quickNotes = useQuickNotesStore((s) => s.quickNotes);
+  const upsertQuickNote = useQuickNotesStore((s) => s.upsertQuickNote);
   const files = useFilesStore((s) => s.files);
   const upsertFile = useFilesStore((s) => s.upsertFile);
   const removeFile = useFilesStore((s) => s.removeFile);
@@ -127,14 +130,16 @@ const FolderDetailScreen: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      const [childrenFolders, folderNotes, folderFiles] = await Promise.all([
+      const [childrenFolders, folderNotes, folderQuickNotes, folderFiles] = await Promise.all([
         getFoldersByParent(folderId ?? null),
         getNotesByFolder(folderId ?? null),
+        getQuickNotesByFolder(folderId ?? null),
         getFilesByFolder(folderId ?? null)
       ]);
       childrenFolders.forEach(upsertFolder);
       // Keep global stores immutable and additive so previous screens don't lose items.
       folderNotes.forEach(upsertNote);
+      folderQuickNotes.forEach(upsertQuickNote);
       folderFiles.forEach(upsertFile);
       const [pinned, savedSort] = await Promise.all([
         getPinnedItems(),
@@ -145,7 +150,7 @@ const FolderDetailScreen: React.FC = () => {
       // Force re-render when folder changes
       setRenderKey((prev) => prev + 1);
     })();
-  }, [folderId, setPinnedItems, upsertFile, upsertFolder, upsertNote]);
+  }, [folderId, setPinnedItems, upsertFile, upsertFolder, upsertNote, upsertQuickNote]);
 
   useEffect(() => {
     (async () => {
@@ -209,6 +214,11 @@ const FolderDetailScreen: React.FC = () => {
   const folderNotes = useMemo(
     () => Object.values(notes).filter((n) => (n.folderId ?? null) === folderId),
     [folderId, notes]
+  );
+
+  const folderQuickNotes = useMemo(
+    () => Object.values(quickNotes).filter((n) => (n.folderId ?? null) === folderId),
+    [folderId, quickNotes]
   );
 
   const folderFiles = useMemo(
@@ -523,38 +533,50 @@ const FolderDetailScreen: React.FC = () => {
                   </View>
                 </Pressable>
               ))}
-          </View>
 
-          <DraggableFlatList
-            key={`files-${folderId ?? "root"}-${renderKey}`}
-            data={visibleFiles}
-            keyExtractor={(item) => item.id}
-            initialNumToRender={12}
-            maxToRenderPerBatch={10}
-            windowSize={9}
-            removeClippedSubviews={false}
-            activationDistance={12}
-            scrollEnabled={false}
-            onDragEnd={({ data }) => {
-              const orderedIds = data.map((x) => x.id);
+            {folderQuickNotes
+              .sort((a, b) => b.updatedAt - a.updatedAt)
+              .map((quickNote: QuickNote) => (
+                <Pressable
+                  key={`quick-${quickNote.id}`}
+                  delayLongPress={260}
+                  style={({ pressed }) => [
+                    styles.itemCard,
+                    currentViewMode === "grid" ? styles.gridItemCard : styles.listItemCard,
+                    {
+                      borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.card,
+                      shadowColor: theme.colors.textPrimary,
+                      transform: [{ scale: pressed ? 0.992 : 1 }],
+                      opacity: pressed ? 0.96 : 1
+                    }
+                  ]}
+                  onPress={() =>
+                    withLock(() => {
+                      navigation.navigate("QuickNote", { quickNoteId: quickNote.id, folderId: folderId ?? null });
+                    })
+                  }
+                >
+                  <View style={styles.cardBody}>
+                    <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
+                      <Ionicons name="flash-outline" size={18} color={theme.colors.textSecondary} />
+                    </View>
+                    <View style={styles.rowContent}>
+                      <Text style={styles.rowTitle}>{quickNote.title}</Text>
+                      {!!firstLine(quickNote.content) && (
+                        <Text muted variant="caption" numberOfLines={2}>
+                          {firstLine(quickNote.content)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
 
-              // 1. Optimistic UI: update orderIndex in-place — no full map replace, no flicker.
-              reorderFilesInStore(orderedIds);
-              setFileSortMode("custom");
-
-              // 2. Debounced persist: last-wins so rapid drags never race.
-              latestFileOrderRef.current = orderedIds;
-              if (fileReorderTimerRef.current) clearTimeout(fileReorderTimerRef.current);
-              fileReorderTimerRef.current = setTimeout(() => {
-                fileReorderTimerRef.current = null;
-                const ids = latestFileOrderRef.current;
-                saveSortPreference(fileSortScopeForFolder(folderId), "custom");
-                reorderFiles(folderId ?? null, ids);
-              }, 300);
-            }}
-            renderItem={({ item, drag, isActive }: RenderItemParams<AppFile>) => (
+            {/* File list */}
+            {folderFiles.map((item: any) => (
               <Pressable
-                onLongPress={() => setSelectedFile(item)}
+                key={`file-${item.id}`}
                 delayLongPress={260}
                 style={({ pressed }) => [
                   styles.itemCard,
@@ -563,10 +585,10 @@ const FolderDetailScreen: React.FC = () => {
                     borderColor: theme.colors.border,
                     backgroundColor: theme.colors.card,
                     shadowColor: theme.colors.textPrimary,
-                    transform: [{ scale: isActive ? 1.01 : pressed ? 0.992 : 1 }],
+                    transform: [{ scale: pressed ? 0.992 : 1 }],
                     opacity: pressed ? 0.96 : 1,
-                    elevation: isActive ? 8 : 2,
-                    shadowOpacity: isActive ? 0.24 : 0.08
+                    elevation: 2,
+                    shadowOpacity: 0.08
                   }
                 ]}
                 onPress={() =>
@@ -607,10 +629,6 @@ const FolderDetailScreen: React.FC = () => {
                   </View>
                   <Pressable
                     onPressIn={(event) => event.stopPropagation()}
-                    onLongPress={(event) => {
-                      event.stopPropagation();
-                      drag();
-                    }}
                     delayLongPress={220}
                     hitSlop={8}
                     style={styles.dragHandle}
@@ -620,15 +638,14 @@ const FolderDetailScreen: React.FC = () => {
                   <Ionicons name={getFileTypeIcon(item.type)} size={16} color={theme.colors.textSecondary} />
                 </View>
               </Pressable>
+            ))}
+
+            {childFolders.length === 0 && folderNotes.length === 0 && folderQuickNotes.length === 0 && folderFiles.length === 0 && (
+              <Text muted style={styles.emptyText}>
+                No items yet.
+              </Text>
             )}
-            ListEmptyComponent={
-              childFolders.length === 0 && folderNotes.length === 0 ? (
-                <Text muted style={styles.emptyText}>
-                  No items yet.
-                </Text>
-              ) : null
-            }
-          />
+          </View>
         </ScrollView>
       </View>
 

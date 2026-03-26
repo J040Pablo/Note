@@ -8,11 +8,12 @@ import { useTheme, spacing } from "@hooks/useTheme";
 import { FolderNameModal } from "@components/FolderNameModal";
 import QRScanner from "@components/QRScanner";
 import { useNotesStore } from "@store/useNotesStore";
+import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useTasksStore } from "@store/useTasksStore";
 import { useAppStore } from "@store/useAppStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { getAllTasks, isTaskCompletedForDate, shouldAppearOnDate, toDateKey, toggleTaskForDate } from "@services/tasksService";
-import { createNote, getAllNotes } from "@services/notesService";
+import { createNote, getAllNotes, getAllQuickNotes } from "@services/notesService";
 import { createFolder, getAllFolders } from "@services/foldersService";
 import { getAllFiles } from "@services/filesService";
 import { getPinnedItems, getRecentItems, savePinnedItems, saveRecentItems } from "@services/appMetaService";
@@ -64,6 +65,8 @@ const HomeScreen: React.FC = () => {
   const notesMap = useNotesStore((s) => s.notes);
   const setNotes = useNotesStore((s) => s.setNotes);
   const upsertNote = useNotesStore((s) => s.upsertNote);
+  const quickNotesMap = useQuickNotesStore((s) => s.quickNotes);
+  const setQuickNotes = useQuickNotesStore((s) => s.setQuickNotes);
   const filesMap = useFilesStore((s) => s.files);
   const setFiles = useFilesStore((s) => s.setFiles);
 
@@ -81,9 +84,10 @@ const HomeScreen: React.FC = () => {
   const fabAnim = useRef(new Animated.Value(0)).current;
 
   const loadData = useCallback(async () => {
-    const [folders, notes, tasks, files, pinned, recent] = await Promise.all([
+    const [folders, notes, quickNotes, tasks, files, pinned, recent] = await Promise.all([
       getAllFolders(),
       getAllNotes(),
+      getAllQuickNotes(),
       getAllTasks(),
       getAllFiles(),
       getPinnedItems(),
@@ -91,11 +95,12 @@ const HomeScreen: React.FC = () => {
     ]);
     setFolders(folders);
     setNotes(notes);
+    setQuickNotes(quickNotes);
     setTasks(tasks);
     setFiles(files);
     setPinnedItems(pinned);
     setRecentItems(recent);
-  }, [setFiles, setFolders, setNotes, setPinnedItems, setRecentItems, setTasks]);
+  }, [setFiles, setFolders, setNotes, setPinnedItems, setQuickNotes, setRecentItems, setTasks]);
 
   useFocusEffect(
     useCallback(() => {
@@ -105,6 +110,7 @@ const HomeScreen: React.FC = () => {
 
   const folders = useMemo(() => Object.values(foldersMap), [foldersMap]);
   const notes = useMemo(() => Object.values(notesMap), [notesMap]);
+  const quickNotes = useMemo(() => Object.values(quickNotesMap), [quickNotesMap]);
   const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
   const files = useMemo(() => Object.values(filesMap), [filesMap]);
 
@@ -120,8 +126,14 @@ const HomeScreen: React.FC = () => {
   );
 
   const recentNotes = useMemo(
-    () => [...notes].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5),
-    [notes]
+    () =>
+      [
+        ...notes.map((note) => ({ kind: "note" as const, id: note.id, title: note.title, content: note.content, updatedAt: note.updatedAt })),
+        ...quickNotes.map((note) => ({ kind: "quick" as const, id: note.id, title: note.title, content: note.content, updatedAt: note.updatedAt }))
+      ]
+        .sort((a, b) => b.updatedAt - a.updatedAt)
+        .slice(0, 5),
+    [notes, quickNotes]
   );
 
   const previewFolders = useMemo(
@@ -243,6 +255,15 @@ const HomeScreen: React.FC = () => {
       });
     },
     [navigation, pushRecent, setRecentItems, withLock]
+  );
+
+  const handleOpenQuickNote = useCallback(
+    (quickNoteId: ID) => {
+      withLock(() => {
+        navigation.navigate("QuickNote", { quickNoteId });
+      });
+    },
+    [navigation, withLock]
   );
 
   const handleOpenTask = useCallback(
@@ -455,17 +476,24 @@ const HomeScreen: React.FC = () => {
                     <Pressable
                       key={note.id}
                       style={[hsStyles.noteCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                      onPress={() => handleOpenNote(note.id)}
-                      onLongPress={() => handleTogglePin("note", note.id)}
+                      onPress={() => (note.kind === "quick" ? handleOpenQuickNote(note.id) : handleOpenNote(note.id))}
+                      onLongPress={() => {
+                        if (note.kind === "quick") return;
+                        handleTogglePin("note", note.id);
+                      }}
                       delayLongPress={260}
                     >
                       <View style={hsStyles.noteTopRow}>
                         <Text numberOfLines={1} style={hsStyles.noteTitle}>{note.title}</Text>
-                        <Ionicons
-                          name={pinnedItems.some((x) => x.type === "note" && x.id === note.id) ? "pin" : "pin-outline"}
-                          size={14}
-                          color={theme.colors.textSecondary}
-                        />
+                        {note.kind === "quick" ? (
+                          <Ionicons name="flash-outline" size={14} color={theme.colors.textSecondary} />
+                        ) : (
+                          <Ionicons
+                            name={pinnedItems.some((x) => x.type === "note" && x.id === note.id) ? "pin" : "pin-outline"}
+                            size={14}
+                            color={theme.colors.textSecondary}
+                          />
+                        )}
                       </View>
                       {!!firstLine(note.content) && (
                         <Text muted numberOfLines={1} style={hsStyles.notePreview}>

@@ -159,6 +159,26 @@ const NoteEditorScreen: React.FC = () => {
     });
   }, [currentNote, folderId, hasPendingChanges, navigation, persistNote]);
 
+  const handleSaveAndClose = useCallback(async () => {
+    if (persistNoteRef.current) {
+      await persistNoteRef.current({ allowCreate: true, showValidationError: true });
+    }
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigation.navigate("Tabs", {
+      screen: folderId ? "Folders" : "Home",
+      params: folderId
+        ? {
+            screen: "FolderDetail",
+            params: { folderId, trail: [folderId] }
+          }
+        : undefined
+    });
+  }, [folderId, navigation]);
+
   useEffect(() => {
     const unsub = navigation.addListener("beforeRemove", (e) => {
       if (skipBeforeRemoveRef.current || savingRef.current) return;
@@ -207,6 +227,15 @@ const NoteEditorScreen: React.FC = () => {
           />
 
           <View style={styles.headerActions}>
+            <Pressable
+              disabled={saving}
+              onPress={handleSaveAndClose}
+              hitSlop={8}
+              style={[styles.saveCloseButton, { borderColor: theme.colors.border }]}
+            >
+              <Ionicons name="checkmark" size={14} color={theme.colors.textPrimary} />
+            </Pressable>
+
             {isReadMode && (
               <Pressable
                 onPress={() => setCenterSignal((prev) => prev + 1)}
@@ -290,6 +319,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(255,255,255,0.08)"
+  },
+  saveCloseButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center"
   },
   disabledButton: {
     opacity: 0.6

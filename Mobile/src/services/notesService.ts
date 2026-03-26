@@ -155,15 +155,38 @@ export const createQuickNote = async (payload: {
   };
 };
 
-export const updateQuickNote = async (id: ID, payload: { title: string; content: string }): Promise<void> => {
+export const updateQuickNote = async (id: ID, payload: { title: string; content: string; folderId?: ID | null }): Promise<void> => {
   const updatedAt = Date.now();
   const safeTitle = (payload.title ?? "").trim() || "Quick Note";
   const safeContent = typeof payload.content === "string" ? payload.content : "";
 
+  if (payload.folderId === undefined) {
+    await runDbWrite(
+      "UPDATE quick_notes SET title = ?, content = ?, updatedAt = ? WHERE id = ?",
+      safeTitle,
+      safeContent,
+      updatedAt,
+      id
+    );
+    return;
+  }
+
+  if (payload.folderId === null) {
+    await runDbWrite(
+      "UPDATE quick_notes SET title = ?, content = ?, folderId = NULL, updatedAt = ? WHERE id = ?",
+      safeTitle,
+      safeContent,
+      updatedAt,
+      id
+    );
+    return;
+  }
+
   await runDbWrite(
-    "UPDATE quick_notes SET title = ?, content = ?, updatedAt = ? WHERE id = ?",
+    "UPDATE quick_notes SET title = ?, content = ?, folderId = ?, updatedAt = ? WHERE id = ?",
     safeTitle,
     safeContent,
+    payload.folderId,
     updatedAt,
     id
   );
@@ -181,6 +204,11 @@ export const getQuickNotesByFolder = async (folderId: ID | null): Promise<QuickN
           folderId
         );
   return rows;
+};
+
+export const getAllQuickNotes = async (): Promise<QuickNote[]> => {
+  const db = await getDB();
+  return db.getAllAsync<QuickNote>("SELECT * FROM quick_notes ORDER BY updatedAt DESC");
 };
 
 export const getQuickNoteById = async (id: ID): Promise<QuickNote | null> => {
