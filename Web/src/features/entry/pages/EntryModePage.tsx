@@ -1,6 +1,5 @@
 import React from "react";
-import { Smartphone, Monitor, QrCode, Link2 } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
+import { Smartphone, Monitor, Link2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAppMode } from "../../../app/mode";
 import {
@@ -86,7 +85,7 @@ const EntryModePage: React.FC = () => {
             </div>
             <h2>Connect with Mobile</h2>
             <p>
-              Pair this browser with your mobile app using QR Code and sync tasks in real time.
+              Open the mobile app, display its pairing QR/URL, then connect this browser to that ws:// address.
             </p>
 
             <div className={styles.inputsRow}>
@@ -109,9 +108,6 @@ const EntryModePage: React.FC = () => {
             </div>
 
             <div className={styles.qrWrap}>
-              <div className={styles.qrBox}>
-                {pairingUrl ? <QRCodeSVG value={pairingUrl} size={148} /> : <QrCode size={32} />}
-              </div>
               <div className={styles.pairingMeta}>
                 <p className={styles.wsUrl}>{pairingUrl || "ws://<mobile-ip>:8787"}</p>
                 <p className={styles.statusLine}>

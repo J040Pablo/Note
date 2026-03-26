@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { areNotificationsAvailable, ensureTaskNotificationChannel } from '@services/notificationService';
+import { isExpoGo, shouldLogDev } from '@utils/runtimeEnv';
 
 /**
  * Hook to request notification permissions on app startup
@@ -7,14 +8,19 @@ import { areNotificationsAvailable, ensureTaskNotificationChannel } from '@servi
 export const useNotificationSetup = () => {
   useEffect(() => {
     const initializeNotifications = async () => {
+      if (isExpoGo) {
+        if (shouldLogDev) {
+          console.info('[Notifications] Skipping setup in Expo Go.');
+        }
+        return;
+      }
+
       try {
         if (!areNotificationsAvailable()) {
-          console.log('Notifications unavailable in Expo Go; skipping permission setup');
           return;
         }
 
         await ensureTaskNotificationChannel();
-        console.log('Notification channel initialized');
       } catch (error) {
         console.error('Error setting up notifications:', error);
       }

@@ -1,4 +1,3 @@
-import Constants from "expo-constants";
 import * as Network from "expo-network";
 import { getAllFolders } from "@services/foldersService";
 import { getAllNotes } from "@services/notesService";
@@ -7,6 +6,7 @@ import { getAllFiles } from "@services/filesService";
 import { emitTaskServerEvent, subscribeTaskServerEvents, type TaskServerEvent } from "@services/sync/taskSyncEvents";
 import { fromSyncPriority, toSyncTask, type SyncPriority, type SyncTask } from "@services/sync/taskSyncProtocol";
 import type { Task } from "@models/types";
+import { isExpoGo, shouldLogDev } from "@utils/runtimeEnv";
 
 type SocketClient = {
   id: string | number;
@@ -70,8 +70,7 @@ let serverUrl: string | null = null;
 let unsubscribeTaskBroadcast: (() => void) | null = null;
 const clients = new Map<string, SocketClient>();
 
-const isExpoGo =
-  Constants.executionEnvironment === "storeClient" || Constants.appOwnership === "expo";
+let hasLoggedExpoGoWsUnsupported = false;
 
 const getSocketId = (socket: SocketClient): string => String(socket.id);
 
@@ -268,7 +267,10 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
   }
 
   if (isExpoGo) {
-    console.warn("[sync] Expo Go does not support local WebSocket server native module. Use development build.");
+    if (!hasLoggedExpoGoWsUnsupported && shouldLogDev) {
+      hasLoggedExpoGoWsUnsupported = true;
+      console.info("[sync] Disabled in Expo Go. Local WebSocket server requires a development build.");
+    }
     return null;
   }
 

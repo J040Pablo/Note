@@ -24,6 +24,7 @@ import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { NoteEditModal } from "@components/NoteEditModal";
 import { FileDetailsModal } from "@components/FileDetailsModal";
+import FolderExplorerMenu from "@components/FolderExplorerMenu";
 import { useTheme } from "@hooks/useTheme";
 import type { CompositeNavigationProp, RouteProp } from "@react-navigation/native";
 import type { FoldersStackParamList, RootStackParamList } from "@navigation/RootNavigator";
@@ -100,7 +101,8 @@ const FolderDetailScreen: React.FC = () => {
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
-  const [showPathTree, setShowPathTree] = useState(true);
+  const [showExplorerMenu, setShowExplorerMenu] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [selectedFile, setSelectedFile] = useState<AppFile | null>(null);
   const [editingFile, setEditingFile] = useState<AppFile | null>(null);
   const [movingFile, setMovingFile] = useState<AppFile | null>(null);
@@ -188,23 +190,6 @@ const FolderDetailScreen: React.FC = () => {
     }
     return ids;
   }, [folderId, folders, routeTrail]);
-
-  const breadcrumbItems = useMemo(
-    () => [
-      { id: null as string | null, label: "Home" },
-      ...trailIds.map((id) => ({ id, label: folders[id]?.name ?? "Folder" }))
-    ],
-    [folders, trailIds]
-  );
-
-  const handleJumpTo = useCallback(
-    (targetId: string | null, breadcrumbIndex: number) => {
-      if (targetId === folderId) return;
-      const nextTrail = targetId ? trailIds.slice(0, breadcrumbIndex) : [];
-      navigation.setParams({ folderId: targetId, trail: nextTrail });
-    },
-    [folderId, navigation, trailIds]
-  );
 
   const childFolders = useMemo(
     () => Object.values(folders).filter((f) => (f.parentId ?? null) === folderId),
@@ -299,6 +284,37 @@ const FolderDetailScreen: React.FC = () => {
     }
   }, [navigation, trailIds]);
 
+  const toggleExpandedFolder = useCallback((folderId: string) => {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectNoteFromMenu = useCallback(
+    (noteId: string) => {
+      withLock(() => {
+        navigation.navigate("NoteEditor", { noteId });
+        addRecentOpen("note", noteId).then((nextRecent) => setRecentItems(nextRecent));
+      });
+    },
+    [navigation, withLock]
+  );
+
+  const handleSelectQuickNoteFromMenu = useCallback(
+    (quickNoteId: string) => {
+      withLock(() => {
+        navigation.navigate("QuickNote", { quickNoteId, folderId: folderId ?? null });
+      });
+    },
+    [folderId, navigation, withLock]
+  );
+
   return (
     <Screen edges={["top", "right", "left"]} style={styles.screenRoot}>
       <View style={styles.headerRow}>
@@ -309,96 +325,17 @@ const FolderDetailScreen: React.FC = () => {
         >
           <Ionicons name="arrow-back" size={16} color={theme.colors.textPrimary} />
         </Pressable>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text variant="title">{currentFolder?.name ?? "Home"}</Text>
           <Text muted>Subfolders, notes and files</Text>
         </View>
-      </View>
-
-      <View style={[styles.pathCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
-        <View style={styles.pathHeaderRow}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.breadcrumbContent} style={{ flex: 1 }}>
-            {breadcrumbItems.map((item, index) => {
-              const isLast = index === breadcrumbItems.length - 1;
-              return (
-                <View key={item.id ?? "home"} style={styles.breadcrumbItemRow}>
-                  <Pressable
-                    onPress={() => handleJumpTo(item.id, index)}
-                    style={styles.breadcrumbPressable}
-                  >
-                    <Ionicons
-                      name={item.id ? "folder-outline" : "home-outline"}
-                      size={13}
-                      color={isLast ? theme.colors.primary : theme.colors.textSecondary}
-                    />
-                    <Text
-                      numberOfLines={1}
-                      style={[
-                        styles.breadcrumbLabel,
-                        {
-                          color: isLast ? theme.colors.primary : theme.colors.textSecondary,
-                          fontWeight: isLast ? "700" : "500"
-                        }
-                      ]}
-                    >
-                      {item.label}
-                    </Text>
-                  </Pressable>
-                  {!isLast && (
-                    <Ionicons
-                      name="chevron-forward"
-                      size={12}
-                      color={theme.colors.textSecondary}
-                      style={styles.breadcrumbSeparator}
-                    />
-                  )}
-                </View>
-              );
-            })}
-          </ScrollView>
-
-          <Pressable
-            onPress={() => setShowPathTree((prev) => !prev)}
-            style={[styles.treeToggle, { borderColor: theme.colors.border }]}
-          >
-            <Ionicons
-              name={showPathTree ? "chevron-up" : "chevron-down"}
-              size={14}
-              color={theme.colors.textSecondary}
-            />
-          </Pressable>
-        </View>
-
-        {showPathTree && (
-          <View style={[styles.pathPanel, { borderTopColor: theme.colors.border }]}>
-            {breadcrumbItems.map((item, index) => {
-              const isLast = index === breadcrumbItems.length - 1;
-              return (
-                <Pressable
-                  key={`${item.id ?? "home"}-panel`}
-                  onPress={() => handleJumpTo(item.id, index)}
-                  style={styles.pathRow}
-                >
-                  <View style={[styles.pathIndent, { width: index * 12 }]} />
-                  <Ionicons
-                    name={item.id ? "folder-outline" : "home-outline"}
-                    size={14}
-                    color={isLast ? theme.colors.primary : theme.colors.textSecondary}
-                  />
-                  <Text
-                    style={{
-                      marginLeft: 8,
-                      color: isLast ? theme.colors.primary : theme.colors.textSecondary,
-                      fontWeight: isLast ? "600" : "400"
-                    }}
-                  >
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        )}
+        <Pressable
+          onPress={() => setShowExplorerMenu(true)}
+          style={[styles.menuButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+          hitSlop={8}
+        >
+          <Ionicons name="menu-outline" size={18} color={theme.colors.textPrimary} />
+        </Pressable>
       </View>
 
       <View style={[styles.section, { borderColor: theme.colors.border }]}>
@@ -1373,6 +1310,25 @@ const FolderDetailScreen: React.FC = () => {
           }
         }}
       />
+
+      <FolderExplorerMenu
+        visible={showExplorerMenu}
+        onClose={() => setShowExplorerMenu(false)}
+        folders={folders}
+        notes={notes}
+        quickNotes={quickNotes}
+        expandedFolders={expandedFolders}
+        onToggleExpand={toggleExpandedFolder}
+        onSelectNote={handleSelectNoteFromMenu}
+        onSelectQuickNote={handleSelectQuickNoteFromMenu}
+        currentFolderId={folderId}
+        backgroundColor={theme.colors.background}
+        cardColor={theme.colors.card}
+        textPrimary={theme.colors.textPrimary}
+        textSecondary={theme.colors.textSecondary}
+        primaryColor={theme.colors.primary}
+        borderColor={theme.colors.border}
+      />
     </Screen>
   );
 };
@@ -1398,59 +1354,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center"
   },
-  pathCard: {
+  menuButton: {
+    width: 34,
+    height: 34,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    marginBottom: 12
-  },
-  pathHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8
-  },
-  treeToggle: {
-    width: 24,
-    height: 24,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center"
-  },
-  breadcrumbContent: {
-    alignItems: "center",
-    paddingRight: 8
-  },
-  breadcrumbItemRow: {
-    flexDirection: "row",
-    alignItems: "center"
-  },
-  breadcrumbPressable: {
-    flexDirection: "row",
-    alignItems: "center"
-  },
-  breadcrumbLabel: {
-    marginLeft: 4,
-    fontSize: 12,
-    maxWidth: 120
-  },
-  breadcrumbSeparator: {
-    marginHorizontal: 6
-  },
-  pathPanel: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    gap: 6
-  },
-  pathRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 2
-  },
-  pathIndent: {
-    height: 1
   },
   section: {
     borderWidth: 0,

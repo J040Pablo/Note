@@ -6,7 +6,7 @@ import { useFeedback } from "@components/FeedbackProvider";
 import { Text } from "@components/Text";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { FolderNameModal } from "@components/FolderNameModal";
-import QRScanner from "@components/QRScanner";
+import SyncPairingQrModal from "@components/SyncPairingQrModal";
 import { useNotesStore } from "@store/useNotesStore";
 import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useTasksStore } from "@store/useTasksStore";
@@ -25,7 +25,6 @@ import { FolderIcon } from "@components/FolderIcon";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
-import { connectTaskSyncClient } from "@services/sync/taskSyncClient";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
 
@@ -769,26 +768,7 @@ const HomeScreen: React.FC = () => {
         }}
       />
 
-      {openScanner && (
-        <QRScanner
-          onClose={() => setOpenScanner(false)}
-          onScan={(data) => {
-            const scannedUrl = String(data ?? "").trim();
-            console.log("QR scanned:", scannedUrl);
-
-            if (!/^wss?:\/\//i.test(scannedUrl)) {
-              showToast("Invalid QR: use ws://IP:PORT", "error");
-              return;
-            }
-
-            connectTaskSyncClient(scannedUrl)
-              .then(() => showToast("Paired with Web ✓"))
-              .catch(() => showToast("Could not connect to scanned URL", "error"));
-
-            setOpenScanner(false);
-          }}
-        />
-      )}
+      <SyncPairingQrModal visible={openScanner} onClose={() => setOpenScanner(false)} />
     </SafeAreaView>
   );
 };

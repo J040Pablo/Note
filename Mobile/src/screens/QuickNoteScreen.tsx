@@ -5,6 +5,7 @@ import type { RouteProp } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@components/Layout";
+import QuickRichTextEditor from "@components/QuickRichTextEditor";
 import { useTheme } from "@hooks/useTheme";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 import { createQuickNote, getQuickNoteById, updateQuickNote } from "@services/notesService";
@@ -205,19 +206,7 @@ const QuickNoteScreen: React.FC = () => {
       </View>
 
       <View style={[styles.editorWrap, { backgroundColor: theme.colors.background }]}> 
-        <TextInput
-          value={content}
-          onChangeText={setContent}
-          onBlur={() => {
-            if (persistRef.current) persistRef.current({ allowCreate: true });
-          }}
-          multiline
-          placeholder="Write something..."
-          placeholderTextColor={theme.colors.textSecondary}
-          style={[styles.contentInput, { color: theme.colors.textPrimary }]}
-          textAlignVertical="top"
-          autoFocus
-        />
+        <QuickRichTextEditor value={content} onChangeText={setContent} />
       </View>
     </Screen>
   );
@@ -268,14 +257,9 @@ const styles = StyleSheet.create({
   },
   editorWrap: {
     flex: 1,
-    paddingHorizontal: 16,
+    paddingHorizontal: 0,
     paddingTop: 12,
     paddingBottom: 16
-  },
-  contentInput: {
-    flex: 1,
-    fontSize: 16,
-    lineHeight: 24
   }
 });
 

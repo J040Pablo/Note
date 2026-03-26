@@ -22,6 +22,20 @@ const DEFAULT_PAGE_H = 1200;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+const stripHtml = (input: string): string =>
+  input
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#39;/gi, "'")
+    .replace(/&quot;/gi, '"');
+
 const createCanvasPage = (w = DEFAULT_PAGE_W, h = DEFAULT_PAGE_H): CanvasPage => ({
   id: makeId(),
   width: w,
@@ -304,6 +318,10 @@ export const serializeCanvasNoteContent = (doc: CanvasNoteDocument): string => {
 };
 
 export const getPlainTextFromRichNoteContent = (content: string): string => {
+  if (/<[^>]+>/.test(content)) {
+    return stripHtml(content).trim();
+  }
+
   const canvasDoc = parseCanvasNoteContent(content);
   if (canvasDoc.elements.length > 0) {
     return canvasDoc.elements

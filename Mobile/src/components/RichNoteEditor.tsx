@@ -1,13 +1,15 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
+  type NativeSyntheticEvent,
   PanResponder,
   Pressable,
   StyleSheet,
   TextInput,
   View,
   type GestureResponderEvent,
-  type PanResponderGestureState
+  type PanResponderGestureState,
+  type TextInputSelectionChangeEventData
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@components/Text";
@@ -25,12 +27,17 @@ import {
   serializeRichNoteContent
 } from "@utils/noteContent";
 import CodeBlockRenderer from "@components/CodeBlockRenderer";
-import TextFormattingToolbar from "@components/TextFormattingToolbar";
 
 interface RichNoteEditorProps {
   value: string;
   onChangeText: (next: string) => void;
+  mode?: "full" | "quick";
 }
+
+type TextSelectionRange = {
+  start: number;
+  end: number;
+};
 
 const clampFontSize = (size?: number) => {
   const next = size ?? 16;
@@ -161,17 +168,49 @@ const DrawingCanvas = memo(function DrawingCanvas({
   );
 });
 
-export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeText }) => {
+export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeText, mode = "full" }) => {
   const { theme } = useTheme();
   const [doc, setDoc] = useState<RichNoteDocument>(() => parseRichNoteContent(value));
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
+  const [selection, setSelection] = useState<TextSelectionRange>({ start: 0, end: 0 });
   
   // Debounce ref to avoid excessive saves
   const debouncedSaveRef = useRef<((content: string) => void) | null>(null);
 
   useEffect(() => {
-    setDoc(parseRichNoteContent(value));
-  }, [value]);
+    const parsed = parseRichNoteContent(value);
+
+    if (mode !== "quick") {
+      setDoc(parsed);
+      return;
+    }
+
+    const allTextBlocks = parsed.blocks.every((b) => b.type === "text");
+    if (!allTextBlocks) {
+      setDoc(parsed);
+      return;
+    }
+
+    if (parsed.blocks.length <= 1) {
+      setDoc(parsed);
+      return;
+    }
+
+    const mergedText = parsed.blocks.map((b) => (b.type === "text" ? b.text : "")).join("");
+    const firstTextBlock = parsed.blocks[0] as NoteTextBlock;
+    const mergedDoc: RichNoteDocument = {
+      version: 1,
+      blocks: [
+        {
+          ...createTextBlock(mergedText),
+          style: firstTextBlock.style ? { ...firstTextBlock.style } : undefined,
+          text: mergedText
+        }
+      ]
+    };
+
+    setDoc(mergedDoc);
+  }, [mode, value]);
 
   // Create debounced save on mount
   useEffect(() => {
@@ -252,13 +291,62 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
     [doc.blocks, selectedTextId]
   );
 
+  const hasSelectedRange = useMemo(
+    () => !!selectedBlock && selection.end > selection.start,
+    [selectedBlock, selection.end, selection.start]
+  );
+
+  const applyStyleToSelection = useCallback(
+    (updater: (prev: NoteTextBlock) => NoteTextBlock) => {
+      if (!selectedBlock) return;
+
+      // Important: keep text as a single flowing block.
+      // Splitting one block into many blocks causes visual line-break/layout issues in RN TextInput.
+      formatTextBlock(selectedBlock.id, updater);
+    },
+    [formatTextBlock, selectedBlock]
+  );
+
+  const applyFontPreset = useCallback(
+    (preset: "small" | "normal" | "large" | "h1" | "h2" | "h3") => {
+      const fontSizeMap: Record<typeof preset, number> = {
+        small: 13,
+        normal: 16,
+        large: 20,
+        h1: 32,
+        h2: 28,
+        h3: 24
+      };
+
+      const nextSize = fontSizeMap[preset];
+
+      applyStyleToSelection((prev) => ({
+        ...prev,
+        style: {
+          ...prev.style,
+          fontSize: clampFontSize(nextSize)
+        }
+      }));
+    },
+    [applyStyleToSelection]
+  );
+
+  const handleSelectionChange = useCallback(
+    (blockId: string, event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
+      if (selectedTextId !== blockId) return;
+      const { start, end } = event.nativeEvent.selection;
+      setSelection({ start, end });
+    },
+    [selectedTextId]
+  );
+
   return (
     <View style={styles.root}>
       {!!selectedBlock && (
         <View style={[styles.toolbar, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}> 
           <Pressable
             onPress={() =>
-              formatTextBlock(selectedBlock.id, (prev) => ({
+              applyStyleToSelection((prev) => ({
                 ...prev,
                 style: { ...prev.style, bold: !prev.style?.bold }
               }))
@@ -270,7 +358,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
 
           <Pressable
             onPress={() =>
-              formatTextBlock(selectedBlock.id, (prev) => ({
+              applyStyleToSelection((prev) => ({
                 ...prev,
                 style: { ...prev.style, italic: !prev.style?.italic }
               }))
@@ -282,7 +370,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
 
           <Pressable
             onPress={() =>
-              formatTextBlock(selectedBlock.id, (prev) => ({
+              applyStyleToSelection((prev) => ({
                 ...prev,
                 style: { ...prev.style, underline: !prev.style?.underline }
               }))
@@ -294,11 +382,23 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
 
           <Pressable
             onPress={() =>
-              formatTextBlock(selectedBlock.id, (prev) => ({
+              applyStyleToSelection((prev) => ({
+                ...prev,
+                style: { ...prev.style, strikethrough: !prev.style?.strikethrough }
+              }))
+            }
+            style={styles.toolbarButton}
+          >
+            <Text style={{ textDecorationLine: "line-through", color: theme.colors.textPrimary }}>S</Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() =>
+              applyStyleToSelection((prev) => ({
                 ...prev,
                 style: {
                   ...prev.style,
-                  textColor: prev.style?.textColor === "#ef4444" ? theme.colors.textPrimary : "#ef4444"
+                  textColor: prev.style?.textColor ? "" : "#ef4444"
                 }
               }))
             }
@@ -307,9 +407,25 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
             <Ionicons name="color-palette-outline" size={16} color={theme.colors.textPrimary} />
           </Pressable>
 
+          {["#ef4444", "#2563eb", "#16a34a", "#f59e0b", theme.colors.textPrimary].map((color) => (
+            <Pressable
+              key={color}
+              onPress={() =>
+                applyStyleToSelection((prev) => ({
+                  ...prev,
+                  style: {
+                    ...prev.style,
+                    textColor: color
+                  }
+                }))
+              }
+              style={[styles.colorSwatch, { backgroundColor: color }]}
+            />
+          ))}
+
           <Pressable
             onPress={() =>
-              formatTextBlock(selectedBlock.id, (prev) => ({
+              applyStyleToSelection((prev) => ({
                 ...prev,
                 style: {
                   ...prev.style,
@@ -322,9 +438,30 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
             <Ionicons name="brush-outline" size={16} color={theme.colors.textPrimary} />
           </Pressable>
 
+          <View style={styles.toolbarDivider} />
+
+          <Pressable onPress={() => applyFontPreset("small")} style={styles.toolbarButtonLabel}>
+            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>Sm</Text>
+          </Pressable>
+          <Pressable onPress={() => applyFontPreset("normal")} style={styles.toolbarButtonLabel}>
+            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>N</Text>
+          </Pressable>
+          <Pressable onPress={() => applyFontPreset("large")} style={styles.toolbarButtonLabel}>
+            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>Lg</Text>
+          </Pressable>
+          <Pressable onPress={() => applyFontPreset("h1")} style={styles.toolbarButtonLabel}>
+            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H1</Text>
+          </Pressable>
+          <Pressable onPress={() => applyFontPreset("h2")} style={styles.toolbarButtonLabel}>
+            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H2</Text>
+          </Pressable>
+          <Pressable onPress={() => applyFontPreset("h3")} style={styles.toolbarButtonLabel}>
+            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H3</Text>
+          </Pressable>
+
           <Pressable
             onPress={() =>
-              formatTextBlock(selectedBlock.id, (prev) => ({
+              applyStyleToSelection((prev) => ({
                 ...prev,
                 style: { ...prev.style, fontSize: clampFontSize((prev.style?.fontSize ?? 16) - 2) }
               }))
@@ -336,7 +473,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
 
           <Pressable
             onPress={() =>
-              formatTextBlock(selectedBlock.id, (prev) => ({
+              applyStyleToSelection((prev) => ({
                 ...prev,
                 style: { ...prev.style, fontSize: clampFontSize((prev.style?.fontSize ?? 16) + 2) }
               }))
@@ -345,6 +482,12 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
           >
             <Ionicons name="add" size={16} color={theme.colors.textPrimary} />
           </Pressable>
+
+          {hasSelectedRange && (
+            <View style={styles.selectionBadge}>
+              <Text variant="caption" muted>{selection.end - selection.start} selected</Text>
+            </View>
+          )}
         </View>
       )}
 
@@ -355,7 +498,11 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
               <TextInput
                 multiline
                 value={block.text}
-                onFocus={() => setSelectedTextId(block.id)}
+                onFocus={() => {
+                  setSelectedTextId(block.id);
+                  setSelection({ start: 0, end: 0 });
+                }}
+                onSelectionChange={(event) => handleSelectionChange(block.id, event)}
                 onChangeText={(text) => updateBlock(block.id, (prev) => (prev.type === "text" ? { ...prev, text } : prev))}
                 placeholder="Write..."
                 placeholderTextColor={theme.colors.textSecondary}
@@ -366,7 +513,14 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
                     fontSize: clampFontSize(block.style?.fontSize),
                     fontWeight: block.style?.bold ? "700" : "400",
                     fontStyle: block.style?.italic ? "italic" : "normal",
-                    textDecorationLine: block.style?.underline ? "underline" : "none",
+                    textDecorationLine:
+                      block.style?.underline && block.style?.strikethrough
+                        ? "underline line-through"
+                        : block.style?.underline
+                        ? "underline"
+                        : block.style?.strikethrough
+                        ? "line-through"
+                        : "none",
                     backgroundColor: block.style?.highlightColor || "transparent"
                   }
                 ]}
@@ -423,7 +577,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
             />
           )}
 
-          <View style={styles.insertRow}>
+          {mode === "full" && <View style={styles.insertRow}>
             <Pressable
               style={[styles.insertButton, { borderColor: theme.colors.border }]}
               onPress={() => insertAfter(index, createTextBlock(""))}
@@ -463,7 +617,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
               <Ionicons name="trash-outline" size={14} color={theme.colors.textSecondary} />
               <Text muted variant="caption">Delete</Text>
             </Pressable>
-          </View>
+          </View>}
         </View>
       ))}
 
@@ -471,7 +625,9 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
         onPress={() => commit(doc.blocks.length ? doc : createEmptyRichNote())}
         style={[styles.footerHint, { borderColor: theme.colors.border }]}
       >
-        <Text muted variant="caption">Autosave enabled • Rich blocks</Text>
+        <Text muted variant="caption">
+          {mode === "quick" ? "Autosave enabled • Selection formatting" : "Autosave enabled • Rich blocks"}
+        </Text>
       </Pressable>
     </View>
   );
@@ -498,6 +654,35 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center"
+  },
+  toolbarButtonLabel: {
+    minWidth: 34,
+    height: 30,
+    paddingHorizontal: 6,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  toolbarDivider: {
+    width: StyleSheet.hairlineWidth,
+    height: 20,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    marginHorizontal: 2
+  },
+  selectionBadge: {
+    marginLeft: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.06)"
+  },
+  colorSwatch: {
+    width: 18,
+    height: 18,
+    borderRadius: 999,
+    marginHorizontal: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(0,0,0,0.2)"
   },
   blockWrap: {
     gap: 8

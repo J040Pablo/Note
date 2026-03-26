@@ -1,18 +1,14 @@
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 import type { Task } from '@models/types';
 import type { TaskReminderType } from '@models/types';
+import { isExpoGo, shouldLogDev } from '@utils/runtimeEnv';
 
 // Dynamically import expo-notifications with error handling
 let Notifications: any = null;
 let notificationsAvailable = false;
-
-const isExpoGo =
-  Constants.executionEnvironment === 'storeClient' ||
-  Constants.appOwnership === 'expo';
+let hasLoggedNotificationsUnavailable = false;
 
 if (isExpoGo) {
-  console.warn('[Notifications] Expo Go detected. Local scheduling is disabled in this environment.');
   notificationsAvailable = false;
 } else {
   try {
@@ -30,14 +26,24 @@ if (isExpoGo) {
       });
       notificationsAvailable = true;
     } catch (error) {
-      console.warn('[Notifications] Service not fully available. Using fallback mode.');
+      if (shouldLogDev) {
+        console.warn('[Notifications] Service not fully available. Using fallback mode.');
+      }
       notificationsAvailable = false;
     }
   } catch (error) {
-    console.warn('[Notifications] Module not available. Notifications disabled.');
+    if (shouldLogDev) {
+      console.warn('[Notifications] Module not available. Notifications disabled.');
+    }
     notificationsAvailable = false;
   }
 }
+
+const logNotificationsUnavailableOnce = () => {
+  if (hasLoggedNotificationsUnavailable || !shouldLogDev) return;
+  hasLoggedNotificationsUnavailable = true;
+  console.info('[Notifications] Disabled in Expo Go. Use a development build to enable local notifications.');
+};
 
 /**
  * Request user permission for notifications
@@ -45,12 +51,15 @@ if (isExpoGo) {
  */
 export const requestNotificationPermission = async (): Promise<boolean> => {
   if (!notificationsAvailable || !Notifications) {
-    console.warn('[Notifications] Not available in Expo Go. Use `eas build` for development build.');
+    logNotificationsUnavailableOnce();
     return false;
   }
 
   try {
     const { status } = await Notifications.requestPermissionsAsync();
+    if (shouldLogDev) {
+      console.info(`[Notifications] Permission request result: ${status}`);
+    }
     return status === 'granted';
   } catch (error) {
     console.error('Error requesting notification permission:', error);
@@ -73,6 +82,9 @@ export const ensureTaskNotificationChannel = async (): Promise<void> => {
       vibrationPattern: [0, 250, 250, 250],
       enableVibrate: true,
     });
+    if (shouldLogDev) {
+      console.info('[Notifications] Android channel "tasks" is ready (HIGH importance).');
+    }
   } catch (error) {
     console.error('Error creating notification channel:', error);
   }
@@ -134,13 +146,7 @@ const normalizeTaskReminders = (task: Task): TaskReminderType[] => {
 export const scheduleTaskNotifications = async (task: Task): Promise<string[]> => {
   // If notifications not available, return empty array
   if (!notificationsAvailable || !Notifications) {
-    if (task.scheduledDate && task.scheduledTime) {
-      console.log(`[Notifications] Would schedule reminder for: ${task.text} (${task.scheduledDate} ${task.scheduledTime})`);
-      console.log('[Notifications] To enable notifications:');
-      console.log('  1. Run: eas build --platform android --profile preview');
-      console.log('  2. Install the development build on your device');
-      console.log('  3. Notifications will work automatically');
-    }
+    if (task.scheduledDate && task.scheduledTime) logNotificationsUnavailableOnce();
     return [];
   }
 
@@ -158,6 +164,9 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
     }
 
     if (!task.scheduledDate || !task.scheduledTime || task.completed) {
+      if (shouldLogDev) {
+        console.info('[Notifications] Skipped scheduling: missing date/time or task already completed.');
+      }
       return [];
     }
 
@@ -168,7 +177,9 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
     }
 
     if (triggerDate.getTime() <= Date.now()) {
-      console.log('[Notifications] Skipping past trigger date');
+      if (shouldLogDev) {
+        console.info('[Notifications] Skipped scheduling: trigger date is in the past.');
+      }
       return [];
     }
 
@@ -206,6 +217,13 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
       });
 
       notificationIds.push(String(notificationId));
+      if (shouldLogDev) {
+        console.info(`[Notifications] Scheduled successfully: id=${notificationId}, trigger=${reminderDate.toISOString()}`);
+      }
+    }
+
+    if (shouldLogDev && notificationIds.length === 0) {
+      console.info('[Notifications] No reminders scheduled (all reminders resolved to past timestamps).');
     }
 
     return notificationIds;
