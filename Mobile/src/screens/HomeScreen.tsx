@@ -267,6 +267,16 @@ const HomeScreen: React.FC = () => {
     [togglePinned]
   );
 
+  const handleToggleTodayTask = useCallback(
+    async (taskId: ID) => {
+      const targetTask = tasksMap[taskId];
+      if (!targetTask) return;
+      const updated = await toggleTaskForDate(targetTask, todayKey);
+      upsertTask(updated);
+    },
+    [tasksMap, todayKey, upsertTask]
+  );
+
   const sectionData = useMemo(
     () => ["pinned", "today", "recentNotes", "folders", "recent"],
     []
@@ -400,10 +410,7 @@ const HomeScreen: React.FC = () => {
                     <Pressable
                       key={task.id}
                       style={hsStyles.row}
-                      onPress={async () => {
-                        const updated = await toggleTaskForDate(task, todayKey);
-                        upsertTask(updated);
-                      }}
+                      onPress={() => handleToggleTodayTask(task.id)}
                       onLongPress={() => handleTogglePin("task", task.id)}
                       delayLongPress={260}
                     >

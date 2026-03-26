@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, Vibration, TouchableOpacity, Platform, Animated } from "react-native";
+import { KeyboardAvoidingView } from "react-native";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
@@ -614,18 +615,29 @@ const TasksScreen: React.FC = () => {
       />
 
       <Modal transparent visible={showModal} animationType="fade" onRequestClose={() => setShowModal(false)}>
-        <View style={styles.backdrop}>
-          <View
-            style={[
-              styles.card,
-              {
-                backgroundColor: theme.colors.card,
-                borderColor: theme.colors.border,
-                shadowColor: "#000"
-              }
-            ]}
-          >
-            <Text variant="subtitle">{editingTask ? "Editar tarefa" : "Nova tarefa"}</Text>
+        <KeyboardAvoidingView
+          style={styles.modalKeyboardAvoid}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 16 : 0}
+        >
+          <View style={styles.backdrop}>
+            <View
+              style={[
+                styles.card,
+                {
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.border,
+                  shadowColor: "#000"
+                }
+              ]}
+            >
+              <ScrollView
+                style={styles.modalScroll}
+                contentContainerStyle={styles.modalScrollContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+              >
+                <Text variant="subtitle">{editingTask ? "Editar tarefa" : "Nova tarefa"}</Text>
 
             <TextInput
               autoFocus
@@ -709,36 +721,36 @@ const TasksScreen: React.FC = () => {
               />
             )}
 
-            <Text style={styles.priorityLabel}>Reminders</Text>
-            <View style={styles.remindersGroup}>
-              {REMINDER_OPTIONS.map((option) => {
-                const active = reminders.includes(option.value);
-                return (
-                  <Pressable
-                    key={option.value}
-                    onPress={() => {
-                      setReminders((prev) => {
-                        if (prev.includes(option.value)) {
-                          return prev.filter((value) => value !== option.value);
-                        }
-                        if (prev.length >= 4) {
-                          return prev;
-                        }
-                        return [...prev, option.value];
-                      });
-                    }}
-                    style={[styles.reminderOption, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
-                  >
-                    <Ionicons
-                      name={active ? "checkbox" : "square-outline"}
-                      size={18}
-                      color={active ? theme.colors.primary : theme.colors.textSecondary}
-                    />
-                    <Text>{option.label}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+                <Text style={styles.priorityLabel}>Reminders</Text>
+                <View style={styles.remindersGroup}>
+                  {REMINDER_OPTIONS.map((option) => {
+                    const active = reminders.includes(option.value);
+                    return (
+                      <Pressable
+                        key={option.value}
+                        onPress={() => {
+                          setReminders((prev) => {
+                            if (prev.includes(option.value)) {
+                              return prev.filter((value) => value !== option.value);
+                            }
+                            if (prev.length >= 4) {
+                              return prev;
+                            }
+                            return [...prev, option.value];
+                          });
+                        }}
+                        style={[styles.reminderOption, { borderColor: theme.colors.border, backgroundColor: theme.colors.background }]}
+                      >
+                        <Ionicons
+                          name={active ? "checkbox" : "square-outline"}
+                          size={18}
+                          color={active ? theme.colors.primary : theme.colors.textSecondary}
+                        />
+                        <Text>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
 
             <Text style={styles.priorityLabel}>Prioridade</Text>
             <View style={styles.priorityGroup}>
@@ -816,7 +828,7 @@ const TasksScreen: React.FC = () => {
               </Pressable>
             </View>
 
-            <View style={styles.actions}>
+              <View style={styles.actions}>
               <Pressable
                 disabled={taskSubmitting}
                 onPress={() => {
@@ -828,7 +840,7 @@ const TasksScreen: React.FC = () => {
                 <Text muted>Cancelar</Text>
               </Pressable>
 
-              <TouchableOpacity
+                  <TouchableOpacity
                 activeOpacity={0.9}
                 onPress={async () => {
                   // Validate title before any action
@@ -900,10 +912,12 @@ const TasksScreen: React.FC = () => {
                     {editingTask ? "Salvar" : "Criar Task"}
                   </Text>
                 )}
-              </TouchableOpacity>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
@@ -981,6 +995,9 @@ const TasksScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  modalKeyboardAvoid: {
+    flex: 1
+  },
   screenScroll: {
     flex: 1
   },
@@ -1099,6 +1116,12 @@ const styles = StyleSheet.create({
   taskText: {
     fontSize: 14
   },
+  modalScroll: {
+    width: "100%"
+  },
+  modalScrollContent: {
+    paddingBottom: 8
+  },
   priorityPill: {
     paddingHorizontal: 4,
     paddingVertical: 2
@@ -1126,6 +1149,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: "100%",
+    maxHeight: "88%",
     borderRadius: 22,
     padding: 16,
     borderWidth: StyleSheet.hairlineWidth,
