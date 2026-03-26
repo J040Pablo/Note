@@ -262,12 +262,14 @@ const FoldersScreen: React.FC = () => {
                   isActive && { opacity: 0.6, backgroundColor: theme.colors.primaryAlpha20 }
                 ]}
               >
-                {!!item.bannerPath && (
+                {item.bannerPath ? (
                   <Image
                     source={{ uri: item.bannerPath }}
                     style={styles.gridBanner}
                     resizeMode="cover"
                   />
+                ) : (
+                  <View style={[styles.gridBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
                 )}
                 <View style={styles.gridFolderBody}>
                   {item.photoPath ? (
@@ -626,11 +628,14 @@ const styles = StyleSheet.create({
   gridColumn: {
     gap: 12,
     marginHorizontal: 0,
+    alignItems: "stretch"
   },
   gridItem: {
-    paddingHorizontal: 0
+    paddingHorizontal: 0,
+    alignSelf: "stretch"
   },
   folderGridCard: {
+    flex: 1,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 16,
     overflow: "hidden",
