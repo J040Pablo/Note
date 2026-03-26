@@ -59,25 +59,24 @@
   gap: 10px;
 }
 
-.contentViewport {
-  position: relative;
-  overflow: hidden;
-  min-height: 320px;
-}
-
 .content {
+  position: relative;
+  display: grid;
+  align-items: stretch;
+  gap: 16px;
   transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .contentGrid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(280px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
 }
 
 .contentList {
   display: grid;
-  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
 }
 
 .emptyState {
@@ -297,7 +296,11 @@
 
 @media (max-width: 1100px) {
   .contentGrid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+
+  .contentList {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   }
 
   .controls {
@@ -307,5 +310,12 @@
 
   .actions {
     justify-content: space-between;
+  }
+}
+
+@media (max-width: 680px) {
+  .contentGrid,
+  .contentList {
+    grid-template-columns: 1fr;
   }
 }

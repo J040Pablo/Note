@@ -576,40 +576,38 @@ const FoldersPage: React.FC = () => {
         </div>
       </div>
 
-      <div className={styles.contentViewport}>
-        <div
-          className={`${styles.content} ${
-            viewMode === "grid" ? styles.contentGrid : styles.contentList
-          } ${animationClass}`}
-          style={{
-            animationDuration: `${NAVIGATION_ANIMATION_MS}ms`,
-          }}
-        >
-          {filteredEntries.map((item) =>
-            viewMode === "grid" ? (
-              <FolderCard
-                key={item.id}
-                item={item}
-                onActivate={handleActivateItem}
-                onOpenMenu={handleOpenMenu}
-              />
-            ) : (
-              <FolderListItem
-                key={item.id}
-                item={item}
-                onActivate={handleActivateItem}
-                onOpenMenu={handleOpenMenu}
-              />
-            )
-          )}
+      <div
+        className={`${styles.content} ${
+          viewMode === "grid" ? styles.contentGrid : styles.contentList
+        } ${animationClass}`}
+        style={{
+          animationDuration: `${NAVIGATION_ANIMATION_MS}ms`,
+        }}
+      >
+        {filteredEntries.map((item) =>
+          viewMode === "grid" ? (
+            <FolderCard
+              key={item.id}
+              item={item}
+              onActivate={handleActivateItem}
+              onOpenMenu={handleOpenMenu}
+            />
+          ) : (
+            <FolderListItem
+              key={item.id}
+              item={item}
+              onActivate={handleActivateItem}
+              onOpenMenu={handleOpenMenu}
+            />
+          )
+        )}
 
-          {filteredEntries.length === 0 ? (
-            <div className={styles.emptyState}>
-              <p>No items yet in this folder.</p>
-              <span>Use + to add a file, folder or note.</span>
-            </div>
-          ) : null}
-        </div>
+        {filteredEntries.length === 0 ? (
+          <div className={styles.emptyState}>
+            <p>No items yet in this folder.</p>
+            <span>Use + to add a file, folder or note.</span>
+          </div>
+        ) : null}
       </div>
 
       <FolderModal

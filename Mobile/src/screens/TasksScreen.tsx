@@ -230,7 +230,7 @@ const TasksScreen: React.FC = () => {
     setRepeatDays(task.repeatDays ?? []);
     setScheduledDate(task.scheduledDate ?? selectedDate);
     setScheduledAt(parseDateTime(task.scheduledDate ?? selectedDate, task.scheduledTime));
-    setReminders((task.reminders?.length ? task.reminders : ["AT_TIME"]).slice(0, 4));
+    setReminders(((task.reminders?.length ? task.reminders : ["AT_TIME"]) as TaskReminderType[]).slice(0, 4));
     setShowDatePicker(false);
     setShowTimePicker(false);
     setShowModal(true);
@@ -271,122 +271,128 @@ const TasksScreen: React.FC = () => {
 
   return (
     <Screen>
-      <View style={styles.headerRow}>
-        <View>
-          <Text variant="title">Tasks</Text>
-          <Text muted>Daily productivity</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <Pressable
-            onPress={() => setShowSortMenu(true)}
-            style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-          >
-            <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={[styles.progressCard, { backgroundColor: theme.colors.card }]}> 
-        <View style={styles.progressHeader}>
-          <Text variant="subtitle">Today&apos;s progress</Text>
-          <Text muted>
-            {completedToday} / {tasksForSelectedDate.length}
-          </Text>
-        </View>
-        <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}> 
-          <View
-            style={[
-              styles.progressFill,
-              {
-                width: `${progressPct}%`,
-                backgroundColor: theme.colors.primary
-              }
-            ]}
-          />
-        </View>
-        <Text muted style={styles.progressMeta}>{progressPct}% completed</Text>
-      </View>
-
-      <View style={[styles.calendarCard, { backgroundColor: theme.colors.card }]}> 
-        <View style={styles.calendarHeader}>
-          <Pressable
-            onPress={() =>
-              setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
-            }
-            style={styles.monthArrow}
-          >
-            <Ionicons name="chevron-back" size={18} color={theme.colors.textPrimary} />
-          </Pressable>
-          <Text variant="subtitle">
-            {monthCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
-          </Text>
-          <Pressable
-            onPress={() =>
-              setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
-            }
-            style={styles.monthArrow}
-          >
-            <Ionicons name="chevron-forward" size={18} color={theme.colors.textPrimary} />
-          </Pressable>
-        </View>
-
-        <View style={styles.weekHeaderRow}>
-          {WEEKDAYS.map((day) => (
-            <Text key={day} muted style={styles.weekHeaderLabel}>
-              {day}
-            </Text>
-          ))}
-        </View>
-
-        <View style={styles.grid}>
-          {monthCells.map((day) => {
-            const key = toDateKey(day);
-            const isSelected = key === selectedDate;
-            const inMonth = sameMonth(day, monthCursor);
-            const hasTasks = dayHasTasks.has(key);
-
-            return (
-              <Pressable
-                key={key}
-                onPress={() => setSelectedDate(key)}
-                style={[
-                  styles.dayCell,
-                  isSelected && { backgroundColor: theme.colors.primaryAlpha20 }
-                ]}
-              >
-                <Text
-                  style={{
-                    color: isSelected
-                      ? theme.colors.primary
-                      : inMonth
-                      ? theme.colors.textPrimary
-                      : theme.colors.textSecondary,
-                    fontWeight: isSelected ? "700" : "400"
-                  }}
-                >
-                  {day.getDate()}
-                </Text>
-                {hasTasks && (
-                  <View style={[styles.dayDot, { backgroundColor: theme.colors.primary }]} />
-                )}
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      <View style={styles.dayTitleRow}>
-        <Text variant="subtitle">{selectedDate === toDateKey(new Date()) ? "Today’s Tasks" : `Tasks • ${selectedDate}`}</Text>
-      </View>
-
       <DraggableFlatList
         data={sortedTasksForSelectedDate}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item.id.toString()}
         activationDistance={12}
         initialNumToRender={12}
         maxToRenderPerBatch={10}
         windowSize={9}
-        removeClippedSubviews
+        removeClippedSubviews={false}
+        style={styles.taskList}
+        contentContainerStyle={styles.screenScrollContent}
+        showsVerticalScrollIndicator={false}
+        ListHeaderComponent={
+          <>
+            <View style={styles.headerRow}>
+              <View>
+                <Text variant="title">Tasks</Text>
+                <Text muted>Daily productivity</Text>
+              </View>
+              <View style={styles.headerActions}>
+                <Pressable
+                  onPress={() => setShowSortMenu(true)}
+                  style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+                >
+                  <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
+                </Pressable>
+              </View>
+            </View>
+
+            <View style={[styles.progressCard, { backgroundColor: theme.colors.card }]}> 
+              <View style={styles.progressHeader}>
+                <Text variant="subtitle">Today&apos;s progress</Text>
+                <Text muted>
+                  {completedToday} / {tasksForSelectedDate.length}
+                </Text>
+              </View>
+              <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}> 
+                <View
+                  style={[
+                    styles.progressFill,
+                    {
+                      width: `${progressPct}%`,
+                      backgroundColor: theme.colors.primary
+                    }
+                  ]}
+                />
+              </View>
+              <Text muted style={styles.progressMeta}>{progressPct}% completed</Text>
+            </View>
+
+            <View style={[styles.calendarCard, { backgroundColor: theme.colors.card }]}> 
+              <View style={styles.calendarHeader}>
+                <Pressable
+                  onPress={() =>
+                    setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+                  }
+                  style={styles.monthArrow}
+                >
+                  <Ionicons name="chevron-back" size={18} color={theme.colors.textPrimary} />
+                </Pressable>
+                <Text variant="subtitle">
+                  {monthCursor.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                </Text>
+                <Pressable
+                  onPress={() =>
+                    setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+                  }
+                  style={styles.monthArrow}
+                >
+                  <Ionicons name="chevron-forward" size={18} color={theme.colors.textPrimary} />
+                </Pressable>
+              </View>
+
+              <View style={styles.weekHeaderRow}>
+                {WEEKDAYS.map((day) => (
+                  <Text key={day} muted style={styles.weekHeaderLabel}>
+                    {day}
+                  </Text>
+                ))}
+              </View>
+
+              <View style={styles.grid}>
+                {monthCells.map((day) => {
+                  const key = toDateKey(day);
+                  const isSelected = key === selectedDate;
+                  const inMonth = sameMonth(day, monthCursor);
+                  const hasTasks = dayHasTasks.has(key);
+
+                  return (
+                    <Pressable
+                      key={key}
+                      onPress={() => setSelectedDate(key)}
+                      style={[
+                        styles.dayCell,
+                        isSelected && { backgroundColor: theme.colors.primaryAlpha20 }
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          color: isSelected
+                            ? theme.colors.primary
+                            : inMonth
+                            ? theme.colors.textPrimary
+                            : theme.colors.textSecondary,
+                          fontWeight: isSelected ? "700" : "400"
+                        }}
+                      >
+                        {day.getDate()}
+                      </Text>
+                      {hasTasks && (
+                        <View style={[styles.dayDot, { backgroundColor: theme.colors.primary }]} />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.dayTitleRow}>
+              <Text variant="subtitle">{selectedDate === toDateKey(new Date()) ? "Today’s Tasks" : `Tasks • ${selectedDate}`}</Text>
+            </View>
+          </>
+        }
         onDragEnd={async ({ data }) => {
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setSortMode("custom");
@@ -975,6 +981,12 @@ const TasksScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  screenScroll: {
+    flex: 1
+  },
+  screenScrollContent: {
+    paddingBottom: 96
+  },
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1062,6 +1074,12 @@ const styles = StyleSheet.create({
   },
   dayTitleRow: {
     marginBottom: 8
+  },
+  taskList: {
+    width: "100%"
+  },
+  taskListContent: {
+    paddingBottom: 8
   },
   taskRow: {
     flexDirection: "row",

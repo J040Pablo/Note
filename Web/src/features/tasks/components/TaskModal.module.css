@@ -1,0 +1,193 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  background: rgba(2, 6, 23, 0.68);
+  display: grid;
+  place-items: end center;
+  padding: 16px;
+}
+
+.card {
+  width: min(680px, 100%);
+  border-radius: 24px;
+  border: 1px solid #273244;
+  background: #111318;
+  box-shadow: 0 24px 48px rgba(2, 6, 23, 0.62);
+}
+
+.header {
+  height: 64px;
+  padding: 0 16px;
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header h3 {
+  margin: 0;
+  font-size: 1.85rem;
+  color: #f8fafc;
+}
+
+.closeButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid #263244;
+  background: #0f172a;
+  color: #dbe7ff;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.body {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field > span,
+.sectionTitle {
+  color: #d6e2f3;
+  font-size: 1rem;
+}
+
+.field input {
+  width: 100%;
+  height: 48px;
+  border: 1px solid #263244;
+  border-radius: 14px;
+  background: #02060d;
+  color: #f1f5f9;
+  font: inherit;
+  font-size: 1.15rem;
+  padding: 0 14px;
+  outline: none;
+}
+
+.field input:focus {
+  border-color: #3b82f6;
+}
+
+.field input:disabled {
+  opacity: 0.55;
+}
+
+.dateTimeRow {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.priorityGroup {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.chip {
+  height: 44px;
+  border-radius: 999px;
+  border: 1px solid #263244;
+  background: #02060d;
+  color: #f8fafc;
+  cursor: pointer;
+  font: inherit;
+  font-size: 1.05rem;
+}
+
+.chipActive {
+  background: #f8fafc;
+  color: #020617;
+  border-color: #f8fafc;
+}
+
+.repeatWrap {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.dayChip {
+  height: 40px;
+  min-width: 54px;
+  border-radius: 999px;
+  border: 1px solid #263244;
+  background: #02060d;
+  color: #f8fafc;
+  cursor: pointer;
+  font: inherit;
+}
+
+.dayChipActive {
+  background: #f8fafc;
+  color: #020617;
+  border-color: #f8fafc;
+}
+
+.scheduleActions {
+  display: flex;
+  gap: 10px;
+}
+
+.subtleButton {
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid #263244;
+  background: #111827;
+  color: #cbd5e1;
+  padding: 0 14px;
+  cursor: pointer;
+}
+
+.footer {
+  height: 72px;
+  border-top: 1px solid #1f2937;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.cancelButton,
+.saveButton {
+  height: 48px;
+  border-radius: 14px;
+  border: 1px solid;
+  padding: 0 18px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cancelButton {
+  border-color: #263244;
+  background: #111827;
+  color: #cbd5e1;
+}
+
+.saveButton {
+  border-color: #f8fafc;
+  background: #f8fafc;
+  color: #020617;
+}
+
+@media (max-width: 740px) {
+  .dateTimeRow {
+    grid-template-columns: 1fr;
+  }
+
+  .priorityGroup {
+    grid-template-columns: 1fr;
+  }
+}

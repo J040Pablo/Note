@@ -1,0 +1,392 @@
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.syncControls {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.syncInput {
+  height: 38px;
+  min-width: 220px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  color: #e2e8f0;
+  padding: 0 10px;
+}
+
+.syncPortInput {
+  height: 38px;
+  width: 86px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0b1220;
+  color: #e2e8f0;
+  padding: 0 10px;
+}
+
+.syncButton {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #111827;
+  color: #e2e8f0;
+  padding: 0 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.standaloneBadge {
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #93c5fd;
+  padding: 0 12px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+}
+
+.createButton {
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid #f8fafc;
+  background: #f8fafc;
+  color: #020617;
+  padding: 0 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.qrPairingWrap {
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.qrTitle {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.1rem;
+}
+
+.qrText {
+  margin: 6px 0 4px;
+  color: #94a3b8;
+}
+
+.qrUrl {
+  margin: 0;
+  color: #cbd5e1;
+  font-weight: 700;
+}
+
+.qrBox {
+  width: 148px;
+  height: 148px;
+  border-radius: 12px;
+  border: 1px solid #334155;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  padding: 8px;
+  color: #111827;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.progressCard,
+.calendarCard,
+.listSection {
+  border-radius: 20px;
+  border: 1px solid #1f2937;
+  background: #111318;
+}
+
+.progressCard {
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.progressHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.progressHeader h3 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 2rem;
+}
+
+.progressHeader span,
+.progressCard p {
+  color: #9ca3af;
+}
+
+.progressTrack {
+  margin-top: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #1f2937;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #64748b, #e2e8f0);
+}
+
+.progressCard p {
+  margin: 10px 0 0;
+}
+
+.calendarCard {
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.calendarHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.calendarHeader h3 {
+  margin: 0;
+  text-transform: capitalize;
+  font-size: 2rem;
+  color: #e2e8f0;
+}
+
+.monthButton {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid #263244;
+  background: #0f172a;
+  color: #e2e8f0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.weekHeaderRow {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  margin-bottom: 6px;
+}
+
+.weekHeaderRow span {
+  text-align: center;
+  color: #6b7280;
+  font-size: 0.95rem;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.dayCell {
+  min-height: 52px;
+  border-radius: 12px;
+  border: 0;
+  background: transparent;
+  color: #e2e8f0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.dayCellSelected {
+  background: #374151;
+}
+
+.outsideMonth {
+  color: #4b5563;
+}
+
+.dayDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #d1d5db;
+}
+
+.listSection {
+  padding: 14px;
+}
+
+.listHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.listHeader h3 {
+  margin: 0;
+  font-size: 1.8rem;
+  color: #f8fafc;
+}
+
+.listHeader span {
+  color: #9ca3af;
+}
+
+.taskList {
+  display: grid;
+}
+
+.taskRow {
+  min-height: 68px;
+  border-bottom: 1px solid #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+}
+
+.taskRow:last-child {
+  border-bottom: 0;
+}
+
+.taskRowCompleted strong {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.checkbox {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 2px solid #dbeafe;
+  background: transparent;
+  color: #0f172a;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.checkboxDone {
+  background: #f8fafc;
+}
+
+.taskBody {
+  min-width: 0;
+  flex: 1;
+}
+
+.taskBody strong {
+  color: #f8fafc;
+  font-size: 1.05rem;
+  line-height: 1.2;
+}
+
+.taskBody p {
+  margin: 4px 0 0;
+  color: #9ca3af;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+}
+
+.priorityBadge {
+  min-width: 50px;
+  text-align: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.priorityLow {
+  background: #93c5fd;
+}
+
+.priorityMedium {
+  background: #fdba74;
+}
+
+.priorityHigh {
+  background: #fca5a5;
+}
+
+.moveActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.moveButton,
+.moveDoneButton {
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #334155;
+  background: #111827;
+  color: #dbe7ff;
+  cursor: pointer;
+}
+
+.moveButton {
+  width: 30px;
+  display: grid;
+  place-items: center;
+}
+
+.moveDoneButton {
+  padding: 0 8px;
+}
+
+.emptyState {
+  min-height: 140px;
+  border-radius: 12px;
+  border: 1px dashed #334155;
+  display: grid;
+  place-items: center;
+  color: #9ca3af;
+  text-align: center;
+  margin-top: 8px;
+}
+
+.emptyState p {
+  margin: 0;
+}
+
+@media (max-width: 1080px) {
+  .progressHeader h3,
+  .calendarHeader h3,
+  .listHeader h3 {
+    font-size: 1.45rem;
+  }
+
+  .dayCell {
+    min-height: 44px;
+  }
+
+  .qrPairingWrap {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
