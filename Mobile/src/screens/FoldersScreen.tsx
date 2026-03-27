@@ -28,6 +28,7 @@ import type { Folder, Note, QuickNote, ID } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useSelection } from "@hooks/useSelection";
+import { exportFolderPackageAndShare } from "@services/folderPackageService";
 
 const firstLine = (text: string): string => {
   if (!text) return "";
@@ -183,6 +184,27 @@ const FoldersScreen: React.FC = () => {
 
   const handleShareSelected = useCallback(async () => {
     if (!selectedItems.length) return;
+
+    // If a single folder is selected, export full subtree as ZIP and share it.
+    if (selectedItems.length === 1 && selectedItems[0].kind === "folder") {
+      const selectedFolder = selectedItems[0];
+      try {
+        await exportFolderPackageAndShare(selectedFolder.id, {
+          onProgress: (event) => {
+            if (event.step === "zipping" || event.step === "sharing") {
+              showToast(`${event.message} ${Math.round(event.progress * 100)}%`);
+            }
+          },
+          onMessage: (message, tone = "success") => showToast(message, tone)
+        });
+      } catch (error) {
+        console.error("[folder-package] share failed", error);
+        showToast("Nao foi possivel compartilhar a pasta", "error");
+      }
+      return;
+    }
+
+    // For non-folder/mixed selections, keep the current text share behavior.
     const message = selectedItems
       .map((item) => {
         if (item.kind === "folder") return `Pasta: ${item.label}`;
@@ -194,7 +216,7 @@ const FoldersScreen: React.FC = () => {
       title: selectedItems.length === 1 ? selectedItems[0].label : `${selectedItems.length} itens`,
       message
     });
-  }, [selectedItems]);
+  }, [selectedItems, showToast]);
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedItems.length) return;
@@ -820,6 +842,17 @@ const FoldersScreen: React.FC = () => {
             onPress: () => {
               closeFab();
               setShowCreateModal(true);
+            }
+          },
+          {
+            key: "import-package",
+            label: "Import Package",
+            icon: "download-outline" as const,
+            onPress: () => {
+              closeFab();
+              withLock(() => {
+                navigation.getParent()?.getParent()?.navigate("ImportFolderPackage");
+              });
             }
           }
         ] as const).map((item, index) => (

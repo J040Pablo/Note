@@ -11,6 +11,7 @@ import QuickNoteScreen from "@screens/QuickNoteScreen";
 import PdfViewerScreen from "@screens/PdfViewerScreen";
 import ImageViewerScreen from "@screens/ImageViewerScreen";
 import SaveSharedFileScreen from "@screens/SaveSharedFileScreen";
+import ImportFolderPackageScreen from "@screens/ImportFolderPackageScreen";
 import TasksScreen from "@screens/TasksScreen";
 import SettingsScreen from "@screens/SettingsScreen";
 import { useTheme } from "@hooks/useTheme";
@@ -23,6 +24,7 @@ export type RootStackParamList = {
   PdfViewer: { path: string; name: string };
   ImageViewer: { path: string; name: string };
   SaveSharedFile: { uri: string; name?: string; mimeType?: string | null };
+  ImportFolderPackage: { destinationFolderId?: string | null } | undefined;
 };
 
 export type FoldersStackParamList = {
@@ -173,6 +175,15 @@ const RootNavigator = () => {
         name="SaveSharedFile"
         component={SaveSharedFileScreen}
         options={{ title: "Save File", animation: "slide_from_bottom" }}
+      />
+      <RootStack.Screen
+        name="ImportFolderPackage"
+        component={ImportFolderPackageScreen}
+        options={{
+          title: "Import Package",
+          presentation: "modal",
+          animation: "slide_from_bottom"
+        }}
       />
     </RootStack.Navigator>
   );
