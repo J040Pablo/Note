@@ -26,6 +26,7 @@ import {
   parseRichNoteContent,
   serializeRichNoteContent
 } from "@utils/noteContent";
+import { insertClipboardHtmlIntoRichDoc, isClipboardRichText } from "@utils/richClipboard";
 import CodeBlockRenderer from "@components/CodeBlockRenderer";
 
 interface RichNoteEditorProps {
@@ -340,6 +341,49 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
     [selectedTextId]
   );
 
+  const handleTextBlockChange = useCallback(
+    (blockId: string, nextText: string) => {
+      setDoc((prev) => {
+        const blockIndex = prev.blocks.findIndex((b) => b.id === blockId);
+        if (blockIndex < 0) return prev;
+        const target = prev.blocks[blockIndex];
+        if (target.type !== "text") return prev;
+
+        // Initial rich-paste support:
+        // if pasted payload looks like HTML, convert to internal rich blocks and
+        // insert/merge into current document preserving other blocks.
+        if (isClipboardRichText(nextText)) {
+          const safeStart = Math.max(0, Math.min(selection.start, target.text.length));
+          const safeEnd = Math.max(safeStart, Math.min(selection.end, target.text.length));
+          const prefix = target.text.slice(0, safeStart);
+          const suffix = target.text.slice(safeEnd);
+          const merged = insertClipboardHtmlIntoRichDoc(
+            prev,
+            nextText,
+            blockId,
+            prefix,
+            suffix,
+            target.style
+          );
+          if (debouncedSaveRef.current) {
+            debouncedSaveRef.current(serializeRichNoteContent(merged));
+          }
+          return merged;
+        }
+
+        const next: RichNoteDocument = {
+          ...prev,
+          blocks: prev.blocks.map((b) => (b.id === blockId && b.type === "text" ? { ...b, text: nextText } : b))
+        };
+        if (debouncedSaveRef.current) {
+          debouncedSaveRef.current(serializeRichNoteContent(next));
+        }
+        return next;
+      });
+    },
+    [selection.end, selection.start]
+  );
+
   return (
     <View style={styles.root}>
       {!!selectedBlock && (
@@ -503,7 +547,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
                   setSelection({ start: 0, end: 0 });
                 }}
                 onSelectionChange={(event) => handleSelectionChange(block.id, event)}
-                onChangeText={(text) => updateBlock(block.id, (prev) => (prev.type === "text" ? { ...prev, text } : prev))}
+                onChangeText={(text) => handleTextBlockChange(block.id, text)}
                 placeholder="Write..."
                 placeholderTextColor={theme.colors.textSecondary}
                 style={[

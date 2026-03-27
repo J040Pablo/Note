@@ -5,17 +5,21 @@ import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { useTheme } from "@hooks/useTheme";
 import { Text } from "@components/Text";
 import { getPlainTextFromRichNoteContent } from "@utils/noteContent";
+import type { NoteTextBlock } from "@models/types";
+import { convertClipboardHtmlToRichBlocks, isClipboardRichText } from "@utils/richClipboard";
 
 interface QuickRichTextEditorProps {
   value: string;
   onChangeText: (html: string) => void;
   placeholder?: string;
+  onBlockChange?: (payload: { blockId: string; html: string }) => void;
 }
 
 type EditorMessage =
   | { type: "content"; html: string }
   | { type: "selection"; hasSelection: boolean }
-  | { type: "focus"; focused: boolean };
+  | { type: "focus"; focused: boolean }
+  | { type: "paste"; html?: string; text?: string };
 
 const escapeHtml = (raw: string) =>
   raw
@@ -43,10 +47,27 @@ const toInitialHtml = (value: string): string => {
   return escapeHtml(value).replace(/\n/g, "<br>");
 };
 
+const textBlockToHtml = (block: NoteTextBlock): string => {
+  const style = block.style ?? {};
+  const css: string[] = [];
+  if (style.bold) css.push("font-weight:700");
+  if (style.italic) css.push("font-style:italic");
+  if (style.underline) css.push("text-decoration:underline");
+  if (style.textColor) css.push(`color:${style.textColor}`);
+  if (style.fontSize) css.push(`font-size:${style.fontSize}px`);
+
+  const escaped = escapeHtml(block.text ?? "").replace(/\n/g, "<br>");
+  return `<p><span style="${css.join(";")}">${escaped}</span></p>`;
+};
+
+const richBlocksToHtmlFragment = (blocks: NoteTextBlock[]): string =>
+  blocks.map((block) => textBlockToHtml(block)).join("");
+
 const QuickRichTextEditor = memo(function QuickRichTextEditor({
   value,
   onChangeText,
-  placeholder = "Write something..."
+  placeholder = "Write something...",
+  onBlockChange
 }: QuickRichTextEditorProps) {
   const { theme } = useTheme();
   const webViewRef = useRef<WebView>(null);
@@ -155,6 +176,36 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
         setHtml(html) {
           editor.innerHTML = html || '';
         },
+        insertHtmlAtCursor(html) {
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) {
+            editor.insertAdjacentHTML('beforeend', html || '');
+            emitContent();
+            emitSelection();
+            return;
+          }
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          const container = document.createElement('div');
+          container.innerHTML = html || '';
+          const fragment = document.createDocumentFragment();
+          let node = container.firstChild;
+          let lastNode = null;
+          while (node) {
+            const next = node.nextSibling;
+            lastNode = fragment.appendChild(node);
+            node = next;
+          }
+          range.insertNode(fragment);
+          if (lastNode) {
+            range.setStartAfter(lastNode);
+            range.collapse(true);
+            sel.removeAllRanges();
+            sel.addRange(range);
+          }
+          emitContent();
+          emitSelection();
+        },
         bold() { document.execCommand('bold'); collapseSelectionToEnd(); emitContent(); emitSelection(); editor.focus(); },
         italic() { document.execCommand('italic'); collapseSelectionToEnd(); emitContent(); emitSelection(); editor.focus(); },
         underline() { document.execCommand('underline'); collapseSelectionToEnd(); emitContent(); emitSelection(); editor.focus(); },
@@ -164,6 +215,15 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
       };
 
       editor.addEventListener('input', emitContent);
+      editor.addEventListener('paste', (event) => {
+        const clipboard = event.clipboardData;
+        if (!clipboard) return;
+        const html = clipboard.getData('text/html');
+        const text = clipboard.getData('text/plain');
+        if (!html && !text) return;
+        event.preventDefault();
+        post({ type: 'paste', html, text });
+      });
       document.addEventListener('selectionchange', emitSelection);
       editor.addEventListener('keyup', emitSelection);
       editor.addEventListener('mouseup', emitSelection);
@@ -206,6 +266,32 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
     (event: WebViewMessageEvent) => {
       try {
         const payload = JSON.parse(event.nativeEvent.data) as EditorMessage;
+        if (payload.type === "paste") {
+          const rawHtml = payload.html ?? "";
+          const plain = payload.text ?? "";
+          const source = rawHtml || plain;
+          if (!source.trim()) return;
+
+          if (rawHtml && isClipboardRichText(rawHtml)) {
+            // Convert clipboard HTML -> internal Note blocks -> HTML fragment for this editor.
+            // This keeps a shared conversion pipeline with Notes while preserving WebView cursor insertion.
+            const converted = convertClipboardHtmlToRichBlocks(rawHtml);
+            const textBlocks = converted.blocks.filter((b): b is NoteTextBlock => b.type === "text");
+            const fragment = richBlocksToHtmlFragment(textBlocks);
+            const htmlToInsert = fragment || `<p>${escapeHtml(plain).replace(/\n/g, "<br>")}</p>`;
+            webViewRef.current?.injectJavaScript(
+              `window.__quickEditor && window.__quickEditor.insertHtmlAtCursor(${JSON.stringify(htmlToInsert)}); true;`
+            );
+            return;
+          }
+
+          const htmlToInsert = `<p>${escapeHtml(plain).replace(/\n/g, "<br>")}</p>`;
+          webViewRef.current?.injectJavaScript(
+            `window.__quickEditor && window.__quickEditor.insertHtmlAtCursor(${JSON.stringify(htmlToInsert)}); true;`
+          );
+          return;
+        }
+
         if (payload.type === "selection") {
           setHasSelection(payload.hasSelection);
           return;
@@ -223,13 +309,15 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
           isEditorReadyRef.current = true;
           if (payload.html === lastSentHtmlRef.current) return;
           lastSentHtmlRef.current = payload.html;
+          // Emits a partial block patch so external state can update only one block.
+          onBlockChange?.({ blockId: "quick-root-block", html: payload.html });
           onChangeText(payload.html);
         }
       } catch {
         // no-op
       }
     },
-    [onChangeText]
+    [onBlockChange, onChangeText]
   );
 
   return (

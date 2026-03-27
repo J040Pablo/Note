@@ -10,6 +10,7 @@ import { useTheme } from "@hooks/useTheme";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 import { createQuickNote, getQuickNoteById, updateQuickNote } from "@services/notesService";
 import { useQuickNotesStore } from "@store/useQuickNotesStore";
+import { getQuickNoteEditorHtml, QUICK_NOTE_ROOT_BLOCK_ID, updateQuickNoteBlock } from "@services/quickNoteBlocksService";
 
 
 type QuickNoteRoute = RouteProp<RootStackParamList, "QuickNote">;
@@ -30,6 +31,7 @@ const QuickNoteScreen: React.FC = () => {
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(existing?.folderId ?? folderId ?? null);
   const [title, setTitle] = useState(existing?.title ?? "");
   const [content, setContent] = useState(existing?.content ?? "");
+  const [editorHtml, setEditorHtml] = useState(getQuickNoteEditorHtml(existing?.content ?? ""));
   const [lastSavedTitle, setLastSavedTitle] = useState(existing?.title ?? "");
   const [lastSavedContent, setLastSavedContent] = useState(existing?.content ?? "");
   const [saving, setSaving] = useState(false);
@@ -51,6 +53,7 @@ const QuickNoteScreen: React.FC = () => {
       setCurrentFolderId(fetched.folderId ?? null);
       setTitle(fetched.title ?? "");
       setContent(fetched.content ?? "");
+      setEditorHtml(getQuickNoteEditorHtml(fetched.content ?? ""));
       setLastSavedTitle(fetched.title ?? "");
       setLastSavedContent(fetched.content ?? "");
     })();
@@ -66,6 +69,7 @@ const QuickNoteScreen: React.FC = () => {
     setCurrentFolderId(existing.folderId ?? null);
     setTitle(existing.title ?? "");
     setContent(existing.content ?? "");
+    setEditorHtml(getQuickNoteEditorHtml(existing.content ?? ""));
     setLastSavedTitle(existing.title ?? "");
     setLastSavedContent(existing.content ?? "");
   }, [existing]);
@@ -206,7 +210,26 @@ const QuickNoteScreen: React.FC = () => {
       </View>
 
       <View style={[styles.editorWrap, { backgroundColor: theme.colors.background }]}> 
-        <QuickRichTextEditor value={content} onChangeText={setContent} />
+        <QuickRichTextEditor
+          value={editorHtml}
+          onChangeText={(html) => {
+            setEditorHtml(html);
+            if (currentId) {
+              // Partial store update: only touched block is updated; other blocks stay untouched.
+              const next = updateQuickNoteBlock(currentId, QUICK_NOTE_ROOT_BLOCK_ID, html);
+              if (next) setContent(next.content);
+              return;
+            }
+            // Before note creation, keep a root-block document in local draft state.
+            setContent(
+              JSON.stringify({
+                version: 1,
+                type: "quick-rich-blocks",
+                blocks: [{ id: QUICK_NOTE_ROOT_BLOCK_ID, html }]
+              })
+            );
+          }}
+        />
       </View>
     </Screen>
   );
