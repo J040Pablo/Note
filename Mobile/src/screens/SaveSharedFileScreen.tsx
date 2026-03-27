@@ -6,23 +6,67 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 import { useAppStore } from "@store/useAppStore";
-import { getAllFolders } from "@services/foldersService";
+import { FolderNameModal } from "@components/FolderNameModal";
+import { createFolder, getAllFolders } from "@services/foldersService";
 import { importFileFromUri } from "@services/filesService";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useTheme } from "@hooks/useTheme";
+import { useFilesStore } from "@store/useFilesStore";
+import { useFeedback } from "@components/FeedbackProvider";
+import type { ID } from "@models/types";
 
 type SaveSharedRoute = RouteProp<RootStackParamList, "SaveSharedFile">;
 type Nav = NativeStackNavigationProp<RootStackParamList, "SaveSharedFile">;
+
+const COMMON_ALLOWED_EXTENSIONS = new Set([
+  "pdf",
+  "jpg",
+  "jpeg",
+  "png",
+  "webp",
+  "gif",
+  "doc",
+  "docx",
+  "txt",
+  "csv",
+  "xlsx",
+  "ppt",
+  "pptx",
+  "zip"
+]);
+
+const getFileExtension = (name?: string): string => {
+  if (!name) return "";
+  const parts = name.toLowerCase().split(".");
+  return parts.length > 1 ? parts[parts.length - 1] : "";
+};
+
+const isSupportedSharedFile = (mimeType?: string | null, fileName?: string): boolean => {
+  const extension = getFileExtension(fileName);
+  if (COMMON_ALLOWED_EXTENSIONS.has(extension)) return true;
+  if (!mimeType) return false;
+  return (
+    mimeType.startsWith("image/") ||
+    mimeType === "application/pdf" ||
+    mimeType.startsWith("text/") ||
+    mimeType.startsWith("application/")
+  );
+};
 
 const SaveSharedFileScreen: React.FC = () => {
   const route = useRoute<SaveSharedRoute>();
   const navigation = useNavigation<Nav>();
   const { theme } = useTheme();
+  const { showToast } = useFeedback();
   const foldersMap = useAppStore((s) => s.folders);
   const setFolders = useAppStore((s) => s.setFolders);
+  const upsertFolder = useAppStore((s) => s.upsertFolder);
+  const upsertFile = useFilesStore((s) => s.upsertFile);
 
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [showCreateFolderModal, setShowCreateFolderModal] = useState(false);
+  const [creatingFolder, setCreatingFolder] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -33,24 +77,49 @@ const SaveSharedFileScreen: React.FC = () => {
 
   const folders = useMemo(() => Object.values(foldersMap).sort((a, b) => a.name.localeCompare(b.name)), [foldersMap]);
 
+  const handleOpenSavedFile = (targetFolderId: ID | null) => {
+    navigation.navigate("Tabs", {
+      screen: "Folders",
+      params: {
+        screen: "FolderDetail",
+        params: { folderId: targetFolderId, trail: targetFolderId ? [targetFolderId] : [] }
+      }
+    });
+  };
+
   const handleSave = async () => {
-    if (!route.params?.uri) return;
+    const sharedUri = route.params?.uri;
+    const sharedName = route.params?.name;
+    const sharedMimeType = route.params?.mimeType;
+    if (!sharedUri?.trim()) {
+      showToast("Arquivo compartilhado invalido", "error");
+      return;
+    }
+    if (!isSupportedSharedFile(sharedMimeType, sharedName)) {
+      showToast("Tipo de arquivo nao suportado", "error");
+      return;
+    }
+
     setSaving(true);
     try {
-      await importFileFromUri(route.params.uri, {
-        fileName: route.params.name,
-        mimeType: route.params.mimeType,
+      const saved = await importFileFromUri(sharedUri, {
+        fileName: sharedName,
+        mimeType: sharedMimeType,
         parentFolderId: selectedFolderId ?? null
       });
-      navigation.navigate("Tabs", {
-        screen: "Folders",
-        params: {
-          screen: "FolderDetail",
-          params: { folderId: selectedFolderId, trail: selectedFolderId ? [selectedFolderId] : [] }
-        }
-      });
-    } catch (e) {
-      Alert.alert("Could not save file", "Please try again.");
+      upsertFile(saved);
+      showToast("Arquivo salvo com sucesso");
+      handleOpenSavedFile(selectedFolderId ?? null);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message.toLowerCase() : "";
+      if (message.includes("permission") || message.includes("denied")) {
+        Alert.alert("Permissao negada", "Nao foi possivel acessar o arquivo compartilhado.");
+      } else if (message.includes("copy") || message.includes("not found") || message.includes("invalid")) {
+        Alert.alert("Arquivo invalido", "O arquivo compartilhado nao pode ser salvo.");
+      } else {
+        Alert.alert("Erro ao salvar", "Nao foi possivel salvar o arquivo. Tente novamente.");
+      }
+      showToast("Falha ao salvar arquivo", "error");
     } finally {
       setSaving(false);
     }
@@ -60,6 +129,10 @@ const SaveSharedFileScreen: React.FC = () => {
     <Screen>
       <Text variant="title">Save shared file</Text>
       <Text muted style={styles.sub}>Where do you want to save this file?</Text>
+      <View style={[styles.metaBox, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
+        <Text numberOfLines={1}>Name: {route.params?.name || "shared-file"}</Text>
+        <Text muted numberOfLines={1}>Type: {route.params?.mimeType || "unknown"}</Text>
+      </View>
 
       <Pressable
         onPress={() => setSelectedFolderId(null)}
@@ -88,6 +161,12 @@ const SaveSharedFileScreen: React.FC = () => {
           </Pressable>
         )}
       />
+      <Pressable
+        onPress={() => setShowCreateFolderModal(true)}
+        style={[styles.newFolderButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+      >
+        <Text>Create new folder</Text>
+      </Pressable>
 
       <Pressable
         onPress={handleSave}
@@ -96,6 +175,39 @@ const SaveSharedFileScreen: React.FC = () => {
       >
         <Text style={{ color: theme.colors.onPrimary, fontWeight: "600" }}>{saving ? "Saving..." : "Save file"}</Text>
       </Pressable>
+
+      <FolderNameModal
+        visible={showCreateFolderModal}
+        title="New folder"
+        confirmLabel="Create"
+        submitting={creatingFolder}
+        onCancel={() => {
+          if (creatingFolder) return;
+          setShowCreateFolderModal(false);
+        }}
+        onConfirm={async (payload) => {
+          if (creatingFolder) return;
+          setCreatingFolder(true);
+          try {
+            const created = await createFolder(
+              payload.name,
+              null,
+              payload.color,
+              payload.description,
+              payload.photoPath,
+              payload.bannerPath
+            );
+            upsertFolder(created);
+            setSelectedFolderId(created.id);
+            setShowCreateFolderModal(false);
+            showToast("Pasta criada");
+          } catch (error) {
+            showToast("Erro ao criar pasta", "error");
+          } finally {
+            setCreatingFolder(false);
+          }
+        }}
+      />
     </Screen>
   );
 };
@@ -104,6 +216,14 @@ const styles = StyleSheet.create({
   sub: {
     marginTop: 6,
     marginBottom: 12
+  },
+  metaBox: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    marginBottom: 10,
+    gap: 2
   },
   row: {
     paddingVertical: 12,
@@ -118,6 +238,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 12
+  },
+  newFolderButton: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 10,
+    marginTop: 4
   }
 });
 
