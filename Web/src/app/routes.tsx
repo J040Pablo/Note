@@ -6,14 +6,8 @@ import FoldersPage from '../features/folders/pages/FoldersPage';
 import SearchPage from '../features/search/pages/SearchPage';
 import TasksPage from '../features/tasks/pages/TasksPage';
 import EntryModePage from '../features/entry/pages/EntryModePage';
+import SettingsPage from '../features/settings/pages/SettingsPage';
 import { useAppMode } from './mode';
-
-const PlaceholderPage: React.FC<{ title: string }> = ({ title }) => (
-  <section style={{ maxWidth: 1280, margin: '0 auto' }}>
-    <h1 style={{ margin: 0, color: '#f8fafc', fontSize: '2rem' }}>{title}</h1>
-    <p style={{ color: '#94a3b8' }}>Screen under implementation.</p>
-  </section>
-);
 
 const EntryRoute: React.FC = () => {
   const { mode, ready } = useAppMode();
@@ -62,7 +56,7 @@ const router = createBrowserRouter([
       },
       {
         path: 'settings',
-        element: <PlaceholderPage title="Settings" />,
+        element: <SettingsPage />,
       },
     ],
   },

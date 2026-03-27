@@ -139,8 +139,15 @@ export const createTask = async (payload: {
     };
 
     // Schedule notification only when task has exact date and time
-    if (payload.scheduledDate && payload.scheduledTime) {
-      task.notificationIds = await scheduleTaskNotifications(task);
+    try {
+      if (payload.scheduledDate && payload.scheduledTime) {
+        task.notificationIds = await scheduleTaskNotifications(task);
+        if (shouldLogDev) {
+          console.log(`[NOTIF] Scheduled task notifications for ID: ${task.id}`);
+        }
+      }
+    } catch (e) {
+      console.log(`[NOTIF ERROR] scheduleTaskNotifications create ${task.id}`, e);
     }
 
     await db.runAsync(
@@ -171,7 +178,11 @@ export const toggleTask = async (task: Task): Promise<Task> => {
 
   // Cancel notifications when task is marked as completed
   if (updated.completed && task.notificationIds && task.notificationIds.length > 0) {
-    await cancelTaskNotifications(task.notificationIds);
+    try {
+      await cancelTaskNotifications(task.notificationIds);
+    } catch (e) {
+      console.log(`[NOTIF ERROR] cancelTaskNotifications toggle ${task.id}`, e);
+    }
   }
 
   await runDbWrite(
@@ -211,7 +222,11 @@ export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Ta
   if (isCompleting && task.notificationIds && task.notificationIds.length > 0) {
     // For recurring tasks, only cancel if this is the only instance
     if (repeats.length === 0) {
-      await cancelTaskNotifications(task.notificationIds);
+      try {
+        await cancelTaskNotifications(task.notificationIds);
+      } catch (e) {
+        console.log(`[NOTIF ERROR] cancelTaskNotifications toggleForDate ${task.id}`, e);
+      }
     }
   }
 
@@ -239,17 +254,24 @@ export const updateTask = async (task: Task): Promise<Task> => {
   // Reschedule notifications if scheduledDate changed or task was unmarked as completed
   let updatedTask = { ...task, reminders: normalizeReminders(task.reminders ?? []), updatedAt: Date.now() };
   
-  if (task.scheduledDate && task.scheduledTime && !task.completed) {
-    // Reschedule notifications (this cancels old ones and creates new ones)
-    updatedTask.notificationIds = await rescheduleTaskNotifications(task);
-  } else if (task.completed && task.notificationIds && task.notificationIds.length > 0) {
-    // Cancel notifications if task is marked as completed
-    await cancelTaskNotifications(task.notificationIds);
-    updatedTask.notificationIds = [];
-  } else if ((!task.scheduledDate || !task.scheduledTime) && task.notificationIds && task.notificationIds.length > 0) {
-    // Cancel notifications if task no longer has exact schedule
-    await cancelTaskNotifications(task.notificationIds);
-    updatedTask.notificationIds = [];
+  try {
+    if (task.scheduledDate && task.scheduledTime && !task.completed) {
+      // Reschedule notifications (this cancels old ones and creates new ones)
+      updatedTask.notificationIds = await rescheduleTaskNotifications(task);
+      if (shouldLogDev) {
+        console.log(`[NOTIF] Rescheduled notifications for task ID: ${task.id}`);
+      }
+    } else if (task.completed && task.notificationIds && task.notificationIds.length > 0) {
+      // Cancel notifications if task is marked as completed
+      await cancelTaskNotifications(task.notificationIds);
+      updatedTask.notificationIds = [];
+    } else if ((!task.scheduledDate || !task.scheduledTime) && task.notificationIds && task.notificationIds.length > 0) {
+      // Cancel notifications if task no longer has exact schedule
+      await cancelTaskNotifications(task.notificationIds);
+      updatedTask.notificationIds = [];
+    }
+  } catch (e) {
+    console.log(`[NOTIF ERROR] updateTask notifications ${task.id}`, e);
   }
 
   await runDbWrite(
@@ -285,7 +307,11 @@ export const deleteTask = async (taskId: ID): Promise<void> => {
   if (row && row.notificationIds) {
     const notificationIds = safeJsonArray(row.notificationIds);
     if (notificationIds.length > 0) {
-      await cancelTaskNotifications(notificationIds);
+      try {
+        await cancelTaskNotifications(notificationIds);
+      } catch (e) {
+        console.log(`[NOTIF ERROR] cancelTaskNotifications delete ${taskId}`, e);
+      }
     }
   }
   

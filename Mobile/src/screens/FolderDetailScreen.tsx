@@ -36,7 +36,7 @@ import { useNotesStore } from "@store/useNotesStore";
 import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
-import { createNote, deleteNote, getNotesByFolder, getQuickNotesByFolder, updateNote } from "@services/notesService";
+import { createNote, deleteNote, deleteQuickNote, getNotesByFolder, getQuickNotesByFolder, updateNote } from "@services/notesService";
 import {
   addRecentOpen,
   getPinnedItems,
@@ -58,6 +58,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { AppFile, Folder, Note, QuickNote } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
+import { useSelection } from "@hooks/useSelection";
 
 const firstLine = (text: string): string => getRichNotePreviewLine(text, 80);
 
@@ -94,6 +95,7 @@ const FolderDetailScreen: React.FC = () => {
   const removeNote = useNotesStore((s) => s.removeNote);
   const quickNotes = useQuickNotesStore((s) => s.quickNotes);
   const upsertQuickNote = useQuickNotesStore((s) => s.upsertQuickNote);
+  const removeQuickNote = useQuickNotesStore((s) => s.removeQuickNote);
   const files = useFilesStore((s) => s.files);
   const upsertFile = useFilesStore((s) => s.upsertFile);
   const removeFile = useFilesStore((s) => s.removeFile);
@@ -114,6 +116,7 @@ const FolderDetailScreen: React.FC = () => {
   const [pendingDelete, setPendingDelete] = useState<{ type: "folder" | "note" | "file"; id: string } | null>(null);
   const [showAddFileMenu, setShowAddFileMenu] = useState(false);
   const [showFileSortMenu, setShowFileSortMenu] = useState(false);
+  const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [fileSortMode, setFileSortMode] = useState<FileSortMode>("custom");
   const [fileSizes, setFileSizes] = useState<Record<string, number>>({});
   const [renderKey, setRenderKey] = useState(0);
@@ -171,26 +174,6 @@ const FolderDetailScreen: React.FC = () => {
     })();
   }, [files, folderId]);
 
-  const trailIds = useMemo(() => {
-    if (routeTrail && routeTrail.length > 0) {
-      const filtered = routeTrail.filter((id, idx, arr) => !!folders[id] && arr.indexOf(id) === idx);
-      if (folderId && filtered[filtered.length - 1] !== folderId) {
-        filtered.push(folderId);
-      }
-      return filtered;
-    }
-
-    const ids: string[] = [];
-    const visited = new Set<string>();
-    let cursor = folderId;
-    while (cursor && folders[cursor] && !visited.has(cursor)) {
-      ids.unshift(cursor);
-      visited.add(cursor);
-      cursor = folders[cursor].parentId;
-    }
-    return ids;
-  }, [folderId, folders, routeTrail]);
-
   const childFolders = useMemo(
     () => Object.values(folders).filter((f) => (f.parentId ?? null) === folderId),
     [folderId, folders]
@@ -210,6 +193,122 @@ const FolderDetailScreen: React.FC = () => {
     () => Object.values(files).filter((f) => (f.parentFolderId ?? null) === folderId),
     [files, folderId]
   );
+
+  const selectableItems = useMemo(
+    () => [
+      ...(childFolders ?? []).map((folder) => ({ kind: "folder" as const, id: folder.id, label: folder.name })),
+      ...(folderNotes ?? []).map((note) => ({ kind: "note" as const, id: note.id, label: note.title })),
+      ...(folderQuickNotes ?? []).map((quickNote) => ({ kind: "quick" as const, id: quickNote.id, label: quickNote.title }))
+    ],
+    [childFolders, folderNotes, folderQuickNotes]
+  );
+
+  const {
+    selectedItems,
+    selectionCount,
+    selectionMode,
+    isSelected,
+    toggleSelection,
+    startSelection,
+    clearSelection,
+    selectAllVisible
+  } = useSelection(selectableItems, {
+    getKey: (item) => `${item.kind}:${item.id}`,
+    onSelectionStart: () => showToast("Modo de seleção ativado")
+  });
+
+  const handleClearSelection = useCallback(() => {
+    clearSelection();
+    setShowSelectionMenu(false);
+  }, [clearSelection]);
+
+  const handlePinSelected = useCallback(async () => {
+    for (const item of selectedItems) {
+      if (item.kind === "quick") continue;
+      const next = togglePinned(item.kind, item.id);
+      await savePinnedItems(next);
+    }
+    showToast("Pins atualizados");
+  }, [selectedItems, showToast, togglePinned]);
+
+  const handleEditSelected = useCallback(() => {
+    if (selectedItems.length !== 1) return;
+    const item = selectedItems[0];
+    if (item.kind === "folder") {
+      const folder = folders[item.id];
+      if (folder) setEditingFolder(folder);
+      return;
+    }
+    if (item.kind === "note") {
+      const note = notes[item.id];
+      if (note) setEditingNote(note);
+      return;
+    }
+    withLock(() => {
+      navigation.navigate("QuickNote", { quickNoteId: item.id, folderId: folderId ?? null });
+    });
+  }, [folderId, folders, navigation, notes, selectedItems, withLock]);
+
+  const handleShareSelected = useCallback(async () => {
+    if (!selectedItems.length) return;
+    await Share.share({
+      title: selectedItems.length === 1 ? selectedItems[0].label : `${selectedItems.length} itens`,
+      message: selectedItems.map((item) => `${item.kind.toUpperCase()}: ${item.label}`).join("\n")
+    });
+  }, [selectedItems]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedItems.length) return;
+    Alert.alert(
+      "Apagar itens",
+      selectedItems.length === 1 ? "Deseja apagar o item selecionado?" : `Deseja apagar ${selectedItems.length} itens selecionados?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Apagar",
+          style: "destructive",
+          onPress: async () => {
+            for (const item of selectedItems) {
+              if (item.kind === "folder") {
+                await deleteFolder(item.id);
+                removeFolder(item.id);
+                continue;
+              }
+              if (item.kind === "note") {
+                await deleteNote(item.id);
+                removeNote(item.id);
+                continue;
+              }
+              await deleteQuickNote(item.id);
+              removeQuickNote(item.id);
+            }
+            handleClearSelection();
+            showToast(selectedItems.length === 1 ? "Item apagado" : `${selectedItems.length} itens apagados`);
+          }
+        }
+      ]
+    );
+  }, [handleClearSelection, removeFolder, removeNote, removeQuickNote, selectedItems, showToast]);
+
+  const trailIds = useMemo(() => {
+    if (routeTrail && routeTrail.length > 0) {
+      const filtered = routeTrail.filter((id, idx, arr) => !!folders[id] && arr.indexOf(id) === idx);
+      if (folderId && filtered[filtered.length - 1] !== folderId) {
+        filtered.push(folderId);
+      }
+      return filtered;
+    }
+
+    const ids: string[] = [];
+    const visited = new Set<string>();
+    let cursor = folderId;
+    while (cursor && folders[cursor] && !visited.has(cursor)) {
+      ids.unshift(cursor);
+      visited.add(cursor);
+      cursor = folders[cursor].parentId;
+    }
+    return ids;
+  }, [folderId, folders, routeTrail]);
 
   const visibleFiles = useMemo(() => {
     if (fileSortMode === "name_asc") return [...folderFiles].sort((a, b) => a.name.localeCompare(b.name));
@@ -268,21 +367,12 @@ const FolderDetailScreen: React.FC = () => {
   }, [closeFab, fabOpen, openFab]);
 
   const handleBackPress = useCallback(() => {
-    if (trailIds.length > 1) {
-      const prevFolderId = trailIds[trailIds.length - 2];
-      navigation.setParams({ folderId: prevFolderId, trail: trailIds.slice(0, -1) });
-      return;
-    }
-
-    if (trailIds.length === 1) {
-      navigation.setParams({ folderId: null, trail: [] });
-      return;
-    }
-
     if (navigation.canGoBack()) {
       navigation.goBack();
+      return;
     }
-  }, [navigation, trailIds]);
+    navigation.navigate("FoldersRoot");
+  }, [navigation]);
 
   const toggleExpandedFolder = useCallback((folderId: string) => {
     setExpandedFolders((prev) => {
@@ -299,7 +389,7 @@ const FolderDetailScreen: React.FC = () => {
   const handleSelectNoteFromMenu = useCallback(
     (noteId: string) => {
       withLock(() => {
-        navigation.navigate("NoteEditor", { noteId });
+        navigation.navigate("NoteEditor", { noteId, folderId: folderId ?? null });
         addRecentOpen("note", noteId).then((nextRecent) => setRecentItems(nextRecent));
       });
     },
@@ -319,23 +409,50 @@ const FolderDetailScreen: React.FC = () => {
     <Screen edges={["top", "right", "left"]} style={styles.screenRoot}>
       <View style={styles.headerRow}>
         <Pressable
-          onPress={handleBackPress}
+          onPress={selectionMode ? handleClearSelection : handleBackPress}
           style={[styles.backButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
           hitSlop={8}
         >
-          <Ionicons name="arrow-back" size={16} color={theme.colors.textPrimary} />
+          <Ionicons name={selectionMode ? "close" : "arrow-back"} size={16} color={theme.colors.textPrimary} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          <Text variant="title">{currentFolder?.name ?? "Home"}</Text>
-          <Text muted>Subfolders, notes and files</Text>
+          {selectionMode ? (
+            <>
+              <Text variant="title">{selectionCount}</Text>
+            </>
+          ) : (
+            <>
+              <Text variant="title">{currentFolder?.name ?? "Home"}</Text>
+              <Text muted>Subfolders, notes and files</Text>
+            </>
+          )}
         </View>
-        <Pressable
-          onPress={() => setShowExplorerMenu(true)}
-          style={[styles.menuButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-          hitSlop={8}
-        >
-          <Ionicons name="menu-outline" size={18} color={theme.colors.textPrimary} />
-        </Pressable>
+        {selectionMode ? (
+          <View style={styles.selectionActions}>
+            <Pressable onPress={handleShareSelected} style={styles.headerIconBtn} hitSlop={8}>
+              <Ionicons name="share-social-outline" size={18} color={theme.colors.textPrimary} />
+            </Pressable>
+            <Pressable onPress={handleDeleteSelected} style={styles.headerIconBtn} hitSlop={8}>
+              <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
+            </Pressable>
+            {selectionCount === 1 && (
+              <Pressable onPress={handleEditSelected} style={styles.headerIconBtn} hitSlop={8}>
+                <Ionicons name="pencil-outline" size={18} color={theme.colors.textPrimary} />
+              </Pressable>
+            )}
+            <Pressable onPress={() => setShowSelectionMenu(true)} style={styles.headerIconBtn} hitSlop={8}>
+              <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.textPrimary} />
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            onPress={() => setShowExplorerMenu(true)}
+            style={[styles.menuButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+            hitSlop={8}
+          >
+            <Ionicons name="menu-outline" size={18} color={theme.colors.textPrimary} />
+          </Pressable>
+        )}
       </View>
 
       <View style={[styles.section, { borderColor: theme.colors.border }]}>
@@ -379,12 +496,12 @@ const FolderDetailScreen: React.FC = () => {
           nestedScrollEnabled={true}
         >
           <View style={currentViewMode === "grid" ? styles.gridContainer : undefined}>
-            {childFolders
+            {(childFolders ?? [])
               .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0))
               .map((folder) => (
                 <Pressable
                   key={folder.id}
-                  onLongPress={() => setSelectedFolder(folder)}
+                  onLongPress={() => startSelection({ kind: "folder", id: folder.id, label: folder.name })}
                   delayLongPress={260}
                   style={({ pressed }) => [
                     styles.itemCard,
@@ -394,18 +511,24 @@ const FolderDetailScreen: React.FC = () => {
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
-                      opacity: pressed ? 0.96 : 1
+                      opacity: pressed ? 0.96 : 1,
+                      borderWidth: isSelected({ kind: "folder", id: folder.id, label: folder.name }) ? 1.5 : StyleSheet.hairlineWidth,
+                      borderColor: isSelected({ kind: "folder", id: folder.id, label: folder.name }) ? theme.colors.primary : theme.colors.border
                     }
                   ]}
-                  onPress={() =>
+                  onPress={() => {
+                    if (selectionMode) {
+                      toggleSelection({ kind: "folder", id: folder.id, label: folder.name });
+                      return;
+                    }
                     withLock(() => {
                       navigation.push("FolderDetail", {
                         folderId: folder.id,
                         trail: [...trailIds, folder.id]
                       });
                       addRecentOpen("folder", folder.id).then((nextRecent) => setRecentItems(nextRecent));
-                    })
-                  }
+                    });
+                  }}
                 >
                   {!!folder.bannerPath && (
                     <Image source={{ uri: folder.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
@@ -430,12 +553,12 @@ const FolderDetailScreen: React.FC = () => {
                 </Pressable>
               ))}
 
-            {folderNotes
+            {(folderNotes ?? [])
               .sort((a, b) => b.updatedAt - a.updatedAt)
               .map((note) => (
                 <Pressable
                   key={note.id}
-                  onLongPress={() => setSelectedNote(note)}
+                  onLongPress={() => startSelection({ kind: "note", id: note.id, label: note.title })}
                   delayLongPress={260}
                   style={({ pressed }) => [
                     styles.itemCard,
@@ -445,15 +568,21 @@ const FolderDetailScreen: React.FC = () => {
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
-                      opacity: pressed ? 0.96 : 1
+                      opacity: pressed ? 0.96 : 1,
+                      borderWidth: isSelected({ kind: "note", id: note.id, label: note.title }) ? 1.5 : StyleSheet.hairlineWidth,
+                      borderColor: isSelected({ kind: "note", id: note.id, label: note.title }) ? theme.colors.primary : theme.colors.border
                     }
                   ]}
-                  onPress={() =>
+                  onPress={() => {
+                    if (selectionMode) {
+                      toggleSelection({ kind: "note", id: note.id, label: note.title });
+                      return;
+                    }
                     withLock(() => {
-                      navigation.navigate("NoteEditor", { noteId: note.id });
+                      navigation.navigate("NoteEditor", { noteId: note.id, folderId: folderId ?? null });
                       addRecentOpen("note", note.id).then((nextRecent) => setRecentItems(nextRecent));
-                    })
-                  }
+                    });
+                  }}
                 >
                   <View style={styles.cardBody}>
                     <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}>
@@ -471,11 +600,12 @@ const FolderDetailScreen: React.FC = () => {
                 </Pressable>
               ))}
 
-            {folderQuickNotes
+            {(folderQuickNotes ?? [])
               .sort((a, b) => b.updatedAt - a.updatedAt)
               .map((quickNote: QuickNote) => (
                 <Pressable
                   key={`quick-${quickNote.id}`}
+                  onLongPress={() => startSelection({ kind: "quick", id: quickNote.id, label: quickNote.title })}
                   delayLongPress={260}
                   style={({ pressed }) => [
                     styles.itemCard,
@@ -485,14 +615,20 @@ const FolderDetailScreen: React.FC = () => {
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
-                      opacity: pressed ? 0.96 : 1
+                      opacity: pressed ? 0.96 : 1,
+                      borderWidth: isSelected({ kind: "quick", id: quickNote.id, label: quickNote.title }) ? 1.5 : StyleSheet.hairlineWidth,
+                      borderColor: isSelected({ kind: "quick", id: quickNote.id, label: quickNote.title }) ? theme.colors.primary : theme.colors.border
                     }
                   ]}
-                  onPress={() =>
+                  onPress={() => {
+                    if (selectionMode) {
+                      toggleSelection({ kind: "quick", id: quickNote.id, label: quickNote.title });
+                      return;
+                    }
                     withLock(() => {
                       navigation.navigate("QuickNote", { quickNoteId: quickNote.id, folderId: folderId ?? null });
-                    })
-                  }
+                    });
+                  }}
                 >
                   <View style={styles.cardBody}>
                     <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
@@ -511,7 +647,7 @@ const FolderDetailScreen: React.FC = () => {
               ))}
 
             {/* File list */}
-            {folderFiles.map((item: any) => (
+            {(folderFiles ?? []).map((item: any) => (
               <Pressable
                 key={`file-${item.id}`}
                 delayLongPress={260}
@@ -667,6 +803,68 @@ const FolderDetailScreen: React.FC = () => {
               setFileSortMode("size_desc");
               await saveSortPreference(fileSortScopeForFolder(folderId), "size_desc");
             }
+          }
+        ]}
+      />
+
+      <ContextActionMenu
+        visible={showSelectionMenu}
+        title="Ações secundárias"
+        onClose={() => setShowSelectionMenu(false)}
+        actions={[
+          {
+            key: "pin",
+            label: "Pinar",
+            icon: "pin-outline",
+            onPress: handlePinSelected
+          },
+          {
+            key: "duplicate",
+            label: "Duplicar / Copiar",
+            icon: "copy-outline",
+            onPress: () => showToast("Duplicação em breve")
+          },
+          {
+            key: "move",
+            label: "Mover",
+            icon: "folder-open-outline",
+            onPress: () => showToast("Mover em breve")
+          },
+          {
+            key: "archive",
+            label: "Arquivar / Desarquivar",
+            icon: "archive-outline",
+            onPress: () => showToast("Arquivo em breve")
+          },
+          {
+            key: "tag",
+            label: "Tag / Label",
+            icon: "pricetag-outline",
+            onPress: () => showToast("Tags em breve")
+          },
+          {
+            key: "edit",
+            label: "Editar",
+            icon: "pencil-outline",
+            onPress: () => {
+              if (selectionCount !== 1) {
+                showToast("Selecione apenas 1 item para editar");
+                return;
+              }
+              handleEditSelected();
+            }
+          },
+          {
+            key: "selectAll",
+            label: "Selecionar tudo",
+            icon: "checkmark-done-outline",
+            onPress: selectAllVisible
+          },
+          {
+            key: "clear",
+            label: "Desmarcar tudo",
+            icon: "close-circle-outline",
+            onPress: handleClearSelection
           }
         ]}
       />
@@ -909,7 +1107,7 @@ const FolderDetailScreen: React.FC = () => {
             icon: "open-outline",
             onPress: () => {
               if (!selectedNote) return;
-              navigation.navigate("NoteEditor", { noteId: selectedNote.id });
+              navigation.navigate("NoteEditor", { noteId: selectedNote.id, folderId: folderId ?? null });
             }
           },
           {
@@ -1345,6 +1543,18 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     zIndex: 4,
     elevation: 4
+  },
+  selectionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2
+  },
+  headerIconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: "center",
+    justifyContent: "center"
   },
   backButton: {
     width: 34,

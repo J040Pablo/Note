@@ -77,13 +77,13 @@ export const ensureTaskNotificationChannel = async (): Promise<void> => {
     if (Platform.OS !== 'android') return;
     await Notifications.setNotificationChannelAsync('tasks', {
       name: 'Tasks',
-      importance: Notifications.AndroidImportance.HIGH,
+      importance: Notifications.AndroidImportance.MAX,
       sound: 'default',
       vibrationPattern: [0, 250, 250, 250],
       enableVibrate: true,
     });
     if (shouldLogDev) {
-      console.info('[Notifications] Android channel "tasks" is ready (HIGH importance).');
+      console.info('[NOTIF] Channel "tasks" set with MAX importance');
     }
   } catch (error) {
     console.error('Error creating notification channel:', error);

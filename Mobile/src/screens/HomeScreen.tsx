@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, FlatList, Animated } from "react-native";
+import { View, StyleSheet, Pressable, FlatList, Animated, Share, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useFeedback } from "@components/FeedbackProvider";
@@ -25,8 +25,15 @@ import { FolderIcon } from "@components/FolderIcon";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
+import { deleteNote, deleteQuickNote } from "@services/notesService";
+import { deleteFolder } from "@services/foldersService";
+import { deleteTask } from "@services/tasksService";
+import { useSelection } from "@hooks/useSelection";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
+type SelectableKind = "folder" | "note" | "quick" | "task";
+type SelectedItem = { kind: SelectableKind; id: ID; label: string };
+type SelectionKey = `${SelectableKind}:${ID}`;
 
 const firstLine = (text: string): string => getRichNotePreviewLine(text, 90);
 
@@ -72,6 +79,10 @@ const HomeScreen: React.FC = () => {
   const tasksMap = useTasksStore((s) => s.tasks);
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
+  const removeTask = useTasksStore((s) => s.removeTask);
+  const removeFolder = useAppStore((s) => s.removeFolder);
+  const removeNote = useNotesStore((s) => s.removeNote);
+  const removeQuickNote = useQuickNotesStore((s) => s.removeQuickNote);
 
   const [search, setSearch] = useState("");
   const [selectedPinned, setSelectedPinned] = useState<{ type: PinnedItemType; id: ID; label: string } | null>(null);
@@ -79,6 +90,7 @@ const HomeScreen: React.FC = () => {
   const [openScanner, setOpenScanner] = useState(false);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
+  const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fabAnim = useRef(new Animated.Value(0)).current;
 
@@ -176,6 +188,54 @@ const HomeScreen: React.FC = () => {
       })
       .filter(Boolean) as Array<{ type: "folder" | "note"; id: ID; openedAt: number; label: string; subtitle?: string }>;
   }, [foldersMap, notesMap, recentItems]);
+
+  const allSelectableItems = useMemo<SelectedItem[]>(() => {
+    const map: Record<string, SelectedItem> = {};
+    pinnedResolved.forEach((item) => {
+      map[`${item.type}:${item.id}`] = { kind: item.type, id: item.id, label: item.label };
+    });
+    todaysTasks.forEach((task) => {
+      map[`task:${task.id}`] = { kind: "task", id: task.id, label: task.text };
+    });
+    recentNotes.forEach((note) => {
+      map[`${note.kind}:${note.id}`] = { kind: note.kind, id: note.id, label: note.title };
+    });
+    previewFolders.forEach((folder) => {
+      map[`folder:${folder.id}`] = { kind: "folder", id: folder.id, label: folder.name };
+    });
+    recentResolved.forEach((item) => {
+      map[`${item.type}:${item.id}`] = { kind: item.type, id: item.id, label: item.label };
+    });
+    return Object.values(map);
+  }, [pinnedResolved, todaysTasks, recentNotes, previewFolders, recentResolved]);
+
+  const getSelectionKey = useCallback((kind: SelectableKind, id: ID): SelectionKey => `${kind}:${id}`, []);
+
+  const {
+    selectedItems,
+    selectionCount,
+    selectionMode,
+    isSelected: isSelectedItem,
+    toggleSelection,
+    startSelection,
+    clearSelection,
+    selectAllVisible
+  } = useSelection(allSelectableItems, {
+    getKey: (item) => getSelectionKey(item.kind, item.id),
+    onSelectionStart: () => showToast("Modo de selecao ativado")
+  });
+
+  const isSelected = useCallback(
+    (kind: SelectableKind, id: ID) => isSelectedItem({ kind, id, label: "" }),
+    [isSelectedItem]
+  );
+
+  const handleClearSelection = useCallback(() => {
+    clearSelection();
+    setShowSelectionMenu(false);
+  }, [clearSelection]);
+
+  const canEditSingle = selectionCount === 1;
 
 
   const recurringCount = useMemo(
@@ -297,6 +357,106 @@ const HomeScreen: React.FC = () => {
     [tasksMap, todayKey, upsertTask]
   );
 
+  const handleEditSelected = useCallback(() => {
+    const [item] = selectedItems;
+    if (!item) return;
+    handleClearSelection();
+    if (item.kind === "folder") {
+      handleOpenFolder(item.id);
+      return;
+    }
+    if (item.kind === "note") {
+      handleOpenNote(item.id);
+      return;
+    }
+    if (item.kind === "quick") {
+      handleOpenQuickNote(item.id);
+      return;
+    }
+    handleOpenTask(item.id);
+  }, [handleClearSelection, handleOpenFolder, handleOpenNote, handleOpenQuickNote, handleOpenTask, selectedItems]);
+
+  const handleShareSelected = useCallback(async () => {
+    const items = selectedItems;
+    if (!items.length) return;
+    const body = items
+      .map((item) => {
+        if (item.kind === "note") {
+          const note = notesMap[item.id];
+          return note ? `Nota: ${note.title}\n${firstLine(note.content)}` : null;
+        }
+        if (item.kind === "quick") {
+          const quick = quickNotesMap[item.id];
+          return quick ? `Quick Note: ${quick.title}\n${firstLine(quick.content)}` : null;
+        }
+        if (item.kind === "folder") {
+          return `Pasta: ${item.label}`;
+        }
+        const task = tasksMap[item.id];
+        return task ? `Tarefa: ${task.text}` : null;
+      })
+      .filter(Boolean)
+      .join("\n\n");
+
+    if (!body.trim()) return;
+    await Share.share({
+      title: items.length === 1 ? items[0].label : `${items.length} itens selecionados`,
+      message: body
+    });
+  }, [notesMap, quickNotesMap, selectedItems, tasksMap]);
+
+  const handlePinSelected = useCallback(async () => {
+    const items = selectedItems;
+    const pinnable = items.filter((item): item is SelectedItem & { kind: "folder" | "note" | "task" } => item.kind !== "quick");
+    if (!pinnable.length) return;
+    for (const item of pinnable) {
+      const type = item.kind as PinnedItemType;
+      const next = togglePinned(type, item.id);
+      await savePinnedItems(next);
+    }
+    showToast("Pins atualizados");
+  }, [selectedItems, showToast, togglePinned]);
+
+  const handleDeleteSelected = useCallback(() => {
+    const items = selectedItems;
+    if (!items.length) return;
+
+    Alert.alert(
+      "Apagar itens",
+      items.length === 1 ? "Deseja apagar o item selecionado?" : `Deseja apagar ${items.length} itens selecionados?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Apagar",
+          style: "destructive",
+          onPress: async () => {
+            for (const item of items) {
+              if (item.kind === "note") {
+                await deleteNote(item.id);
+                removeNote(item.id);
+                continue;
+              }
+              if (item.kind === "quick") {
+                await deleteQuickNote(item.id);
+                removeQuickNote(item.id);
+                continue;
+              }
+              if (item.kind === "folder") {
+                await deleteFolder(item.id);
+                removeFolder(item.id);
+                continue;
+              }
+              await deleteTask(item.id);
+              removeTask(item.id);
+            }
+            handleClearSelection();
+            showToast(items.length === 1 ? "Item apagado" : `${items.length} itens apagados`);
+          }
+        }
+      ]
+    );
+  }, [handleClearSelection, removeFolder, removeNote, removeQuickNote, removeTask, selectedItems, showToast]);
+
   const sectionData = useMemo(
     () => ["pinned", "today", "recentNotes", "folders", "recent"],
     []
@@ -330,26 +490,52 @@ const HomeScreen: React.FC = () => {
       style={[hsStyles.safe, { backgroundColor: theme.colors.background }]}
       edges={["top", "right", "left", "bottom"]}
     >
+      <View style={hsStyles.header}>
+        {selectionMode ? (
+          <View style={[hsStyles.selectionBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+            <Pressable onPress={handleClearSelection} style={hsStyles.selectionTopAction} hitSlop={8}>
+              <Ionicons name="close" size={20} color={theme.colors.textPrimary} />
+            </Pressable>
+            <Text style={[hsStyles.selectionCount, { color: theme.colors.textPrimary }]}>
+              {selectionCount}
+            </Text>
+            <View style={hsStyles.selectionActions}>
+              <Pressable onPress={handleShareSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
+                <Ionicons name="share-social-outline" size={18} color={theme.colors.textPrimary} />
+              </Pressable>
+              <Pressable onPress={handleDeleteSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
+                <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
+              </Pressable>
+              {canEditSingle && (
+                <Pressable onPress={handleEditSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
+                  <Ionicons name="pencil-outline" size={18} color={theme.colors.textPrimary} />
+                </Pressable>
+              )}
+              <Pressable onPress={() => setShowSelectionMenu(true)} style={hsStyles.selectionActionBtn} hitSlop={8}>
+                <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.textPrimary} />
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View style={hsStyles.headerTopRow}>
+            <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
+            <Pressable
+              onPress={() => setOpenScanner(true)}
+              style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir QR Code"
+            >
+              <Ionicons name="qr-code-outline" size={20} color={theme.colors.textPrimary} />
+            </Pressable>
+          </View>
+        )}
+      </View>
+
       <FlatList
         data={sectionData}
         keyExtractor={(item) => item}
         contentContainerStyle={hsStyles.scroll}
         keyboardShouldPersistTaps="handled"
-        ListHeaderComponent={
-          <View style={hsStyles.header}>
-            <View style={hsStyles.headerTopRow}>
-              <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
-              <Pressable
-                onPress={() => setOpenScanner(true)}
-                style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-                accessibilityRole="button"
-                accessibilityLabel="Abrir QR Code"
-              >
-                <Ionicons name="qr-code-outline" size={20} color={theme.colors.textPrimary} />
-              </Pressable>
-            </View>
-          </View>
-        }
         renderItem={({ item }) => {
           if (item === "pinned") {
             return (
@@ -367,13 +553,30 @@ const HomeScreen: React.FC = () => {
                     renderItem={({ item: pin }) => (
                       <Pressable
                         onPress={() => {
+                          if (selectionMode) {
+                            toggleSelection({ kind: pin.type, id: pin.id, label: pin.label });
+                            return;
+                          }
                           if (pin.type === "folder") return handleOpenFolder(pin.id);
                           if (pin.type === "note") return handleOpenNote(pin.id);
                           return handleOpenTask(pin.id);
                         }}
-                        onLongPress={() => setSelectedPinned({ type: pin.type, id: pin.id, label: pin.label })}
+                        onLongPress={() => {
+                          if (selectionMode) {
+                            toggleSelection({ kind: pin.type, id: pin.id, label: pin.label });
+                            return;
+                          }
+                          startSelection({ kind: pin.type, id: pin.id, label: pin.label });
+                        }}
                         delayLongPress={260}
-                        style={[hsStyles.pinnedCard, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.border }]}
+                        style={[
+                          hsStyles.pinnedCard,
+                          {
+                            backgroundColor: theme.colors.surfaceElevated,
+                            borderColor: isSelected(pin.type, pin.id) ? theme.colors.primary : theme.colors.border
+                          },
+                          isSelected(pin.type, pin.id) && { borderWidth: 1.5 }
+                        ]}
                       >
                         <View style={hsStyles.pinnedTopRow}>
                           <Ionicons name={pin.icon} size={16} color={theme.colors.primary} />
@@ -386,6 +589,11 @@ const HomeScreen: React.FC = () => {
                           <Text muted variant="caption" numberOfLines={2}>
                             {pin.subtitle}
                           </Text>
+                        )}
+                        {isSelected(pin.type, pin.id) && (
+                          <View style={hsStyles.selectedBadge}>
+                            <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
+                          </View>
                         )}
                       </Pressable>
                     )}
@@ -429,9 +637,28 @@ const HomeScreen: React.FC = () => {
                   todaysTasks.map((task) => (
                     <Pressable
                       key={task.id}
-                      style={hsStyles.row}
-                      onPress={() => handleToggleTodayTask(task.id)}
-                      onLongPress={() => handleTogglePin("task", task.id)}
+                      style={[
+                        hsStyles.row,
+                        isSelected("task", task.id) && {
+                          backgroundColor: theme.colors.primaryAlpha20,
+                          borderRadius: 10,
+                          paddingHorizontal: 8
+                        }
+                      ]}
+                      onPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "task", id: task.id, label: task.text });
+                          return;
+                        }
+                        handleToggleTodayTask(task.id);
+                      }}
+                      onLongPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "task", id: task.id, label: task.text });
+                          return;
+                        }
+                        startSelection({ kind: "task", id: task.id, label: task.text });
+                      }}
                       delayLongPress={260}
                     >
                       <Ionicons
@@ -471,14 +698,30 @@ const HomeScreen: React.FC = () => {
                 {recentNotes.length === 0 ? (
                   <Text muted>No notes yet.</Text>
                 ) : (
-                  recentNotes.map((note) => (
+                  (recentNotes ?? []).map((note) => (
                     <Pressable
                       key={note.id}
-                      style={[hsStyles.noteCard, { backgroundColor: theme.colors.surface, borderColor: theme.colors.border }]}
-                      onPress={() => (note.kind === "quick" ? handleOpenQuickNote(note.id) : handleOpenNote(note.id))}
+                      style={[
+                        hsStyles.noteCard,
+                        {
+                          backgroundColor: theme.colors.surface,
+                          borderColor: isSelected(note.kind, note.id) ? theme.colors.primary : theme.colors.border
+                        },
+                        isSelected(note.kind, note.id) && { borderWidth: 1.5 }
+                      ]}
+                      onPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: note.kind, id: note.id, label: note.title });
+                          return;
+                        }
+                        note.kind === "quick" ? handleOpenQuickNote(note.id) : handleOpenNote(note.id);
+                      }}
                       onLongPress={() => {
-                        if (note.kind === "quick") return;
-                        handleTogglePin("note", note.id);
+                        if (selectionMode) {
+                          toggleSelection({ kind: note.kind, id: note.id, label: note.title });
+                          return;
+                        }
+                        startSelection({ kind: note.kind, id: note.id, label: note.title });
                       }}
                       delayLongPress={260}
                     >
@@ -499,6 +742,11 @@ const HomeScreen: React.FC = () => {
                           {firstLine(note.content)}
                         </Text>
                       )}
+                      {isSelected(note.kind, note.id) && (
+                        <View style={hsStyles.selectedBadge}>
+                          <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
+                        </View>
+                      )}
                     </Pressable>
                   ))
                 )}
@@ -513,12 +761,31 @@ const HomeScreen: React.FC = () => {
                 {previewFolders.length === 0 ? (
                   <Text muted>No folders yet.</Text>
                 ) : (
-                  previewFolders.map((folder) => (
+                  (previewFolders ?? []).map((folder) => (
                     <Pressable
                       key={folder.id}
-                      style={hsStyles.row}
-                      onPress={() => handleOpenFolder(folder.id)}
-                      onLongPress={() => handleTogglePin("folder", folder.id)}
+                      style={[
+                        hsStyles.row,
+                        isSelected("folder", folder.id) && {
+                          backgroundColor: theme.colors.primaryAlpha20,
+                          borderRadius: 10,
+                          paddingHorizontal: 8
+                        }
+                      ]}
+                      onPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "folder", id: folder.id, label: folder.name });
+                          return;
+                        }
+                        handleOpenFolder(folder.id);
+                      }}
+                      onLongPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "folder", id: folder.id, label: folder.name });
+                          return;
+                        }
+                        startSelection({ kind: "folder", id: folder.id, label: folder.name });
+                      }}
                       delayLongPress={260}
                     >
                       <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={18} />
@@ -546,11 +813,31 @@ const HomeScreen: React.FC = () => {
               {recentResolved.length === 0 ? (
                 <Text muted>No recently opened items.</Text>
               ) : (
-                recentResolved.map((item) => (
+                (recentResolved ?? []).map((item) => (
                   <Pressable
                     key={`${item.type}-${item.id}`}
-                    style={hsStyles.row}
-                    onPress={() => (item.type === "folder" ? handleOpenFolder(item.id) : handleOpenNote(item.id))}
+                    style={[
+                      hsStyles.row,
+                      isSelected(item.type, item.id) && {
+                        backgroundColor: theme.colors.primaryAlpha20,
+                        borderRadius: 10,
+                        paddingHorizontal: 8
+                      }
+                    ]}
+                    onPress={() => {
+                      if (selectionMode) {
+                        toggleSelection({ kind: item.type, id: item.id, label: item.label });
+                        return;
+                      }
+                      item.type === "folder" ? handleOpenFolder(item.id) : handleOpenNote(item.id);
+                    }}
+                    onLongPress={() => {
+                      if (selectionMode) {
+                        toggleSelection({ kind: item.type, id: item.id, label: item.label });
+                        return;
+                      }
+                      startSelection({ kind: item.type, id: item.id, label: item.label });
+                    }}
                   >
                     <Ionicons
                       name={item.type === "folder" ? "folder-outline" : "document-text-outline"}
@@ -619,6 +906,68 @@ const HomeScreen: React.FC = () => {
               if (!selectedPinned) return;
               await handleTogglePin(selectedPinned.type, selectedPinned.id);
             }
+          }
+        ]}
+      />
+
+      <ContextActionMenu
+        visible={showSelectionMenu}
+        title="Acoes secundarias"
+        onClose={() => setShowSelectionMenu(false)}
+        actions={[
+          {
+            key: "pin",
+            label: "Pinar",
+            icon: "pin-outline",
+            onPress: handlePinSelected
+          },
+          {
+            key: "duplicate",
+            label: "Duplicar / Copiar",
+            icon: "copy-outline",
+            onPress: () => showToast("Duplicacao em breve")
+          },
+          {
+            key: "move",
+            label: "Mover",
+            icon: "folder-open-outline",
+            onPress: () => showToast("Mover em breve")
+          },
+          {
+            key: "archive",
+            label: "Arquivar / Desarquivar",
+            icon: "archive-outline",
+            onPress: () => showToast("Arquivo em breve")
+          },
+          {
+            key: "tag",
+            label: "Tag / Label",
+            icon: "pricetag-outline",
+            onPress: () => showToast("Tags em breve")
+          },
+          {
+            key: "edit",
+            label: "Editar",
+            icon: "pencil-outline",
+            onPress: () => {
+              if (!canEditSingle) {
+                showToast("Selecione apenas 1 item para editar");
+                return;
+              }
+              handleEditSelected();
+            }
+          },
+          {
+            key: "selectAll",
+            label: "Selecionar tudo",
+            icon: "checkmark-done-outline",
+            onPress: selectAllVisible
+          },
+          {
+            key: "clearSelection",
+            label: "Desmarcar tudo",
+            icon: "close-circle-outline",
+            onPress: handleClearSelection
           }
         ]}
       />
@@ -783,12 +1132,47 @@ const hsStyles = StyleSheet.create({
   },
   header: {
     paddingTop: spacing.md,
-    paddingBottom: spacing.sm
+    paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md
   },
   headerTopRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between"
+  },
+  selectionBar: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center"
+  },
+  selectionTopAction: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  selectionCount: {
+    flex: 1,
+    marginLeft: 4,
+    fontSize: 15,
+    fontWeight: "700"
+  },
+  selectionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
+  },
+  selectionActionBtn: {
+    minHeight: 36,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: 8
   },
   headerTitle: {
     fontSize: 30,
@@ -832,7 +1216,8 @@ const hsStyles = StyleSheet.create({
     width: 190,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
-    padding: 10
+    padding: 10,
+    position: "relative"
   },
   pinnedTopRow: {
     flexDirection: "row",
@@ -875,7 +1260,13 @@ const hsStyles = StyleSheet.create({
     paddingHorizontal: 10,
     borderWidth: 1,
     borderRadius: 10,
-    marginBottom: 8
+    marginBottom: 8,
+    position: "relative"
+  },
+  selectedBadge: {
+    position: "absolute",
+    top: 8,
+    right: 8
   },
   noteTopRow: {
     flexDirection: "row",

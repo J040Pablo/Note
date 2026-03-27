@@ -1,8 +1,7 @@
 import * as Network from "expo-network";
 import { getAllFolders } from "@services/foldersService";
-import { getAllNotes } from "@services/notesService";
+import { getAllNotes, getAllQuickNotes } from "@services/notesService";
 import { createTask, deleteTask, getAllTasks, updateTask } from "@services/tasksService";
-import { getAllFiles } from "@services/filesService";
 import { emitTaskServerEvent, subscribeTaskServerEvents, type TaskServerEvent } from "@services/sync/taskSyncEvents";
 import { fromSyncPriority, toSyncTask, type SyncPriority, type SyncTask } from "@services/sync/taskSyncProtocol";
 import type { Task } from "@models/types";
@@ -53,13 +52,13 @@ type SyncTaskPayload = {
   updatedAt?: number;
 };
 
-type SyncInitDataMessage = {
-  type: "INIT_DATA";
+type SyncFullDataMessage = {
+  type: "FULL_SYNC";
   payload: {
     notes: unknown[];
+    quickNotes: unknown[];
     tasks: SyncTask[];
     folders: unknown[];
-    files: Array<{ id: string; name: string; path: string }>;
   };
 };
 
@@ -133,29 +132,65 @@ const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Tas
   };
 };
 
-const sendInitialData = async (socket: SocketClient) => {
-  const [notes, tasks, folders, files] = await Promise.all([
-    getAllNotes(),
-    getAllTasks(),
-    getAllFolders(),
-    getAllFiles(),
-  ]);
+let fullSyncResolvers: Array<() => void> = [];
 
-  const message: SyncInitDataMessage = {
-    type: "INIT_DATA",
+export const waitForFullSync = async (): Promise<void> => {
+  return new Promise<void>((resolve) => {
+    fullSyncResolvers.push(resolve);
+  });
+};
+
+const sendInitialData = async (socket: SocketClient) => {
+  console.log("[SYNC] Fetching data...");
+
+  const notes = await getAllNotes().catch((e) => {
+    console.error("[SYNC ERROR notes]", e);
+    return [];
+  });
+  const quickNotes = await getAllQuickNotes().catch((e) => {
+    console.error("[SYNC ERROR quickNotes]", e);
+    return [];
+  });
+  const tasks = await getAllTasks().catch((e) => {
+    console.error("[SYNC ERROR tasks]", e);
+    return [];
+  });
+  const folders = await getAllFolders().catch((e) => {
+    console.error("[SYNC ERROR folders]", e);
+    return [];
+  });
+
+  console.log("[SYNC] Data fetched", {
+    notes: notes.length,
+    quickNotes: quickNotes.length,
+    tasks: tasks.length,
+    folders: folders.length,
+  });
+
+  const message: SyncFullDataMessage = {
+    type: "FULL_SYNC",
     payload: {
       notes,
+      quickNotes,
       tasks: tasks.map(toSyncTask),
       folders,
-      files: files.map((file) => ({
-        id: String(file.id),
-        name: file.name,
-        path: file.path,
-      })),
     },
   };
 
+  console.log("[SYNC] SENDING FULL_SYNC");
   sendToClient(socket, message);
+  console.log("[SYNC] FULL_SYNC SENT");
+  // Resolve any waiters
+  if (fullSyncResolvers.length > 0) {
+    fullSyncResolvers.forEach((fn) => {
+      try {
+        fn();
+      } catch {
+        // ignore
+      }
+    });
+    fullSyncResolvers = [];
+  }
 };
 
 const handleTaskCreate = async (payload: Extract<SyncIncomingMessage, { type: "TASK_CREATE" }>["payload"]) => {
@@ -291,6 +326,15 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
     const socketId = getSocketId(socket);
     clients.set(socketId, socket);
     console.log(`[sync] client connected: ${socketId}`);
+    console.log("[SYNC] CLIENT CONNECTED");
+    console.log("[SYNC] CALLING sendInitialData");
+    sendInitialData(socket)
+      .then(() => {
+        console.log("[SYNC] FULL_SYNC SENT");
+      })
+      .catch((error) => {
+        console.warn("[sync] failed to send full sync", error);
+      });
 
     socket.on("message", async (raw) => {
       const incoming = parseIncoming(raw);

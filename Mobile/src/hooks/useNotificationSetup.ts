@@ -1,5 +1,11 @@
 import { useEffect } from 'react';
-import { areNotificationsAvailable, ensureTaskNotificationChannel } from '@services/notificationService';
+import {
+  areNotificationsAvailable,
+  ensureTaskNotificationChannel,
+  hasNotificationPermission,
+  requestNotificationPermission,
+} from '@services/notificationService';
+import Constants from 'expo-constants';
 import { isExpoGo, shouldLogDev } from '@utils/runtimeEnv';
 
 /**
@@ -8,21 +14,27 @@ import { isExpoGo, shouldLogDev } from '@utils/runtimeEnv';
 export const useNotificationSetup = () => {
   useEffect(() => {
     const initializeNotifications = async () => {
-      if (isExpoGo) {
-        if (shouldLogDev) {
-          console.info('[Notifications] Skipping setup in Expo Go.');
-        }
-        return;
+      if (isExpoGo || Constants.appOwnership === 'expo') {
+        console.warn('[NOTIF] Notifications may not work in Expo Go. Use Dev Build or APK/IPA');
       }
 
       try {
         if (!areNotificationsAvailable()) {
+          if (shouldLogDev) console.info('[NOTIF] Notifications not available in this environment.');
           return;
+        }
+
+        const granted = await hasNotificationPermission();
+        if (!granted) {
+          const result = await requestNotificationPermission();
+          console.log('[NOTIF] Permission status:', result);
+        } else {
+          console.log('[NOTIF] Permission already granted');
         }
 
         await ensureTaskNotificationChannel();
       } catch (error) {
-        console.error('Error setting up notifications:', error);
+        console.error('[NOTIF] Error setting up notifications:', error);
       }
     };
 

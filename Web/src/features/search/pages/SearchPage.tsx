@@ -6,6 +6,13 @@ import {
   Search as SearchIcon,
 } from "lucide-react";
 import PageContainer from "../../../components/ui/PageContainer";
+import {
+  getFolders,
+  getNotes,
+  getTasks,
+} from "../../../services/webData";
+import { useAppMode } from "../../../app/mode";
+import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncTask } from "../../tasks/sync";
 import styles from "./SearchPage.module.css";
 
 type SearchType = "folder" | "note" | "task";
@@ -20,48 +27,68 @@ type SearchItem = {
   updatedAt: string;
 };
 
-const sampleIndex: SearchItem[] = [
-  {
-    id: "s-1",
-    title: "Linux",
-    description: "Kernel, shell and distro notes",
+const buildSearchIndex = (): SearchItem[] => {
+  const folders: SearchItem[] = getFolders().map((folder) => ({
+    id: `folder-${String(folder.id ?? Date.now())}`,
+    title: String(folder.name ?? "Untitled folder"),
+    description: String(folder.description ?? ""),
     type: "folder",
-    path: "Home / Linux",
-    updatedAt: "Today",
-  },
-  {
-    id: "s-2",
-    title: "Docker",
-    description: "Containers and compose",
-    type: "folder",
-    path: "Home / Linux / Docker",
-    updatedAt: "Today",
-  },
-  {
-    id: "s-3",
-    title: "Desktop spacing tokens",
-    description: "Use spacing scale 8 / 12 / 16 / 24",
+    path: "Home",
+    updatedAt: "Recently",
+  }));
+
+  const notes: SearchItem[] = getNotes().map((note) => ({
+    id: `note-${String(note.id ?? Date.now())}`,
+    title: String(note.title ?? "Untitled note"),
+    description: String(note.content ?? ""),
     type: "note",
-    path: "Home / Design",
-    updatedAt: "Yesterday",
-  },
-  {
-    id: "s-4",
-    title: "Review sidebar UX",
-    description: "Polish edge toggle and collapse behavior",
+    path: "Home",
+    updatedAt: "Recently",
+  }));
+
+  const tasks: SearchItem[] = getTasks().map((task) => ({
+    id: `task-${String(task.id ?? Date.now())}`,
+    title: String(task.title ?? "Untitled task"),
+    description: typeof task.priority === "string" ? `Priority: ${task.priority}` : "Task",
     type: "task",
-    path: "Tasks / Sprint",
-    updatedAt: "2 days ago",
-  },
-  {
-    id: "s-5",
-    title: "Quick Linux commands",
-    description: "sudo apt update, ls -la, cat /etc/os-release",
-    type: "note",
-    path: "Home / Linux",
-    updatedAt: "2 days ago",
-  },
-];
+    path: "Tasks",
+    updatedAt: "Recently",
+  }));
+
+  return [...folders, ...notes, ...tasks];
+};
+
+const buildSearchIndexFromSyncPayload = (payload: {
+  folders?: SyncFolder[];
+  notes?: SyncNote[];
+  tasks?: SyncTask[];
+}): SearchItem[] => {
+  const folders = (payload.folders ?? []).map((folder) => ({
+    id: `folder-${folder.id}`,
+    title: folder.name || "Untitled folder",
+    description: folder.description ?? "",
+    type: "folder" as const,
+    path: "Home",
+    updatedAt: "Recently",
+  }));
+  const notes = (payload.notes ?? []).map((note) => ({
+    id: `note-${note.id}`,
+    title: note.title || "Untitled note",
+    description: note.content ?? "",
+    type: "note" as const,
+    path: "Home",
+    updatedAt: "Recently",
+  }));
+  const tasks = (payload.tasks ?? []).map((task) => ({
+    id: `task-${task.id}`,
+    title: task.title || "Untitled task",
+    description: typeof task.priority === "string" ? `Priority: ${task.priority}` : "Task",
+    type: "task" as const,
+    path: "Tasks",
+    updatedAt: "Recently",
+  }));
+  return [...folders, ...notes, ...tasks];
+};
 
 const scopes: Array<{ value: SearchScope; label: string; icon: React.ReactNode }> = [
   { value: "all", label: "All", icon: <SearchIcon size={15} /> },
@@ -71,13 +98,31 @@ const scopes: Array<{ value: SearchScope; label: string; icon: React.ReactNode }
 ];
 
 const SearchPage: React.FC = () => {
+  const { mode } = useAppMode();
+  const isMobileSync = mode === "mobile-sync";
   const [query, setQuery] = React.useState("");
   const [scope, setScope] = React.useState<SearchScope>("all");
+  // search now uses real persisted data
+  const [searchIndex, setSearchIndex] = React.useState<SearchItem[]>(() => buildSearchIndex());
+
+  React.useEffect(() => {
+    setSearchIndex(buildSearchIndex());
+  }, []);
+
+  React.useEffect(() => {
+    if (!isMobileSync) return;
+    const unsub = subscribeTaskSyncMessages((message) => {
+      if (message.type !== "INIT") return;
+      // received from mobile
+      setSearchIndex(buildSearchIndexFromSyncPayload(message.payload));
+    });
+    return () => unsub();
+  }, [isMobileSync]);
 
   const filtered = React.useMemo(() => {
     const safe = query.toLowerCase().trim();
 
-    return sampleIndex
+    return searchIndex
       .filter((item) => (scope === "all" ? true : item.type === scope))
       .filter((item) => {
         if (!safe) return true;
@@ -87,7 +132,7 @@ const SearchPage: React.FC = () => {
           item.path.toLowerCase().includes(safe)
         );
       });
-  }, [query, scope]);
+  }, [query, scope, searchIndex]);
 
   const showIdle = query.trim().length === 0;
 

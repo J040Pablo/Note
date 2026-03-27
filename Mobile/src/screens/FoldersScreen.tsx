@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, Image, LayoutAnimation, Animated } from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { View, StyleSheet, Pressable, Image, LayoutAnimation, Animated, Share, Alert } from "react-native";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
@@ -9,6 +9,9 @@ import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { useTheme } from "@hooks/useTheme";
 import { useAppStore } from "@store/useAppStore";
 import { createFolder, deleteFolder, getFoldersByParent, reorderFolders, updateFolder } from "@services/foldersService";
+import { useNotesStore } from "@store/useNotesStore";
+import { useQuickNotesStore } from "@store/useQuickNotesStore";
+import { getAllNotes, getAllQuickNotes, deleteNote, deleteQuickNote } from "@services/notesService";
 import {
   addRecentOpen,
   getPinnedItems,
@@ -21,9 +24,18 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { FoldersStackParamList } from "@navigation/RootNavigator";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { FolderNameModal } from "@components/FolderNameModal";
-import type { Folder } from "@models/types";
+import type { Folder, Note, QuickNote, ID } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
+import { useSelection } from "@hooks/useSelection";
+
+const firstLine = (text: string): string => {
+  if (!text) return "";
+  return text.split("\n")[0].slice(0, 90);
+};
+
+type SelectableKind = "folder" | "note" | "quick";
+type SelectedItem = { kind: SelectableKind; id: ID; label: string };
 
 type Nav = NativeStackNavigationProp<FoldersStackParamList, "FoldersRoot">;
 type FolderSortMode = "custom" | "recent" | "name_asc" | "name_desc";
@@ -46,9 +58,16 @@ const FoldersScreen: React.FC = () => {
   const setPinnedItems = useAppStore((s) => s.setPinnedItems);
   const setRecentItems = useAppStore((s) => s.setRecentItems);
 
+  const notesMap = useNotesStore((s) => s.notes);
+  const setNotes = useNotesStore((s) => s.setNotes);
+  const removeNote = useNotesStore((s) => s.removeNote);
+  const quickNotesMap = useQuickNotesStore((s) => s.quickNotes);
+  const setQuickNotes = useQuickNotesStore((s) => s.setQuickNotes);
+  const removeQuickNote = useQuickNotesStore((s) => s.removeQuickNote);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
-  const [selectedFolder, setSelectedFolder] = useState<Folder | null>(null);
+  const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<Folder | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [sortMode, setSortMode] = useState<FolderSortMode>("custom");
@@ -64,16 +83,20 @@ const FoldersScreen: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      const [rootFolders, pinned, savedSort] = await Promise.all([
+      const [rootFolders, pinned, savedSort, allNotes, allQuickNotes] = await Promise.all([
         getFoldersByParent(null),
         getPinnedItems(),
-        getSortPreference<FolderSortMode>(FOLDER_SORT_SCOPE, "custom")
+        getSortPreference<FolderSortMode>(FOLDER_SORT_SCOPE, "custom"),
+        getAllNotes(),
+        getAllQuickNotes()
       ]);
       setFolders(rootFolders);
       setPinnedItems(pinned);
       setSortMode(savedSort);
+      setNotes(allNotes);
+      setQuickNotes(allQuickNotes);
     })();
-  }, [setFolders, setPinnedItems]);
+  }, [setFolders, setPinnedItems, setNotes, setQuickNotes]);
 
   const rootFolders = Object.values(folders)
     .filter((f) => f.parentId == null)
@@ -85,6 +108,126 @@ const FoldersScreen: React.FC = () => {
     if (sortMode === "recent") return [...rootFolders].sort((a, b) => b.createdAt - a.createdAt);
     return [...rootFolders].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
   })();
+
+  const looseNotes = useMemo(
+    () => Object.values(notesMap).filter((n) => n.folderId == null),
+    [notesMap]
+  );
+
+  const looseQuickNotes = useMemo(
+    () => Object.values(quickNotesMap).filter((q) => q.folderId == null),
+    [quickNotesMap]
+  );
+
+  const selectableItems = useMemo<SelectedItem[]>(
+    () => [
+      ...visibleFolders.map((folder) => ({ kind: "folder" as const, id: folder.id, label: folder.name })),
+      ...looseNotes.map((note) => ({ kind: "note" as const, id: note.id, label: note.title })),
+      ...looseQuickNotes.map((q) => ({ kind: "quick" as const, id: q.id, label: q.title }))
+    ],
+    [visibleFolders, looseNotes, looseQuickNotes]
+  );
+
+  const {
+    selectedItems,
+    selectionCount,
+    selectionMode,
+    isSelected,
+    toggleSelection,
+    startSelection,
+    clearSelection,
+    selectAllVisible
+  } = useSelection(selectableItems, {
+    getKey: (item) => `${item.kind}:${item.id}`,
+    onSelectionStart: () => showToast("Modo de seleção ativado")
+  });
+
+  const handleClearSelection = useCallback(() => {
+    clearSelection();
+    setShowSelectionMenu(false);
+  }, [clearSelection]);
+
+  const handlePinSelected = useCallback(async () => {
+    for (const item of selectedItems) {
+      if (item.kind === "quick") continue;
+      const type = item.kind === "folder" ? "folder" : "note";
+      const next = togglePinned(type, item.id);
+      await savePinnedItems(next);
+    }
+    showToast("Pins atualizados");
+  }, [selectedItems, showToast, togglePinned]);
+
+  const handleEditSelected = useCallback(() => {
+    if (selectedItems.length !== 1) return;
+    const item = selectedItems[0];
+    if (item.kind === "folder") {
+      const folder = folders[item.id];
+      if (!folder) return;
+      setEditingFolder(folder);
+      return;
+    }
+    if (item.kind === "note") {
+      const note = notesMap[item.id];
+      if (!note) return;
+      withLock(() => {
+        navigation.getParent()?.getParent()?.navigate("NoteEditor", { noteId: note.id, folderId: null });
+      });
+      return;
+    }
+    const quick = quickNotesMap[item.id];
+    if (!quick) return;
+    withLock(() => {
+      navigation.getParent()?.getParent()?.navigate("QuickNote", { quickNoteId: quick.id, folderId: null });
+    });
+  }, [folders, navigation, notesMap, quickNotesMap, selectedItems, withLock]);
+
+  const handleShareSelected = useCallback(async () => {
+    if (!selectedItems.length) return;
+    const message = selectedItems
+      .map((item) => {
+        if (item.kind === "folder") return `Pasta: ${item.label}`;
+        if (item.kind === "note") return `Nota: ${item.label}`;
+        return `Quick Note: ${item.label}`;
+      })
+      .join("\n");
+    await Share.share({
+      title: selectedItems.length === 1 ? selectedItems[0].label : `${selectedItems.length} itens`,
+      message
+    });
+  }, [selectedItems]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedItems.length) return;
+    Alert.alert(
+      "Apagar itens",
+      selectedItems.length === 1 ? "Deseja apagar o item selecionado?" : `Deseja apagar ${selectedItems.length} itens selecionados?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Apagar",
+          style: "destructive",
+          onPress: async () => {
+            for (const item of selectedItems) {
+              if (item.kind === "folder") {
+                await deleteFolder(item.id);
+                removeFolder(item.id);
+                continue;
+              }
+              if (item.kind === "note") {
+                await deleteNote(item.id);
+                removeNote(item.id);
+                continue;
+              }
+              await deleteQuickNote(item.id);
+              removeQuickNote(item.id);
+            }
+            handleClearSelection();
+            showToast(selectedItems.length === 1 ? "Item apagado" : `${selectedItems.length} itens apagados`);
+          }
+        }
+      ]
+    );
+  }, [handleClearSelection, removeFolder, selectedItems, showToast]);
 
   const onChangeSort = async (mode: FolderSortMode) => {
     setSortMode(mode);
@@ -122,38 +265,67 @@ const FoldersScreen: React.FC = () => {
   return (
     <Screen>
       <View style={styles.headerRow}>
-        <View>
-          <Text variant="title">Folders</Text>
-          <Text muted>Root folders</Text>
-        </View>
-        <View style={styles.headerActions}>
-          <View style={[styles.viewToggleWrap, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
-            <Pressable
-              onPress={() => setViewMode("list")}
-              style={[
-                styles.viewToggleBtn,
-                viewMode === "list" && { backgroundColor: theme.colors.primaryAlpha20 }
-              ]}
-            >
-              <Ionicons name="list-outline" size={16} color={viewMode === "list" ? theme.colors.primary : theme.colors.textSecondary} />
+        {selectionMode ? (
+          <View style={[styles.selectionBar, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
+            <Pressable onPress={handleClearSelection} style={styles.selectionTopAction} hitSlop={8}>
+              <Ionicons name="close" size={20} color={theme.colors.textPrimary} />
             </Pressable>
-            <Pressable
-              onPress={() => setViewMode("grid")}
-              style={[
-                styles.viewToggleBtn,
-                viewMode === "grid" && { backgroundColor: theme.colors.primaryAlpha20 }
-              ]}
-            >
-              <Ionicons name="grid-outline" size={16} color={viewMode === "grid" ? theme.colors.primary : theme.colors.textSecondary} />
-            </Pressable>
+            <Text style={[styles.selectionCount, { color: theme.colors.textPrimary }]}>
+              {selectionCount}
+            </Text>
+            <View style={styles.selectionActions}>
+              <Pressable onPress={handleShareSelected} style={styles.selectionActionBtn} hitSlop={8}>
+                <Ionicons name="share-social-outline" size={18} color={theme.colors.textPrimary} />
+              </Pressable>
+              <Pressable onPress={handleDeleteSelected} style={styles.selectionActionBtn} hitSlop={8}>
+                <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
+              </Pressable>
+              {selectionCount === 1 && (
+                <Pressable onPress={handleEditSelected} style={styles.selectionActionBtn} hitSlop={8}>
+                  <Ionicons name="pencil-outline" size={18} color={theme.colors.textPrimary} />
+                </Pressable>
+              )}
+              <Pressable onPress={() => setShowSelectionMenu(true)} style={styles.selectionActionBtn} hitSlop={8}>
+                <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.textPrimary} />
+              </Pressable>
+            </View>
           </View>
-          <Pressable
-            onPress={() => setShowSortMenu(true)}
-            style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-          >
-            <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
-          </Pressable>
-        </View>
+        ) : (
+          <>
+            <View>
+              <Text variant="title">Folders</Text>
+              <Text muted>Root folders</Text>
+            </View>
+            <View style={styles.headerActions}>
+              <View style={[styles.viewToggleWrap, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
+                <Pressable
+                  onPress={() => setViewMode("list")}
+                  style={[
+                    styles.viewToggleBtn,
+                    viewMode === "list" && { backgroundColor: theme.colors.primaryAlpha20 }
+                  ]}
+                >
+                  <Ionicons name="list-outline" size={16} color={viewMode === "list" ? theme.colors.primary : theme.colors.textSecondary} />
+                </Pressable>
+                <Pressable
+                  onPress={() => setViewMode("grid")}
+                  style={[
+                    styles.viewToggleBtn,
+                    viewMode === "grid" && { backgroundColor: theme.colors.primaryAlpha20 }
+                  ]}
+                >
+                  <Ionicons name="grid-outline" size={16} color={viewMode === "grid" ? theme.colors.primary : theme.colors.textSecondary} />
+                </Pressable>
+              </View>
+              <Pressable
+                onPress={() => setShowSortMenu(true)}
+                style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+              >
+                <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
+              </Pressable>
+            </View>
+          </>
+        )}
       </View>
 
       <DraggableFlatList
@@ -168,6 +340,126 @@ const FoldersScreen: React.FC = () => {
         windowSize={9}
         removeClippedSubviews
         activationDistance={12}
+        ListFooterComponent={
+          (looseNotes.length || looseQuickNotes.length) ? (
+            <View style={{ marginTop: 10 }}>
+              <Text variant="subtitle">Loose notes</Text>
+              {looseNotes.map((note) => (
+                <Pressable
+                  key={`note-${note.id}`}
+                  onLongPress={() => startSelection({ kind: "note", id: note.id, label: note.title })}
+                  delayLongPress={260}
+                  onPress={() => {
+                    if (selectionMode) {
+                      toggleSelection({ kind: "note", id: note.id, label: note.title });
+                      return;
+                    }
+                    withLock(() => {
+                      navigation.getParent()?.getParent()?.navigate("NoteEditor", { noteId: note.id, folderId: null });
+                    });
+                  }}
+                  style={[
+                    styles.folderCard,
+                    {
+                      borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.card,
+                      shadowColor: theme.colors.textPrimary,
+                      marginBottom: 6
+                    },
+                    isSelected({ kind: "note", id: note.id, label: note.title }) && {
+                      borderColor: theme.colors.primary,
+                      borderWidth: 1.5
+                    }
+                  ]}
+                >
+                  <View style={styles.folderBody}>
+                    <View
+                      style={[
+                        styles.avatar,
+                        {
+                          borderRadius: 11,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: theme.colors.surfaceElevated
+                        }
+                      ]}
+                    >
+                      <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.folderTitle} numberOfLines={1}>
+                        {note.title}
+                      </Text>
+                      {!!firstLine(note.content) && (
+                        <Text muted variant="caption" numberOfLines={1}>
+                          {firstLine(note.content)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+              {looseQuickNotes.map((quick) => (
+                <Pressable
+                  key={`quick-${quick.id}`}
+                  onLongPress={() => startSelection({ kind: "quick", id: quick.id, label: quick.title })}
+                  delayLongPress={260}
+                  onPress={() => {
+                    if (selectionMode) {
+                      toggleSelection({ kind: "quick", id: quick.id, label: quick.title });
+                      return;
+                    }
+                    withLock(() => {
+                      navigation.getParent()?.getParent()?.navigate("QuickNote", {
+                        quickNoteId: quick.id,
+                        folderId: null
+                      });
+                    });
+                  }}
+                  style={[
+                    styles.folderCard,
+                    {
+                      borderColor: theme.colors.border,
+                      backgroundColor: theme.colors.card,
+                      shadowColor: theme.colors.textPrimary,
+                      marginBottom: 6
+                    },
+                    isSelected({ kind: "quick", id: quick.id, label: quick.title }) && {
+                      borderColor: theme.colors.primary,
+                      borderWidth: 1.5
+                    }
+                  ]}
+                >
+                  <View style={styles.folderBody}>
+                    <View
+                      style={[
+                        styles.avatar,
+                        {
+                          borderRadius: 11,
+                          alignItems: "center",
+                          justifyContent: "center",
+                          backgroundColor: theme.colors.surfaceElevated
+                        }
+                      ]}
+                    >
+                      <Ionicons name="flash-outline" size={18} color={theme.colors.textSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.folderTitle} numberOfLines={1}>
+                        {quick.title}
+                      </Text>
+                      {!!firstLine(quick.content) && (
+                        <Text muted variant="caption" numberOfLines={1}>
+                          {firstLine(quick.content)}
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          ) : null
+        }
         onDragEnd={useCallback(({ data }: { data: typeof visibleFolders }) => {
           const orderedIds = data.map((x) => x.id);
 
@@ -190,19 +482,26 @@ const FoldersScreen: React.FC = () => {
             return (
               <Pressable
                 onLongPress={() => {
-                  setSelectedFolder(item);
-                  drag();
+                  startSelection({ kind: "folder", id: item.id, label: item.name });
                 }}
                 delayLongPress={260}
-                onPress={() =>
+                onPress={() => {
+                  if (selectionMode) {
+                    toggleSelection({ kind: "folder", id: item.id, label: item.name });
+                    return;
+                  }
                   withLock(() => {
                     navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
                     addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
-                  })
-                }
+                  });
+                }}
                 style={[
                   styles.folderCard,
                   { borderColor: theme.colors.border, backgroundColor: theme.colors.card, shadowColor: theme.colors.textPrimary },
+                  isSelected({ kind: "folder", id: item.id, label: item.name }) && {
+                    borderColor: theme.colors.primary,
+                    borderWidth: 1.5
+                  },
                   isActive && { opacity: 0.6, backgroundColor: theme.colors.primaryAlpha20 }
                 ]}
               >
@@ -242,22 +541,29 @@ const FoldersScreen: React.FC = () => {
             <View style={[styles.gridItem, { flex: 1 }]}>
               <Pressable
                 onLongPress={() => {
-                  setSelectedFolder(item);
-                  drag();
+                  startSelection({ kind: "folder", id: item.id, label: item.name });
                 }}
                 delayLongPress={260}
-                onPress={() =>
+                onPress={() => {
+                  if (selectionMode) {
+                    toggleSelection({ kind: "folder", id: item.id, label: item.name });
+                    return;
+                  }
                   withLock(() => {
                     navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
                     addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
-                  })
-                }
+                  });
+                }}
                 style={[
                   styles.folderGridCard,
                   {
                     borderColor: theme.colors.border,
                     backgroundColor: theme.colors.card,
                     shadowColor: theme.colors.textPrimary
+                  },
+                  isSelected({ kind: "folder", id: item.id, label: item.name }) && {
+                    borderColor: theme.colors.primary,
+                    borderWidth: 1.5
                   },
                   isActive && { opacity: 0.6, backgroundColor: theme.colors.primaryAlpha20 }
                 ]}
@@ -323,62 +629,63 @@ const FoldersScreen: React.FC = () => {
       />
 
       <ContextActionMenu
-        visible={!!selectedFolder}
-        title={selectedFolder?.name}
-        onClose={() => setSelectedFolder(null)}
+        visible={showSelectionMenu}
+        title="Ações secundárias"
+        onClose={() => setShowSelectionMenu(false)}
         actions={[
           {
             key: "pin",
-            label:
-              selectedFolder && pinnedItems.some((x) => x.type === "folder" && x.id === selectedFolder.id)
-                ? "Unpin"
-                : "Pin",
-            icon:
-              selectedFolder && pinnedItems.some((x) => x.type === "folder" && x.id === selectedFolder.id)
-                ? "pin"
-                : "pin-outline",
-            onPress: async () => {
-              if (!selectedFolder) return;
-              const next = togglePinned("folder", selectedFolder.id);
-              await savePinnedItems(next);
-            }
+            label: "Pinar",
+            icon: "pin-outline",
+            onPress: handlePinSelected
+          },
+          {
+            key: "duplicate",
+            label: "Duplicar / Copiar",
+            icon: "copy-outline",
+            onPress: () => showToast("Duplicação em breve")
+          },
+          {
+            key: "move",
+            label: "Mover",
+            icon: "folder-open-outline",
+            onPress: () => showToast("Mover em breve")
+          },
+          {
+            key: "archive",
+            label: "Arquivar / Desarquivar",
+            icon: "archive-outline",
+            onPress: () => showToast("Arquivo em breve")
+          },
+          {
+            key: "tag",
+            label: "Tag / Label",
+            icon: "pricetag-outline",
+            onPress: () => showToast("Tags em breve")
           },
           {
             key: "edit",
-            label: "Edit",
-            icon: "pencil",
+            label: "Editar",
+            icon: "pencil-outline",
             onPress: () => {
-              if (!selectedFolder) return;
-              setEditingFolder(selectedFolder);
+              if (selectionCount !== 1) {
+                showToast("Selecione apenas 1 pasta para editar");
+                return;
+              }
+              handleEditSelected();
             }
           },
           {
-            key: "rename",
-            label: "Rename",
-            icon: "create-outline",
-            onPress: () => {
-              if (!selectedFolder) return;
-              setEditingFolder(selectedFolder);
-            }
+            key: "selectAll",
+            label: "Selecionar tudo",
+            icon: "checkmark-done-outline",
+            onPress: selectAllVisible
           },
           {
-            key: "color",
-            label: "Change color",
-            icon: "color-palette-outline",
-            onPress: () => {
-              if (!selectedFolder) return;
-              setEditingFolder(selectedFolder);
-            }
-          },
-          {
-            key: "delete",
-            label: "Delete",
-            icon: "trash-outline",
-            destructive: true,
-            onPress: () => {
-              if (!selectedFolder) return;
-              setPendingDeleteFolder(selectedFolder);
-            }
+            key: "clear",
+            label: "Desmarcar tudo",
+            icon: "close-circle-outline",
+            onPress: handleClearSelection
           }
         ]}
       />
@@ -593,6 +900,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12
+  },
+  selectionBar: {
+    width: "100%",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center"
+  },
+  selectionTopAction: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  selectionCount: {
+    flex: 1,
+    marginLeft: 4,
+    fontSize: 15,
+    fontWeight: "700"
+  },
+  selectionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
+  },
+  selectionActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center"
   },
   headerActions: {
     flexDirection: "row",

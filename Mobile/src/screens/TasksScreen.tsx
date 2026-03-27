@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, Vibration, TouchableOpacity, Platform, Animated } from "react-native";
+import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, TouchableOpacity, Platform, Animated, Share, Alert } from "react-native";
 import { KeyboardAvoidingView } from "react-native";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFeedback } from "@components/FeedbackProvider";
@@ -9,6 +9,7 @@ import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { useTheme } from "@hooks/useTheme";
 import { useTasksStore } from "@store/useTasksStore";
+import { useAppStore } from "@store/useAppStore";
 import {
   createTask,
   deleteTask,
@@ -34,6 +35,7 @@ import type { RouteProp } from "@react-navigation/native";
 import type { TabsParamList } from "@navigation/RootNavigator";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
+import { useSelection } from "@hooks/useSelection";
 
 type TasksRoute = RouteProp<TabsParamList, "Tasks">;
 type TasksNav = BottomTabNavigationProp<TabsParamList, "Tasks">;
@@ -109,6 +111,7 @@ const TasksScreen: React.FC = () => {
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
   const removeTask = useTasksStore((s) => s.removeTask);
+  const togglePinned = useAppStore((s) => s.togglePinned);
 
   const [newText, setNewText] = useState("");
   const [priority, setPriority] = useState<TaskPriority>(1);
@@ -125,7 +128,7 @@ const TasksScreen: React.FC = () => {
   const [showModal, setShowModal] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string>(toDateKey(new Date()));
   const [monthCursor, setMonthCursor] = useState<Date>(new Date());
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [pendingDeleteTask, setPendingDeleteTask] = useState<Task | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
@@ -237,10 +240,72 @@ const TasksScreen: React.FC = () => {
     setShowModal(true);
   };
 
-  const handleTaskLongPress = useCallback((task: Task) => {
-    Vibration.vibrate(10);
-    setSelectedTask(task);
-  }, []);
+  const {
+    selectedItems,
+    selectionCount,
+    selectionMode,
+    isSelected,
+    toggleSelection,
+    startSelection,
+    clearSelection,
+    selectAllVisible
+  } = useSelection(
+    sortedTasksForSelectedDate.map((task) => ({ kind: "task" as const, id: task.id, label: task.text })),
+    {
+      getKey: (item) => `${item.kind}:${item.id}`,
+      onSelectionStart: () => showToast("Modo de seleção ativado")
+    }
+  );
+
+  const handleClearSelection = useCallback(() => {
+    clearSelection();
+    setShowSelectionMenu(false);
+  }, [clearSelection]);
+
+  const handlePinSelected = useCallback(async () => {
+    for (const item of selectedItems) {
+      togglePinned("task", item.id);
+    }
+    showToast("Pins atualizados");
+  }, [selectedItems, showToast, togglePinned]);
+
+  const handleEditSelected = useCallback(() => {
+    if (selectedItems.length !== 1) return;
+    const task = tasksMap[selectedItems[0].id];
+    if (!task) return;
+    openEditModal(task);
+  }, [selectedItems, tasksMap]);
+
+  const handleShareSelected = useCallback(async () => {
+    if (!selectedItems.length) return;
+    await Share.share({
+      title: selectedItems.length === 1 ? selectedItems[0].label : `${selectedItems.length} tarefas`,
+      message: selectedItems.map((item) => `Tarefa: ${item.label}`).join("\n")
+    });
+  }, [selectedItems]);
+
+  const handleDeleteSelected = useCallback(() => {
+    if (!selectedItems.length) return;
+    Alert.alert(
+      "Apagar tarefas",
+      selectedItems.length === 1 ? "Deseja apagar a tarefa selecionada?" : `Deseja apagar ${selectedItems.length} tarefas selecionadas?`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Apagar",
+          style: "destructive",
+          onPress: async () => {
+            for (const item of selectedItems) {
+              await deleteTask(item.id);
+              removeTask(item.id);
+            }
+            handleClearSelection();
+            showToast(selectedItems.length === 1 ? "Tarefa apagada" : `${selectedItems.length} tarefas apagadas`);
+          }
+        }
+      ]
+    );
+  }, [handleClearSelection, removeTask, selectedItems, showToast]);
 
   const openFab = useCallback(() => {
     setFabOpen(true);
@@ -286,18 +351,47 @@ const TasksScreen: React.FC = () => {
         ListHeaderComponent={
           <>
             <View style={styles.headerRow}>
-              <View>
-                <Text variant="title">Tasks</Text>
-                <Text muted>Daily productivity</Text>
-              </View>
-              <View style={styles.headerActions}>
-                <Pressable
-                  onPress={() => setShowSortMenu(true)}
-                  style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-                >
-                  <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
-                </Pressable>
-              </View>
+              {selectionMode ? (
+                <View style={[styles.selectionBar, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
+                  <Pressable onPress={handleClearSelection} style={styles.selectionTopAction} hitSlop={8}>
+                    <Ionicons name="close" size={20} color={theme.colors.textPrimary} />
+                  </Pressable>
+                  <Text style={[styles.selectionCount, { color: theme.colors.textPrimary }]}>
+                    {selectionCount}
+                  </Text>
+                  <View style={styles.selectionActions}>
+                    <Pressable onPress={handleShareSelected} style={styles.selectionActionBtn} hitSlop={8}>
+                      <Ionicons name="share-social-outline" size={18} color={theme.colors.textPrimary} />
+                    </Pressable>
+                    <Pressable onPress={handleDeleteSelected} style={styles.selectionActionBtn} hitSlop={8}>
+                      <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
+                    </Pressable>
+                    {selectionCount === 1 && (
+                      <Pressable onPress={handleEditSelected} style={styles.selectionActionBtn} hitSlop={8}>
+                        <Ionicons name="pencil-outline" size={18} color={theme.colors.textPrimary} />
+                      </Pressable>
+                    )}
+                    <Pressable onPress={() => setShowSelectionMenu(true)} style={styles.selectionActionBtn} hitSlop={8}>
+                      <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.textPrimary} />
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
+                <>
+                  <View>
+                    <Text variant="title">Tasks</Text>
+                    <Text muted>Daily productivity</Text>
+                  </View>
+                  <View style={styles.headerActions}>
+                    <Pressable
+                      onPress={() => setShowSortMenu(true)}
+                      style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+                    >
+                      <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
+                    </Pressable>
+                  </View>
+                </>
+              )}
             </View>
 
             <View style={[styles.progressCard, { backgroundColor: theme.colors.card }]}> 
@@ -411,7 +505,7 @@ const TasksScreen: React.FC = () => {
           <Pressable
             style={[
               styles.taskRow,
-              selectedTask?.id === item.id && {
+              isSelected({ kind: "task", id: item.id, label: item.text }) && {
                 borderWidth: 2,
                 borderColor: theme.colors.secondary,
                 borderRadius: 10,
@@ -426,11 +520,19 @@ const TasksScreen: React.FC = () => {
                 shadowOffset: { width: 0, height: 4 }
               }
             ]}
-            onLongPress={() => handleTaskLongPress(item)}
+            onPress={() => {
+              if (!selectionMode) return;
+              toggleSelection({ kind: "task", id: item.id, label: item.text });
+            }}
+            onLongPress={() => startSelection({ kind: "task", id: item.id, label: item.text })}
             delayLongPress={300}
           >
             <Pressable
               onPress={async () => {
+                if (selectionMode) {
+                  toggleSelection({ kind: "task", id: item.id, label: item.text });
+                  return;
+                }
                 const updated = await toggleTaskForDate(item, selectedDate);
                 upsertTask(updated);
               }}
@@ -467,6 +569,10 @@ const TasksScreen: React.FC = () => {
             </View>
             <Pressable
               onPress={async () => {
+                if (selectionMode) {
+                  toggleSelection({ kind: "task", id: item.id, label: item.text });
+                  return;
+                }
                 const nextPriority = ((item.priority + 1) % 3) as TaskPriority;
                 const updated = await updateTaskPriority(item, nextPriority);
                 upsertTask(updated);
@@ -537,54 +643,63 @@ const TasksScreen: React.FC = () => {
       />
 
       <ContextActionMenu
-        visible={!!selectedTask}
-        title={selectedTask?.text}
-        onClose={() => setSelectedTask(null)}
+        visible={showSelectionMenu}
+        title="Ações secundárias"
+        onClose={() => setShowSelectionMenu(false)}
         actions={[
           {
-            key: "edit",
-            label: "Edit",
-            icon: "pencil",
-            onPress: () => {
-              if (!selectedTask) return;
-              openEditModal(selectedTask);
-            }
+            key: "pin",
+            label: "Pinar",
+            icon: "pin-outline",
+            onPress: handlePinSelected
           },
           {
-            key: "complete",
-            label:
-              selectedTask && isTaskCompletedForDate(selectedTask, selectedDate)
-                ? "Mark as pending"
-                : "Mark as completed",
-            icon:
-              selectedTask && isTaskCompletedForDate(selectedTask, selectedDate)
-                ? "refresh-outline"
-                : "checkmark-circle-outline",
-            onPress: async () => {
-              if (!selectedTask) return;
-              const updated = await toggleTaskForDate(selectedTask, selectedDate);
-              upsertTask(updated);
-            }
+            key: "duplicate",
+            label: "Duplicar / Copiar",
+            icon: "copy-outline",
+            onPress: () => showToast("Duplicação em breve")
           },
           {
             key: "move",
-            label: "Move position",
-            icon: "swap-vertical-outline",
-            onPress: async () => {
-              setSortMode("custom");
-              await saveSortPreference(TASK_SORT_SCOPE, "custom");
-              showToast("Long press reorder icon to move task");
+            label: "Mover",
+            icon: "folder-open-outline",
+            onPress: () => showToast("Mover em breve")
+          },
+          {
+            key: "archive",
+            label: "Arquivar / Desarquivar",
+            icon: "archive-outline",
+            onPress: () => showToast("Arquivo em breve")
+          },
+          {
+            key: "tag",
+            label: "Tag / Label",
+            icon: "pricetag-outline",
+            onPress: () => showToast("Tags em breve")
+          },
+          {
+            key: "edit",
+            label: "Editar",
+            icon: "pencil-outline",
+            onPress: () => {
+              if (selectionCount !== 1) {
+                showToast("Selecione apenas 1 tarefa para editar");
+                return;
+              }
+              handleEditSelected();
             }
           },
           {
-            key: "delete",
-            label: "Delete",
-            icon: "trash-outline",
-            destructive: true,
-            onPress: () => {
-              if (!selectedTask) return;
-              setPendingDeleteTask(selectedTask);
-            }
+            key: "selectAll",
+            label: "Selecionar tudo",
+            icon: "checkmark-done-outline",
+            onPress: selectAllVisible
+          },
+          {
+            key: "clear",
+            label: "Desmarcar tudo",
+            icon: "close-circle-outline",
+            onPress: handleClearSelection
           }
         ]}
       />
@@ -1009,6 +1124,39 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     marginBottom: 12
+  },
+  selectionBar: {
+    width: "100%",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+    flexDirection: "row",
+    alignItems: "center"
+  },
+  selectionTopAction: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  selectionCount: {
+    flex: 1,
+    marginLeft: 4,
+    fontSize: 15,
+    fontWeight: "700"
+  },
+  selectionActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
+  },
+  selectionActionBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center"
   },
   headerActions: {
     flexDirection: "row",

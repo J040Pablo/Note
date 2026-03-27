@@ -10,6 +10,27 @@ import {
   Square,
   type LucideIcon,
 } from "lucide-react";
+import {
+  type DataNote,
+  type DataQuickNote,
+  getFolders,
+  getNotes,
+  getQuickNotes,
+  getTasks,
+  loadData,
+  saveData,
+  type DataFolder,
+  type DataTask,
+} from "../../../services/webData";
+import { useAppMode } from "../../../app/mode";
+import {
+  dispatchEntitySyncEvent,
+  subscribeTaskSyncMessages,
+  type SyncFolder,
+  type SyncNote,
+  type SyncQuickNote,
+  type SyncTask,
+} from "../../tasks/sync";
 import styles from "./HomeFeed.module.css";
 
 type ItemType = "folder" | "note" | "task";
@@ -38,6 +59,7 @@ type NoteItem = {
   id: string;
   title: string;
   preview: string;
+  createdAt: number;
 };
 
 type FolderItem = {
@@ -48,31 +70,124 @@ type FolderItem = {
   files: number;
 };
 
-const initialTasks: TaskItem[] = [
-  { id: "t-1", text: "Review roadmap for web migration", completed: true, recurringDays: 5 },
-  { id: "t-2", text: "Finalize Home desktop layout", completed: false },
-  { id: "t-3", text: "Sync folder metadata with API", completed: false, recurringDays: 3 },
-  { id: "t-4", text: "Refine quick note UX", completed: false },
-];
+// Map normalized data-layer entities to the existing Home UI shape.
+const mapTaskToUI = (task: DataTask): TaskItem => ({
+    id: task.id,
+    text: task.title,
+    completed: task.completed,
+    recurringDays: Array.isArray(task.repeatDays) ? task.repeatDays.length : undefined,
+  });
 
-const initialNotes: NoteItem[] = [
-  { id: "n-1", title: "Untitled", preview: '{"version":1,"type":"canvas","pageWidth":900,"pageHeight":1200,...}' },
-  { id: "n-2", title: "Untitled", preview: '{"version":1,"type":"canvas","pageWidth":900,"pageHeight":1200,...}' },
-  { id: "n-3", title: "Untitled", preview: '{"version":1,"type":"canvas","pageWidth":900,"pageHeight":1200,...}' },
-  { id: "n-4", title: "Linux teste dnv dnv dnv", preview: "Linux" },
-];
+const mapSyncTaskToUI = (task: SyncTask): TaskItem => ({
+  id: task.id,
+  text: task.title,
+  completed: !!task.completed,
+  recurringDays: Array.isArray(task.repeatDays) ? task.repeatDays.length : undefined,
+});
 
-const initialFolders: FolderItem[] = [
-  { id: "f-1", name: "Linux", subfolders: 2, notes: 2, files: 1 },
-  { id: "f-2", name: "C", subfolders: 1, notes: 4, files: 3 },
-  { id: "f-3", name: "Design", subfolders: 0, notes: 5, files: 2 },
-  { id: "f-4", name: "Work", subfolders: 3, notes: 8, files: 6 },
-];
+const loadHomeTasks = (): TaskItem[] =>
+  getTasks().map((task) => mapTaskToUI(task));
+
+const mapNoteToUI = (note: DataNote): NoteItem => ({
+  id: String(note.id),
+  title: note.title.trim() || "Untitled",
+  preview: note.content,
+  createdAt: note.createdAt,
+});
+
+const mapQuickNoteToUI = (quickNote: DataQuickNote): NoteItem => ({
+  id: String(quickNote.id),
+  title:
+    quickNote.text.trim().length > 32
+      ? `${quickNote.text.trim().slice(0, 32)}...`
+      : quickNote.text.trim() || "Untitled",
+  preview: quickNote.text,
+  createdAt: quickNote.createdAt,
+});
+
+const loadHomeNotes = (): NoteItem[] => getNotes().map((note) => mapNoteToUI(note));
+const loadHomeQuickNotes = (): NoteItem[] => getQuickNotes().map((note) => mapQuickNoteToUI(note));
+
+const loadHomeFolders = (): FolderItem[] => {
+  const folders = getFolders();
+  const notes = getNotes();
+  const folderIds = new Set(folders.map((folder) => folder.id));
+
+  const noteCountByFolderId = notes.reduce<Record<string, number>>((acc, note) => {
+    if (note.parentId && folderIds.has(note.parentId)) {
+      acc[note.parentId] = (acc[note.parentId] ?? 0) + 1;
+    }
+    return acc;
+  }, {});
+
+  const subfolderCountByFolderId = folders.reduce<Record<string, number>>((acc, folder) => {
+    if (folder.parentId && folderIds.has(folder.parentId)) {
+      acc[folder.parentId] = (acc[folder.parentId] ?? 0) + 1;
+    }
+    return acc;
+  }, {});
+
+  return folders.map((folder: DataFolder) => ({
+    id: folder.id,
+    name: folder.name,
+    subfolders: subfolderCountByFolderId[folder.id] ?? 0,
+    notes: noteCountByFolderId[folder.id] ?? 0,
+    files: 0,
+  }));
+};
+
+const mapSyncFoldersToUI = (folders: SyncFolder[], notes: SyncNote[]): FolderItem[] => {
+  const folderIds = new Set(folders.map((folder) => folder.id));
+  const noteCountByFolderId = notes.reduce<Record<string, number>>((acc, note) => {
+    if (note.parentId && folderIds.has(note.parentId)) {
+      acc[note.parentId] = (acc[note.parentId] ?? 0) + 1;
+    }
+    return acc;
+  }, {});
+  const subfolderCountByFolderId = folders.reduce<Record<string, number>>((acc, folder) => {
+    if (folder.parentId && folderIds.has(folder.parentId)) {
+      acc[folder.parentId] = (acc[folder.parentId] ?? 0) + 1;
+    }
+    return acc;
+  }, {});
+  return folders.map((folder) => ({
+    id: folder.id,
+    name: folder.name,
+    subfolders: subfolderCountByFolderId[folder.id] ?? 0,
+    notes: noteCountByFolderId[folder.id] ?? 0,
+    files: 0,
+  }));
+};
 
 const HomeFeed: React.FC = () => {
-  const [tasks, setTasks] = React.useState<TaskItem[]>(initialTasks);
-  const [notes, setNotes] = React.useState<NoteItem[]>(initialNotes);
-  const [folders] = React.useState<FolderItem[]>(initialFolders);
+  const { mode } = useAppMode();
+  const isMobileSync = mode === "mobile-sync";
+  // Data source moved from hardcoded arrays to persistent webData layer.
+  const [tasks, setTasks] = React.useState<TaskItem[]>(() => loadHomeTasks());
+  const [notes, setNotes] = React.useState<NoteItem[]>(() => loadHomeNotes());
+  const [quickNotes, setQuickNotes] = React.useState<NoteItem[]>(() => loadHomeQuickNotes());
+  const [folders, setFolders] = React.useState<FolderItem[]>(() => loadHomeFolders());
+  const renderedNotes = React.useMemo(
+    () => [...quickNotes, ...notes].sort((a, b) => b.createdAt - a.createdAt),
+    [notes, quickNotes]
+  );
+
+  React.useEffect(() => {
+    if (!isMobileSync) return;
+    const unsub = subscribeTaskSyncMessages((message) => {
+      if (message.type !== "INIT") return;
+      // received from mobile
+      setTasks(message.payload.tasks.map((task) => mapSyncTaskToUI(task)));
+      const syncNotes = (message.payload.notes ?? []) as SyncNote[];
+      const syncQuickNotes = (message.payload.quickNotes ?? []) as SyncQuickNote[];
+      const syncFolders = (message.payload.folders ?? []) as SyncFolder[];
+      setNotes(syncNotes.map((note) => mapNoteToUI(note)));
+      setQuickNotes(syncQuickNotes.map((note) => mapQuickNoteToUI(note)));
+      setFolders(mapSyncFoldersToUI(syncFolders, syncNotes));
+    });
+    return () => unsub();
+  }, [isMobileSync]);
+
   const [pinnedItems, setPinnedItems] = React.useState<PinnedItem[]>([]);
   const [recentItems, setRecentItems] = React.useState<RecentItem[]>([]);
   const [quickNote, setQuickNote] = React.useState("");
@@ -157,7 +272,20 @@ const HomeFeed: React.FC = () => {
   }, []);
 
   const toggleTask = React.useCallback((taskId: string) => {
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task)));
+    setTasks((prev) => {
+      const next = prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task));
+      // Persist task completion in the shared data source so all screens stay consistent.
+      try {
+        const store = loadData();
+        const nextTasks = store.tasks.map((task) =>
+          task.id === taskId ? { ...task, completed: !task.completed, updatedAt: Date.now() } : task
+        );
+        saveData({ ...store, tasks: nextTasks });
+      } catch {
+        // Ignore persistence failures to keep interactions stable.
+      }
+      return next;
+    });
   }, []);
 
   const handleCreateQuickNote = React.useCallback(() => {
@@ -165,15 +293,38 @@ const HomeFeed: React.FC = () => {
     if (!content) return;
 
     const id = `qn-${Date.now()}`;
-    const created: NoteItem = {
+    const created = mapQuickNoteToUI({
       id,
-      title: content.length > 32 ? `${content.slice(0, 32)}…` : content,
-      preview: content,
-    };
+      text: content,
+      createdAt: Date.now(),
+    });
 
-    setNotes((prev) => [created, ...prev]);
+    setQuickNotes((prev) => [created, ...prev]);
     setQuickNote("");
-  }, [quickNote]);
+
+    if (isMobileSync) {
+      // sent to mobile
+      dispatchEntitySyncEvent({
+        type: "UPSERT_QUICK_NOTE",
+        payload: {
+          id,
+          text: content,
+          createdAt: created.createdAt,
+          updatedAt: Date.now(),
+        },
+      });
+      return;
+    }
+
+    // quick note persisted here
+    try {
+      const store = loadData();
+      const nextQuickNotes = [{ id, text: content, createdAt: created.createdAt }, ...store.quickNotes];
+      saveData({ ...store, quickNotes: nextQuickNotes });
+    } catch {
+      // Ignore persistence errors to keep UX unchanged.
+    }
+  }, [isMobileSync, quickNote]);
 
   return (
     <div className={styles.grid}>
@@ -273,7 +424,7 @@ const HomeFeed: React.FC = () => {
         </header>
 
         <div className={styles.list}>
-          {notes.slice(0, 5).map((note) => (
+          {renderedNotes.slice(0, 5).map((note) => (
             <button
               key={note.id}
               type="button"

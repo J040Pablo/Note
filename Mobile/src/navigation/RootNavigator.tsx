@@ -49,7 +49,7 @@ const FoldersStackNavigator = () => {
     <FolderStack.Navigator
       screenOptions={{
         animation: "slide_from_right",
-        animationDuration: 160,
+        animationDuration: 40,
         fullScreenGestureEnabled: true,
         gestureEnabled: true,
         headerStyle: { backgroundColor: theme.colors.surface },
@@ -70,7 +70,7 @@ const FoldersStackNavigator = () => {
           headerShown: false,
           title: "Folder",
           animation: "slide_from_right",
-          animationDuration: 85
+          animationDuration: 21.25
         }}
       />
     </FolderStack.Navigator>
@@ -122,7 +122,7 @@ const RootNavigator = () => {
     <RootStack.Navigator
       screenOptions={{
         animation: "slide_from_right",
-        animationDuration: 160,
+        animationDuration: 40,
         fullScreenGestureEnabled: true,
         gestureEnabled: true,
         animationTypeForReplace: "push",
@@ -146,7 +146,7 @@ const RootNavigator = () => {
           headerShown: false,
           title: "Note",
           animation: "slide_from_right",
-          animationDuration: 140
+          animationDuration: 35
         }}
       />
       <RootStack.Screen
@@ -156,7 +156,7 @@ const RootNavigator = () => {
           headerShown: false,
           title: "Quick Note",
           animation: "slide_from_right",
-          animationDuration: 140
+          animationDuration: 35
         }}
       />
       <RootStack.Screen
