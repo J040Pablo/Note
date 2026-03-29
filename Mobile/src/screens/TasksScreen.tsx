@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, ActivityIndicator, TouchableOpacity, Platform, Animated, Share, Alert } from "react-native";
+import { View, StyleSheet, Pressable, TextInput, Modal, ScrollView, LayoutAnimation, UIManager, ActivityIndicator, TouchableOpacity, Platform, Animated, Share, Alert } from "react-native";
 import { KeyboardAvoidingView } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
@@ -106,6 +107,7 @@ const TasksScreen: React.FC = () => {
   const { theme } = useTheme();
   const route = useRoute<TasksRoute>();
   const navigation = useNavigation<TasksNav>();
+  const insets = useSafeAreaInsets();
   const { showToast } = useFeedback();
   const tasksMap = useTasksStore((s) => s.tasks);
   const setTasks = useTasksStore((s) => s.setTasks);
@@ -136,8 +138,16 @@ const TasksScreen: React.FC = () => {
   const [fabOpen, setFabOpen] = useState(false);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [taskDeleting, setTaskDeleting] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const taskSubmittingRef = useRef(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
+
+  // Enable LayoutAnimation on Android
+  useEffect(() => {
+    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
   // Subtasks state for modal
   const [subtasks, setSubtasks] = useState<Array<{ id: string; text: string }>>([{ id: Date.now().toString(), text: "" }]);
@@ -191,32 +201,54 @@ const TasksScreen: React.FC = () => {
 
   const monthCells = useMemo(() => buildMonthCells(monthCursor), [monthCursor]);
 
-  const tasksForSelectedDate = useMemo(
-    () => tasks.filter((task) => shouldAppearOnDate(task, selectedDate)),
+  // Only root tasks (no parentId) appear in the list — subtasks render inside their parent card
+  const rootTasksForDate = useMemo(
+    () => tasks.filter((task) => !task.parentId && shouldAppearOnDate(task, selectedDate)),
     [selectedDate, tasks]
   );
 
-  const sortedTasksForSelectedDate = useMemo(() => {
-    if (sortMode === "name_asc") return [...tasksForSelectedDate].sort((a, b) => a.text.localeCompare(b.text));
-    if (sortMode === "name_desc") return [...tasksForSelectedDate].sort((a, b) => b.text.localeCompare(a.text));
+  const sortedRootTasks = useMemo(() => {
+    if (sortMode === "name_asc") return [...rootTasksForDate].sort((a, b) => a.text.localeCompare(b.text));
+    if (sortMode === "name_desc") return [...rootTasksForDate].sort((a, b) => b.text.localeCompare(a.text));
     if (sortMode === "recent") {
-      return [...tasksForSelectedDate].sort((a, b) => {
+      return [...rootTasksForDate].sort((a, b) => {
         const ad = a.scheduledDate ? Number(a.scheduledDate.replace(/-/g, "")) : 0;
         const bd = b.scheduledDate ? Number(b.scheduledDate.replace(/-/g, "")) : 0;
         if (bd !== ad) return bd - ad;
         return Number(b.id) - Number(a.id);
       });
     }
-    return [...tasksForSelectedDate].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
-  }, [sortMode, tasksForSelectedDate]);
+    return [...rootTasksForDate].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  }, [sortMode, rootTasksForDate]);
 
+  // Enrich each root task with its subtasks + progress (mirrors HomeScreen rootTasks)
+  const enrichedTasks = useMemo(() => {
+    return sortedRootTasks.map(root => {
+      const allSubtasks = tasks.filter(t => t.parentId === root.id);
+      const subtasks = allSubtasks.filter(st => !st.scheduledDate || st.scheduledDate === selectedDate);
+      const total = subtasks.length;
+      const completedCount = subtasks.filter(st => st.completed || isTaskCompletedForDate(st, selectedDate)).length;
+      const progress = total === 0 ? 0 : completedCount / total;
+      // Parent done only when ALL subtasks are done; no-subtask fallback uses isTaskCompletedForDate
+      const parentCompleted = total > 0 ? total === completedCount : isTaskCompletedForDate(root, selectedDate);
+      return { ...root, subtasks, total, completedCount, progress, parentCompleted };
+    });
+  }, [sortedRootTasks, tasks, selectedDate]);
+
+  // Progress card counts root-level completion
   const completedToday = useMemo(
-    () => tasksForSelectedDate.filter((task) => isTaskCompletedForDate(task, selectedDate)).length,
-    [selectedDate, tasksForSelectedDate]
+    () => enrichedTasks.filter(t => t.parentCompleted).length,
+    [enrichedTasks]
   );
 
   const progressPct =
-    tasksForSelectedDate.length === 0 ? 0 : Math.round((completedToday / tasksForSelectedDate.length) * 100);
+    enrichedTasks.length === 0 ? 0 : Math.round((completedToday / enrichedTasks.length) * 100);
+
+  // Keep tasksForSelectedDate for calendar dot logic (includes subtasks intentionally)
+  const tasksForSelectedDate = useMemo(
+    () => tasks.filter((task) => shouldAppearOnDate(task, selectedDate)),
+    [selectedDate, tasks]
+  );
 
   const dayHasTasks = useMemo(() => {
     const map = new Set<string>();
@@ -253,7 +285,15 @@ const TasksScreen: React.FC = () => {
     setReminders(((task.reminders?.length ? task.reminders : ["AT_TIME"]) as TaskReminderType[]).slice(0, 4));
     setShowDatePicker(false);
     setShowTimePicker(false);
-    setSubtasks([{ id: Date.now().toString(), text: "" }]); // reset subtasks on edit
+    
+    // reset subtasks on edit, but load existing ones
+    const existingSubtasks = Object.values(tasksMap).filter(t => t.parentId === task.id);
+    if (existingSubtasks.length > 0) {
+      setSubtasks(existingSubtasks.map(st => ({ id: st.id, text: st.text })));
+    } else {
+      setSubtasks([{ id: Date.now().toString(), text: "" }]); 
+    }
+    
     setShowModal(true);
   };
 
@@ -267,7 +307,7 @@ const TasksScreen: React.FC = () => {
     clearSelection,
     selectAllVisible
   } = useSelection(
-    sortedTasksForSelectedDate.map((task) => ({ kind: "task" as const, id: task.id, label: task.text })),
+    enrichedTasks.map((task) => ({ kind: "task" as const, id: task.id, label: task.text })),
     {
       getKey: (item) => `${item.kind}:${item.id}`,
       onSelectionStart: () => showToast("Modo de seleção ativado")
@@ -355,7 +395,7 @@ const TasksScreen: React.FC = () => {
   return (
     <Screen>
       <DraggableFlatList
-        data={sortedTasksForSelectedDate}
+        data={enrichedTasks}
         keyExtractor={(item) => item.id.toString()}
         activationDistance={12}
         initialNumToRender={12}
@@ -411,14 +451,14 @@ const TasksScreen: React.FC = () => {
               )}
             </View>
 
-            <View style={[styles.progressCard, { backgroundColor: theme.colors.card }]}> 
+            <View style={[styles.progressCard, { backgroundColor: theme.colors.card }]}>
               <View style={styles.progressHeader}>
                 <Text variant="subtitle">Today&apos;s progress</Text>
                 <Text muted>
-                  {completedToday} / {tasksForSelectedDate.length}
+                  {completedToday} / {enrichedTasks.length}
                 </Text>
               </View>
-              <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}> 
+              <View style={[styles.progressTrack, { backgroundColor: theme.colors.border }]}>
                 <View
                   style={[
                     styles.progressFill,
@@ -432,7 +472,7 @@ const TasksScreen: React.FC = () => {
               <Text muted style={styles.progressMeta}>{progressPct}% completed</Text>
             </View>
 
-            <View style={[styles.calendarCard, { backgroundColor: theme.colors.card }]}> 
+            <View style={[styles.calendarCard, { backgroundColor: theme.colors.card }]}>
               <View style={styles.calendarHeader}>
                 <Pressable
                   onPress={() =>
@@ -466,7 +506,7 @@ const TasksScreen: React.FC = () => {
               <View style={styles.grid}>
                 {monthCells.map((day) => {
                   const key = toDateKey(day);
-                  const isSelected = key === selectedDate;
+                  const isDaySelected = key === selectedDate;
                   const inMonth = sameMonth(day, monthCursor);
                   const hasTasks = dayHasTasks.has(key);
 
@@ -476,17 +516,17 @@ const TasksScreen: React.FC = () => {
                       onPress={() => setSelectedDate(key)}
                       style={[
                         styles.dayCell,
-                        isSelected && { backgroundColor: theme.colors.primaryAlpha20 }
+                        isDaySelected && { backgroundColor: theme.colors.primaryAlpha20 }
                       ]}
                     >
                       <Text
                         style={{
-                          color: isSelected
+                          color: isDaySelected
                             ? theme.colors.primary
                             : inMonth
                             ? theme.colors.textPrimary
                             : theme.colors.textSecondary,
-                          fontWeight: isSelected ? "700" : "400"
+                          fontWeight: isDaySelected ? "700" : "400"
                         }}
                       >
                         {day.getDate()}
@@ -501,7 +541,7 @@ const TasksScreen: React.FC = () => {
             </View>
 
             <View style={styles.dayTitleRow}>
-              <Text variant="subtitle">{selectedDate === toDateKey(new Date()) ? "Today’s Tasks" : `Tasks • ${selectedDate}`}</Text>
+              <Text variant="subtitle">{selectedDate === toDateKey(new Date()) ? "Today's Tasks" : `Tasks • ${selectedDate}`}</Text>
             </View>
           </>
         }
@@ -514,120 +554,194 @@ const TasksScreen: React.FC = () => {
           setTasks(refreshed);
         }}
         ItemSeparatorComponent={() => (
-          <View
-            style={{ height: StyleSheet.hairlineWidth, backgroundColor: theme.colors.border }}
-          />
+          <View style={{ height: 10 }} />
         )}
-        renderItem={({ item, drag, isActive }: RenderItemParams<Task>) => (
-          <Pressable
-            style={[
-              styles.taskRow,
-              isSelected({ kind: "task", id: item.id, label: item.text }) && {
-                borderWidth: 2,
-                borderColor: theme.colors.secondary,
-                borderRadius: 10,
-                paddingHorizontal: 8
-              },
-              isActive && {
-                backgroundColor: theme.colors.card,
-                elevation: 6,
-                shadowColor: theme.colors.textPrimary,
-                shadowOpacity: 0.2,
-                shadowRadius: 8,
-                shadowOffset: { width: 0, height: 4 }
-              }
-            ]}
-            onPress={() => {
-              if (!selectionMode) return;
-              toggleSelection({ kind: "task", id: item.id, label: item.text });
-            }}
-            onLongPress={() => startSelection({ kind: "task", id: item.id, label: item.text })}
-            delayLongPress={300}
-          >
-            <Pressable
-              onPress={async () => {
-                if (selectionMode) {
-                  toggleSelection({ kind: "task", id: item.id, label: item.text });
-                  return;
-                }
-                const updated = await toggleTaskForDate(item, selectedDate);
-                upsertTask(updated);
-              }}
+        renderItem={({ item: root, drag, isActive }: RenderItemParams<typeof enrichedTasks[number]>) => {
+          const isExpanded = expandedTaskId === root.id;
+          const taskSelected = isSelected({ kind: "task", id: root.id, label: root.text });
+
+          return (
+            <View
               style={[
-                styles.checkbox,
-                {
-                  borderColor: theme.colors.primary,
-                  backgroundColor:
-                    isTaskCompletedForDate(item, selectedDate) ? theme.colors.primary : "transparent"
-                }
+                styles.taskCard,
+                { backgroundColor: theme.colors.card, borderColor: taskSelected ? theme.colors.secondary : theme.colors.border },
+                isActive && { elevation: 6, shadowColor: theme.colors.textPrimary, shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }
               ]}
-            />
-            <View style={styles.taskTextWrapper}>
-              <Text
-                style={[
-                  styles.taskText,
-                  isTaskCompletedForDate(item, selectedDate) && {
-                    textDecorationLine: "line-through",
-                    opacity: 0.6
+            >
+              {/* Header row — tap to expand, long-press to select/drag */}
+              <Pressable
+                android_ripple={{ color: theme.colors.primaryAlpha20 }}
+                style={{ padding: 14 }}
+                onPress={() => {
+                  if (selectionMode) {
+                    toggleSelection({ kind: "task", id: root.id, label: root.text });
+                    return;
                   }
-                ]}
+                  LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                  setExpandedTaskId(prev => prev === root.id ? null : root.id);
+                }}
+                onLongPress={(event) => {
+                  if (selectionMode) {
+                    toggleSelection({ kind: "task", id: root.id, label: root.text });
+                    return;
+                  }
+                  startSelection({ kind: "task", id: root.id, label: root.text });
+                  event.stopPropagation();
+                  drag();
+                }}
+                delayLongPress={280}
               >
-                {item.text}
-              </Text>
-              {!!item.repeatDays?.length && (
-                <Text muted variant="caption">Repeats: {item.repeatDays.map((d) => WEEKDAYS[d]).join(", ")}</Text>
-              )}
-              {!item.repeatDays?.length && !!item.scheduledDate && (
-                <Text muted variant="caption">
-                  Date: {item.scheduledDate}
-                  {item.scheduledTime ? ` • ${item.scheduledTime}` : ""}
-                </Text>
+                {/* Completion toggle + title */}
+                <View style={{ flexDirection: "row", alignItems: "center", marginBottom: root.total > 0 ? 8 : 0 }}>
+                  <Pressable
+                    hitSlop={8}
+                    onPress={async () => {
+                      LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                      try {
+                        const updated = await toggleTaskForDate(root, selectedDate);
+                        upsertTask(updated);
+                      } catch (e) {
+                        console.error("[TasksScreen] toggle root task failed", e);
+                      }
+                    }}
+                  >
+                    <Ionicons
+                      name={root.parentCompleted ? "checkmark-circle" : "ellipse-outline"}
+                      size={22}
+                      color={root.parentCompleted ? theme.colors.primary : theme.colors.textSecondary}
+                    />
+                  </Pressable>
+
+                  <Text
+                    numberOfLines={1}
+                    style={{
+                      flex: 1,
+                      fontSize: 15,
+                      fontWeight: "600",
+                      marginHorizontal: 8,
+                      color: root.parentCompleted ? theme.colors.textSecondary : theme.colors.textPrimary,
+                      textDecorationLine: root.parentCompleted ? "line-through" : "none"
+                    }}
+                  >
+                    {root.text}
+                  </Text>
+
+                  {/* Priority badge */}
+                  <Pressable
+                    hitSlop={8}
+                    onPress={async () => {
+                      const nextPriority = ((root.priority + 1) % 3) as TaskPriority;
+                      const updated = await updateTaskPriority(root, nextPriority);
+                      upsertTask(updated);
+                    }}
+                    style={{ marginRight: 8 }}
+                  >
+                    <View
+                      style={[
+                        styles.priorityBadge,
+                        {
+                          backgroundColor:
+                            root.priority === 0
+                              ? theme.colors.priorityLow
+                              : root.priority === 1
+                              ? theme.colors.priorityMedium
+                              : theme.colors.priorityHigh
+                        }
+                      ]}
+                    >
+                      <Text style={{ color: theme.colors.onPrimary, fontSize: 10 }}>
+                        {root.priority === 0 ? "LOW" : root.priority === 1 ? "MED" : "HIGH"}
+                      </Text>
+                    </View>
+                  </Pressable>
+
+                  {root.total > 0 && (
+                    <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color={theme.colors.textSecondary} />
+                  )}
+
+                  {/* Drag handle */}
+                  <Pressable
+                    onPressIn={(event) => event.stopPropagation()}
+                    onLongPress={(event) => { event.stopPropagation(); drag(); }}
+                    delayLongPress={220}
+                    hitSlop={8}
+                    style={[styles.dragHandle]}
+                  >
+                    <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
+                  </Pressable>
+                </View>
+
+                {/* Subtask progress bar */}
+                {root.total > 0 && (
+                  <>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                      <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>{root.completedCount}/{root.total} done</Text>
+                      <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>{Math.round(root.progress * 100)}%</Text>
+                    </View>
+                    <View style={{ height: 5, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
+                      <View style={{ height: "100%", borderRadius: 3, width: `${root.progress * 100}%`, backgroundColor: root.progress === 1 ? theme.colors.primary : (theme.colors.secondary || theme.colors.primary) }} />
+                    </View>
+                  </>
+                )}
+
+                {/* Schedule info for tasks without subtasks */}
+                {root.total === 0 && (
+                  <>
+                    {!!root.repeatDays?.length && (
+                      <Text muted variant="caption" style={{ marginTop: 2 }}>Repeats: {root.repeatDays.map((d: number) => WEEKDAYS[d]).join(", ")}</Text>
+                    )}
+                    {!root.repeatDays?.length && !!root.scheduledDate && (
+                      <Text muted variant="caption" style={{ marginTop: 2 }}>
+                        {root.scheduledDate}{root.scheduledTime ? ` • ${root.scheduledTime}` : ""}
+                      </Text>
+                    )}
+                  </>
+                )}
+              </Pressable>
+
+              {/* Expanded subtask list */}
+              {isExpanded && root.total > 0 && (
+                <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 2, gap: 4 }}>
+                  {root.subtasks.map((subtask: Task) => {
+                    const subDone = subtask.completed || isTaskCompletedForDate(subtask, selectedDate);
+                    return (
+                      <Pressable
+                        key={subtask.id}
+                        android_ripple={{ color: theme.colors.primaryAlpha20 }}
+                        style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}
+                        onPress={async () => {
+                          LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                          try {
+                            const updated = await toggleTaskForDate(subtask, selectedDate);
+                            upsertTask(updated);
+                          } catch (e) {
+                            console.error("[TasksScreen] toggle subtask failed", e);
+                          }
+                        }}
+                      >
+                        <Ionicons
+                          name={subDone ? "checkmark-circle" : "ellipse-outline"}
+                          size={18}
+                          color={subDone ? theme.colors.primary : theme.colors.textSecondary}
+                        />
+                        <Text
+                          style={{
+                            flex: 1,
+                            fontSize: 14,
+                            color: subDone ? theme.colors.textSecondary : theme.colors.textPrimary,
+                            textDecorationLine: subDone ? "line-through" : "none"
+                          }}
+                        >
+                          {subtask.text}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
               )}
             </View>
-            <Pressable
-              onPress={async () => {
-                if (selectionMode) {
-                  toggleSelection({ kind: "task", id: item.id, label: item.text });
-                  return;
-                }
-                const nextPriority = ((item.priority + 1) % 3) as TaskPriority;
-                const updated = await updateTaskPriority(item, nextPriority);
-                upsertTask(updated);
-              }}
-              style={styles.priorityPill}
-            >
-              <View
-                style={[
-                  styles.priorityBadge,
-                  {
-                    backgroundColor:
-                      item.priority === 0
-                        ? theme.colors.priorityLow
-                        : item.priority === 1
-                        ? theme.colors.priorityMedium
-                        : theme.colors.priorityHigh
-                  }
-                ]}
-              >
-                <Text style={{ color: theme.colors.onPrimary, fontSize: 10 }}>
-                  {item.priority === 0 ? "LOW" : item.priority === 1 ? "MED" : "HIGH"}
-                </Text>
-              </View>
-            </Pressable>
-            <Pressable
-              onPressIn={(event) => event.stopPropagation()}
-              onLongPress={(event) => {
-                event.stopPropagation();
-                drag();
-              }}
-              delayLongPress={220}
-              hitSlop={8}
-              style={styles.dragHandle}
-            >
-              <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
-            </Pressable>
-          </Pressable>
-        )}
+          );
+        }}
         ListEmptyComponent={
           <Text muted style={styles.emptyText}>
             No tasks for this day.
@@ -853,42 +967,40 @@ const TasksScreen: React.FC = () => {
               />
             )}
 
-              {/* Subtasks section — only shown when creating (not editing) */}
-              {!editingTask && (
-                <View style={{ marginTop: 16, marginBottom: 12, gap: 4 }}>
-                  <Text muted variant="caption" style={{ marginBottom: 6 }}>Subtarefas</Text>
-                  {subtasks.map((sub, index) => (
-                    <View key={sub.id} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                      <TextInput
-                        value={sub.text}
-                        onChangeText={(text) => updateSubtask(sub.id, text)}
-                        placeholder={`Subtarefa ${index + 1}`}
-                        placeholderTextColor={theme.colors.textSecondary}
-                        style={{
-                          flex: 1,
-                          borderBottomWidth: StyleSheet.hairlineWidth,
-                          borderColor: theme.colors.border,
-                          paddingVertical: 6,
-                          fontSize: 14,
-                          color: theme.colors.textPrimary,
-                        }}
-                      />
-                      {subtasks.length > 1 && (
-                        <Pressable hitSlop={8} onPress={() => removeSubtask(sub.id)}>
-                          <Ionicons name="close-circle-outline" size={18} color={theme.colors.textSecondary} />
-                        </Pressable>
-                      )}
-                    </View>
-                  ))}
-                  <Pressable
-                    onPress={addSubtask}
-                    style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 }}
-                  >
-                    <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
-                    <Text style={{ color: theme.colors.primary, fontSize: 14, fontWeight: "500" }}>+ Adicionar subtarefa</Text>
-                  </Pressable>
-                </View>
-              )}
+              {/* Subtasks section */}
+              <View style={{ marginTop: 16, marginBottom: 12, gap: 4 }}>
+                <Text muted variant="caption" style={{ marginBottom: 6 }}>Subtarefas</Text>
+                {subtasks.map((sub, index) => (
+                  <View key={sub.id} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <TextInput
+                      value={sub.text}
+                      onChangeText={(text) => updateSubtask(sub.id, text)}
+                      placeholder={`Subtarefa ${index + 1}`}
+                      placeholderTextColor={theme.colors.textSecondary}
+                      style={{
+                        flex: 1,
+                        borderBottomWidth: StyleSheet.hairlineWidth,
+                        borderColor: theme.colors.border,
+                        paddingVertical: 6,
+                        fontSize: 14,
+                        color: theme.colors.textPrimary,
+                      }}
+                    />
+                    {subtasks.length > 1 && (
+                      <Pressable hitSlop={8} onPress={() => removeSubtask(sub.id)}>
+                        <Ionicons name="close-circle-outline" size={18} color={theme.colors.textSecondary} />
+                      </Pressable>
+                    )}
+                  </View>
+                ))}
+                <Pressable
+                  onPress={addSubtask}
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 }}
+                >
+                  <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
+                  <Text style={{ color: theme.colors.primary, fontSize: 14, fontWeight: "500" }}>+ Adicionar subtarefa</Text>
+                </Pressable>
+              </View>
 
                 <Text style={styles.priorityLabel}>Reminders</Text>
                 <View style={styles.remindersGroup}>
@@ -965,6 +1077,43 @@ const TasksScreen: React.FC = () => {
                         reminders
                       });
                       upsertTask(updated);
+
+                      // Update subtasks
+                      const existingSubtasks = Object.values(tasksMap).filter(t => t.parentId === editingTask.id);
+                      const validSubtasks = subtasks.filter(s => s.text.trim().length > 0);
+                      
+                      // 1. Delete removed subtasks
+                      const validSubtaskIds = new Set(validSubtasks.map(s => s.id));
+                      for (const existing of existingSubtasks) {
+                        if (!validSubtaskIds.has(existing.id)) {
+                          await deleteTask(existing.id);
+                          removeTask(existing.id);
+                        }
+                      }
+                      
+                      // 2. Add or Update remaining subtasks
+                      for (const sub of validSubtasks) {
+                        const existing = existingSubtasks.find(e => e.id === sub.id);
+                        if (existing) {
+                          if (existing.text !== sub.text.trim() || existing.scheduledDate !== dateForTask) {
+                            const updatedSub = await updateTask({
+                              ...existing,
+                              text: sub.text.trim(),
+                              scheduledDate: dateForTask
+                            });
+                            upsertTask(updatedSub);
+                          }
+                        } else {
+                          // newly added
+                          const createdSub = await createTask({
+                            text: sub.text.trim(),
+                            parentId: editingTask.id,
+                            scheduledDate: dateForTask,
+                          });
+                          upsertTask(createdSub);
+                        }
+                      }
+
                       setEditingTask(null);
                     } else {
                       const created = await createTask({
@@ -1026,7 +1175,7 @@ const TasksScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={styles.fabRoot} pointerEvents="box-none">
+      <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 16, 24) + 68 + 24 }]} pointerEvents="box-none">
         <Animated.View
           pointerEvents={fabOpen ? "auto" : "none"}
           style={[
@@ -1036,7 +1185,7 @@ const TasksScreen: React.FC = () => {
                 {
                   translateY: fabAnim.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, -58]
+                    outputRange: [0, -72]
                   })
                 },
                 {
@@ -1090,7 +1239,7 @@ const TasksScreen: React.FC = () => {
               ]
             }}
           >
-            <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
+            <Ionicons name="add" size={32} color={theme.colors.onPrimary} />
           </Animated.View>
         </Pressable>
       </View>
@@ -1239,6 +1388,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 10
+  },
+  taskCard: {
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden"
   },
   checkbox: {
     width: 22,
@@ -1405,9 +1559,8 @@ const styles = StyleSheet.create({
   fabRoot: {
     position: "absolute",
     right: 20,
-    bottom: 90,
     zIndex: 999,
-    elevation: 10
+    elevation: 12
   },
   fabMenuItemWrap: {
     position: "absolute",
@@ -1429,15 +1582,15 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   fabMain: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 10
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12
   }
 });
 

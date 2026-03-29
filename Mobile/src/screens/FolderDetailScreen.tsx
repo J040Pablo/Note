@@ -16,6 +16,7 @@ import {
 import * as FileSystem from "expo-file-system/legacy";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@components/Text";
 import { FolderNameModal } from "@components/FolderNameModal";
 import { FolderIcon } from "@components/FolderIcon";
@@ -76,6 +77,7 @@ const FolderDetailScreen: React.FC = () => {
   const { theme } = useTheme();
   const route = useRoute<FolderDetailRoute>();
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
   const folderId = route.params?.folderId ?? null;
@@ -511,7 +513,6 @@ const FolderDetailScreen: React.FC = () => {
                     styles.itemCard,
                     currentViewMode === "grid" ? styles.gridItemCard : styles.listItemCard,
                     {
-                      borderColor: theme.colors.border,
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
@@ -568,7 +569,6 @@ const FolderDetailScreen: React.FC = () => {
                     styles.itemCard,
                     currentViewMode === "grid" ? styles.gridItemCard : styles.listItemCard,
                     {
-                      borderColor: theme.colors.border,
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
@@ -615,7 +615,6 @@ const FolderDetailScreen: React.FC = () => {
                     styles.itemCard,
                     currentViewMode === "grid" ? styles.gridItemCard : styles.listItemCard,
                     {
-                      borderColor: theme.colors.border,
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
@@ -875,7 +874,7 @@ const FolderDetailScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={styles.fabRoot} pointerEvents="box-none">
+      <View style={[styles.fabRoot, { bottom: 100 + insets.bottom }]} pointerEvents="box-none">
         {([
           {
             key: "note",
@@ -1637,10 +1636,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     minHeight: 88,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 2
+    shadowRadius: 4,
+    elevation: 0
   },
   gridItemCard: {
     width: "48%",
@@ -1737,8 +1736,9 @@ const styles = StyleSheet.create({
   },
   fabRoot: {
     position: "absolute",
-    right: 16,
-    bottom: 24
+    right: 20,
+    zIndex: 999,
+    elevation: 12
   },
   fabMenuItemWrap: {
     position: "absolute",

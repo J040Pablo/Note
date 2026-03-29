@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, Pressable, FlatList, Animated, Share, Alert, Image, LayoutAnimation, UIManager, Platform } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Text } from "@components/Text";
@@ -67,6 +67,7 @@ const SectionHeader: React.FC<SectionHeaderProps> = memo(({ title, icon }) => {
 const HomeScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
 
@@ -489,11 +490,20 @@ const HomeScreen: React.FC = () => {
         return st.scheduledDate === todayKey;
       });
       const total = subtasks.length;
-      const completed = subtasks.filter(st =>
+      const completedCount = subtasks.filter(st =>
         st.completed || isTaskCompletedForDate(st, todayKey)
       ).length;
-      const progress = total === 0 ? 0 : completed / total;
-      return { ...root, subtasks, total, completed, progress };
+      // Parent is completed ONLY when ALL subtasks are completed; fall back to task.completed if no subtasks
+      const allCompleted =
+        total > 0
+          ? total === completedCount
+          : isTaskCompletedForDate(root, todayKey);
+          
+      const displayTotal = total > 0 ? total : 1;
+      const displayCompleted = total > 0 ? completedCount : (allCompleted ? 1 : 0);
+      const progress = displayTotal === 0 ? 0 : displayCompleted / displayTotal;
+      
+      return { ...root, subtasks, total: displayTotal, completedCount: displayCompleted, progress, parentCompleted: allCompleted };
     });
   }, [tasks, todayKey]);
 
@@ -657,52 +667,47 @@ const HomeScreen: React.FC = () => {
           if (item === "taskOverview") {
             if (tasks.length === 0) return null;
 
-            const total = tasks.length;
-            const pendingCount = tasks.filter(t => {
-              return !isTaskCompletedForDate?.(t, todayKey);
-            }).length;
+            const allRootBase = tasks.filter(t => !t.parentId).map(root => {
+              const subtasks = tasks.filter(st => st.parentId === root.id);
+              const total = subtasks.length;
+              const completedCount = subtasks.filter(st => st.completed || isTaskCompletedForDate?.(st, todayKey)).length;
+              return total > 0 ? (total === completedCount) : (root.completed || isTaskCompletedForDate?.(root, todayKey));
+            });
+            const pendingCount = allRootBase.filter(c => !c).length;
+            const pendingProgress = allRootBase.length === 0 ? 0 : (allRootBase.length - pendingCount) / allRootBase.length;
 
-            const upcomingCount = tasks.filter(t => {
-              return (
-                t.scheduledDate &&
-                t.scheduledDate > todayKey &&
-                !isTaskCompletedForDate?.(t, t.scheduledDate)
-              );
-            }).length;
+            const todayCount = rootTasks.length;
+            const completedToday = rootTasks.filter(t => t.parentCompleted).length;
+            const todayProgress = todayCount === 0 ? 0 : completedToday / todayCount;
 
-            const completedCount = tasks.filter(t => {
-              return isTaskCompletedForDate?.(t, todayKey);
-            }).length;
-
-            const progress = total === 0 ? 0 : completedCount / total;
-            const upcomingProgress = total === 0 ? 0 : upcomingCount / total;
-
-            let barColor = theme.colors.danger;
-            if (progress >= 0.7) barColor = theme.colors.primary;
-            else if (progress >= 0.3) barColor = theme.colors.secondary;
+            const getBarColor = (progress: number) => {
+              if (progress < 0.3) return theme.colors.danger;
+              if (progress < 0.7) return theme.colors.secondary;
+              return theme.colors.primary;
+            };
 
             return (
               <View style={{ marginTop: spacing.lg }}>
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
-                   <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary }}>Task Overview</Text>
-                   <Pressable onPress={() => navigation.navigate("Tasks" as never)} hitSlop={8}>
-                     <Text style={{ color: theme.colors.primary, fontSize: 13, fontWeight: "600" }}>View All</Text>
-                   </Pressable>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary }}>Task Overview</Text>
+                  <Pressable onPress={() => navigation.navigate("Tasks" as never)} hitSlop={8}>
+                    <Text style={{ color: theme.colors.primary, fontSize: 13, fontWeight: "600" }}>View All</Text>
+                  </Pressable>
                 </View>
                 <View style={{ flexDirection: "row", gap: 12 }}>
                   <View style={{ flex: 1, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, backgroundColor: theme.colors.card, borderColor: theme.colors.border }}>
-                     <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: 4, color: theme.colors.textPrimary }}>Pending Tasks ({pendingCount})</Text>
-                     <Text style={{ fontSize: 12, marginBottom: 8, color: theme.colors.textSecondary }}>Progress</Text>
-                     <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
-                        <View style={{ height: "100%", borderRadius: 3, width: `${progress * 100}%`, backgroundColor: barColor }} />
-                     </View>
+                    <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: 4, color: theme.colors.textPrimary }}>Pending Tasks ({pendingCount})</Text>
+                    <Text style={{ fontSize: 12, marginBottom: 8, color: theme.colors.textSecondary }}>Progress</Text>
+                    <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
+                      <View style={{ height: "100%", borderRadius: 3, width: `${pendingProgress * 100}%`, backgroundColor: getBarColor(pendingProgress) }} />
+                    </View>
                   </View>
                   <View style={{ flex: 1, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, backgroundColor: theme.colors.card, borderColor: theme.colors.border }}>
-                     <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: 4, color: theme.colors.textPrimary }}>Upcoming Tasks ({upcomingCount})</Text>
-                     <Text style={{ fontSize: 12, marginBottom: 8, color: theme.colors.textSecondary }}>Progress</Text>
-                     <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
-                        <View style={{ height: "100%", borderRadius: 3, width: `${upcomingProgress * 100}%`, backgroundColor: theme.colors.secondary || theme.colors.primary }} />
-                     </View>
+                    <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: 4, color: theme.colors.textPrimary }}>Today Tasks ({todayCount})</Text>
+                    <Text style={{ fontSize: 12, marginBottom: 8, color: theme.colors.textSecondary }}>Progress</Text>
+                    <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
+                      <View style={{ height: "100%", borderRadius: 3, width: `${todayProgress * 100}%`, backgroundColor: getBarColor(todayProgress) }} />
+                    </View>
                   </View>
                 </View>
               </View>
@@ -742,13 +747,8 @@ const HomeScreen: React.FC = () => {
                                      onPress={async () => {
                                         LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
                                         try {
-                                          const updated = await updateTask({
-                                            ...root,
-                                            subtasks: undefined,
-                                            total: undefined,
-                                            completed: !root.completed,
-                                            updatedAt: Date.now(),
-                                          } as any);
+                                          const originalTask = tasks.find(t => t.id === root.id) || root;
+                                          const updated = await toggleTaskForDate(originalTask as Task, todayKey);
                                           upsertTask(updated);
                                         } catch (e) {
                                           console.error("[HomeScreen] toggle root task failed", e);
@@ -756,13 +756,18 @@ const HomeScreen: React.FC = () => {
                                      }}
                                   >
                                      <Ionicons
-                                        name={root.completed ? "checkmark-circle" : "ellipse-outline"}
+                                        name={root.parentCompleted ? "checkmark-circle" : "ellipse-outline"}
                                         size={22}
-                                        color={root.completed ? theme.colors.primary : theme.colors.textSecondary}
+                                        color={root.parentCompleted ? theme.colors.primary : theme.colors.textSecondary}
                                      />
                                   </Pressable>
-                                  <Text style={{ flex: 1, fontSize: 16, fontWeight: "600", color: root.completed ? theme.colors.textSecondary : theme.colors.textPrimary, marginRight: 8, marginLeft: 8, textDecorationLine: root.completed ? "line-through" : "none" }} numberOfLines={1}>{root.text}</Text>
+                                  <Text style={{ flex: 1, fontSize: 16, fontWeight: "600", color: root.parentCompleted ? theme.colors.textSecondary : theme.colors.textPrimary, marginRight: 8, marginLeft: 8, textDecorationLine: root.parentCompleted ? "line-through" : "none" }} numberOfLines={1}>{root.text}</Text>
                                   <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                                    {root.priority !== undefined && (
+                                      <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: root.priority === 0 ? theme.colors.priorityLow : root.priority === 1 ? theme.colors.priorityMedium : theme.colors.priorityHigh }}>
+                                        <Text style={{ fontSize: 10, color: theme.colors.onPrimary }}>{root.priority === 0 ? "LOW" : root.priority === 1 ? "MED" : "HIGH"}</Text>
+                                      </View>
+                                    )}
                                      <Pressable
                                         hitSlop={8}
                                         onPress={() => handleOpenTask(root.id)}
@@ -774,7 +779,7 @@ const HomeScreen: React.FC = () => {
                                </View>
 
                                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                                  <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{root.completed}/{root.total} completas</Text>
+                                  <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{root.completedCount}/{root.total} completas</Text>
                                   <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{Math.round(root.progress * 100)}%</Text>
                                </View>
                                
@@ -893,7 +898,7 @@ const HomeScreen: React.FC = () => {
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
                   <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary }}>Quick Access</Text>
                   {hasMoreRecent && (
-                    <Pressable onPress={() => navigation.navigate("FoldersRoot" as never)} hitSlop={8}>
+                    <Pressable onPress={() => navigation.navigate("Tabs", { screen: "Folders" })} hitSlop={8}>
                       <Text style={{ color: theme.colors.primary, fontSize: 13, fontWeight: "600" }}>View All ({recentResolved.length})</Text>
                     </Pressable>
                   )}
@@ -1088,7 +1093,7 @@ const HomeScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={hsStyles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={hsStyles.fabRoot} pointerEvents="box-none">
+      <View style={[hsStyles.fabRoot, { bottom: Math.max(insets.bottom + 16, 24) + 68 + 24 }]} pointerEvents="box-none">
         {([
           {
             key: "note",
@@ -1141,7 +1146,7 @@ const HomeScreen: React.FC = () => {
                   {
                     translateY: fabAnim.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [0, -((index + 1) * 58)]
+                      outputRange: [0, -((index + 1) * 62)]
                     })
                   },
                   {
@@ -1175,11 +1180,13 @@ const HomeScreen: React.FC = () => {
 
         <Pressable
           onPress={toggleFab}
-          style={[
+          hitSlop={20}
+          style={({ pressed }) => [
             hsStyles.fabMain,
             {
               backgroundColor: theme.colors.primary,
-              shadowColor: theme.colors.textPrimary
+              shadowColor: theme.colors.textPrimary,
+              transform: [{ scale: pressed ? 0.96 : 1 }]
             }
           ]}
         >
@@ -1195,7 +1202,7 @@ const HomeScreen: React.FC = () => {
               ]
             }}
           >
-            <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
+            <Ionicons name="add" size={32} color={theme.colors.onPrimary} />
           </Animated.View>
         </Pressable>
       </View>
@@ -1307,10 +1314,10 @@ const hsStyles = StyleSheet.create({
     padding: 12,
     marginTop: spacing.md,
     shadowColor: "#000000",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
     shadowOffset: { width: 0, height: 3 },
-    elevation: 4
+    elevation: 0
   },
   sectionHeader: {
     flexDirection: "row",
@@ -1421,9 +1428,8 @@ const hsStyles = StyleSheet.create({
   fabRoot: {
     position: "absolute",
     right: 20,
-    bottom: 90,
     zIndex: 999,
-    elevation: 10
+    elevation: 12
   },
   fabMenuItemWrap: {
     position: "absolute",
@@ -1445,15 +1451,15 @@ const hsStyles = StyleSheet.create({
     fontWeight: "600"
   },
   fabMain: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 10
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12
   }
 });
 

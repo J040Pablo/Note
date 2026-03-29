@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { View, StyleSheet, Pressable, Image, LayoutAnimation, Animated, Share, Alert } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
@@ -47,6 +48,7 @@ const FOLDER_SORT_SCOPE = "folders.root.sort";
 const FoldersScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<Nav>();
+  const insets = useSafeAreaInsets();
   const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
   const folders = useAppStore((s) => s.folders);
@@ -811,7 +813,7 @@ const FoldersScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={styles.fabRoot} pointerEvents="box-none">
+      <View style={[styles.fabRoot, { bottom: 100 + insets.bottom }]} pointerEvents="box-none">
         {([
           {
             key: "note",
@@ -1013,10 +1015,10 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     minHeight: 120,
-    shadowOffset: { width: 0, height: 6 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 2
+    shadowRadius: 4,
+    elevation: 0
   },
   gridBanner: {
     width: "100%",
@@ -1057,10 +1059,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 16,
     overflow: "hidden",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 4
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 0
   },
   banner: {
     width: "100%",
@@ -1093,9 +1095,8 @@ const styles = StyleSheet.create({
   fabRoot: {
     position: "absolute",
     right: 20,
-    bottom: 90,
     zIndex: 999,
-    elevation: 10
+    elevation: 12
   },
   fabMenuItemWrap: {
     position: "absolute",

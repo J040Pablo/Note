@@ -1,4 +1,5 @@
 import React from "react";
+import { Platform } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { NavigatorScreenParams } from "@react-navigation/native";
@@ -85,30 +86,40 @@ const FoldersStackNavigator = () => {
 const TabsNavigator = () => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  
+
   return (
     <Tab.Navigator
+      safeAreaInsets={{ bottom: 0 }}
       screenOptions={({ route }) => ({
-        lazy: true,
         headerShown: false,
+        tabBarShowLabel: false,
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.textSecondary,
         tabBarStyle: {
           position: "absolute",
-          left: 16,
-          right: 16,
-          bottom: 12,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 6,
-          borderRadius: 16,
+          left: 24,
+          right: 24,
+          bottom: Math.max(insets.bottom + 16, 24),
+          height: 68,
+          borderRadius: 34,
           backgroundColor: theme.colors.card,
           borderTopWidth: 0,
-          elevation: 8,
+          elevation: 14,
           shadowColor: "#000",
-          shadowOpacity: 0.12,
-          shadowRadius: 10,
-          shadowOffset: { width: 0, height: 4 },
+          shadowOpacity: 0.15,
+          shadowRadius: 14,
+          shadowOffset: { width: 0, height: 6 },
+          paddingHorizontal: 8,
+          paddingBottom: 0,
+          paddingTop: 0,
+        },
+        tabBarItemStyle: {
+          flex: 1,
+        },
+        tabBarIconStyle: {
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
         },
         tabBarIcon: ({ color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = "home";
@@ -117,8 +128,15 @@ const TabsNavigator = () => {
           if (route.name === "Folders") iconName = "folder";
           if (route.name === "Tasks") iconName = "checkmark-done";
           if (route.name === "Settings") iconName = "settings";
-          return <Ionicons name={iconName} size={size} color={color} />;
-        }
+          
+          return (
+            <Ionicons 
+               name={iconName} 
+               size={size} 
+               color={color}
+            />
+          );
+        },
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
@@ -181,7 +199,7 @@ const RootNavigator = () => {
       <RootStack.Screen
         name="ImageViewer"
         component={ImageViewerScreen}
-          options={{ title: "Image", animation: "slide_from_right" }}
+        options={{ title: "Image", animation: "slide_from_right" }}
       />
       <RootStack.Screen
         name="SaveSharedFile"
@@ -211,4 +229,3 @@ const RootNavigator = () => {
 };
 
 export default RootNavigator;
-
