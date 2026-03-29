@@ -367,12 +367,16 @@ const FolderDetailScreen: React.FC = () => {
   }, [closeFab, fabOpen, openFab]);
 
   const handleBackPress = useCallback(() => {
-    if (navigation.canGoBack()) {
+    if (route.params?.from === "home") {
+      (navigation as any).navigate("Tabs", { screen: "Home" });
+    } else if (route.params?.from === "folders") {
+      navigation.navigate("FoldersRoot");
+    } else if (navigation.canGoBack()) {
       navigation.goBack();
-      return;
+    } else {
+      navigation.navigate("FoldersRoot");
     }
-    navigation.navigate("FoldersRoot");
-  }, [navigation]);
+  }, [navigation, route.params?.from]);
 
   const toggleExpandedFolder = useCallback((folderId: string) => {
     setExpandedFolders((prev) => {

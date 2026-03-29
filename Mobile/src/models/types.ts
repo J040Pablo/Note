@@ -184,6 +184,7 @@ export interface Task {
   priority: number;
   noteId: ID | null;
   /** Optional scheduled day (YYYY-MM-DD) */
+  parentId?: string | null;
   scheduledDate?: string | null;
   /** Optional scheduled time (HH:mm) */
   scheduledTime?: string | null;

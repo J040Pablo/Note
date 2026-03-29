@@ -139,6 +139,21 @@ const TasksScreen: React.FC = () => {
   const taskSubmittingRef = useRef(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
 
+  // Subtasks state for modal
+  const [subtasks, setSubtasks] = useState<Array<{ id: string; text: string }>>([{ id: Date.now().toString(), text: "" }]);
+
+  const addSubtask = () => {
+    setSubtasks(prev => [...prev, { id: Date.now().toString() + Math.random(), text: "" }]);
+  };
+
+  const updateSubtask = (id: string, text: string) => {
+    setSubtasks(prev => prev.map(s => s.id === id ? { ...s, text } : s));
+  };
+
+  const removeSubtask = (id: string) => {
+    setSubtasks(prev => prev.length > 1 ? prev.filter(s => s.id !== id) : prev);
+  };
+
   useEffect(() => {
     (async () => {
       const [all, savedSort] = await Promise.all([
@@ -224,6 +239,7 @@ const TasksScreen: React.FC = () => {
     setReminders(["AT_TIME"]);
     setShowDatePicker(false);
     setShowTimePicker(false);
+    setSubtasks([{ id: Date.now().toString(), text: "" }]);
     setShowModal(true);
   };
 
@@ -237,6 +253,7 @@ const TasksScreen: React.FC = () => {
     setReminders(((task.reminders?.length ? task.reminders : ["AT_TIME"]) as TaskReminderType[]).slice(0, 4));
     setShowDatePicker(false);
     setShowTimePicker(false);
+    setSubtasks([{ id: Date.now().toString(), text: "" }]); // reset subtasks on edit
     setShowModal(true);
   };
 
@@ -836,6 +853,43 @@ const TasksScreen: React.FC = () => {
               />
             )}
 
+              {/* Subtasks section — only shown when creating (not editing) */}
+              {!editingTask && (
+                <View style={{ marginTop: 16, marginBottom: 12, gap: 4 }}>
+                  <Text muted variant="caption" style={{ marginBottom: 6 }}>Subtarefas</Text>
+                  {subtasks.map((sub, index) => (
+                    <View key={sub.id} style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <TextInput
+                        value={sub.text}
+                        onChangeText={(text) => updateSubtask(sub.id, text)}
+                        placeholder={`Subtarefa ${index + 1}`}
+                        placeholderTextColor={theme.colors.textSecondary}
+                        style={{
+                          flex: 1,
+                          borderBottomWidth: StyleSheet.hairlineWidth,
+                          borderColor: theme.colors.border,
+                          paddingVertical: 6,
+                          fontSize: 14,
+                          color: theme.colors.textPrimary,
+                        }}
+                      />
+                      {subtasks.length > 1 && (
+                        <Pressable hitSlop={8} onPress={() => removeSubtask(sub.id)}>
+                          <Ionicons name="close-circle-outline" size={18} color={theme.colors.textSecondary} />
+                        </Pressable>
+                      )}
+                    </View>
+                  ))}
+                  <Pressable
+                    onPress={addSubtask}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 8 }}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color={theme.colors.primary} />
+                    <Text style={{ color: theme.colors.primary, fontSize: 14, fontWeight: "500" }}>+ Adicionar subtarefa</Text>
+                  </Pressable>
+                </View>
+              )}
+
                 <Text style={styles.priorityLabel}>Reminders</Text>
                 <View style={styles.remindersGroup}>
                   {REMINDER_OPTIONS.map((option) => {
@@ -866,82 +920,6 @@ const TasksScreen: React.FC = () => {
                     );
                   })}
                 </View>
-
-            <Text style={styles.priorityLabel}>Prioridade</Text>
-            <View style={styles.priorityGroup}>
-              {([
-                { label: "Baixa", value: 0 },
-                { label: "Média", value: 1 },
-                { label: "Alta", value: 2 }
-              ] as const).map((p) => (
-                <Pressable
-                  key={p.value}
-                  onPress={() => setPriority(p.value)}
-                  style={[
-                    styles.priorityChip,
-                    {
-                      backgroundColor: priority === p.value ? theme.colors.primary : theme.colors.background,
-                      borderColor: theme.colors.border
-                    }
-                  ]}
-                >
-                  <Text style={{ color: priority === p.value ? theme.colors.onPrimary : theme.colors.textPrimary }}>
-                    {p.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-
-            <Text style={styles.priorityLabel}>Repetir em</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.repeatRow}>
-              {WEEKDAYS.map((label, idx) => {
-                const active = repeatDays.includes(idx);
-                return (
-                  <Pressable
-                    key={label}
-                    onPress={() => {
-                      setRepeatDays((prev) =>
-                        prev.includes(idx) ? prev.filter((d) => d !== idx) : [...prev, idx]
-                      );
-                    }}
-                    style={[
-                      styles.repeatChip,
-                      {
-                        backgroundColor: active ? theme.colors.primary : theme.colors.background,
-                        borderColor: theme.colors.border
-                      }
-                    ]}
-                  >
-                    <Text style={{ color: active ? theme.colors.onPrimary : theme.colors.textPrimary }}>
-                      {label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-
-            <View style={styles.scheduleActions}>
-              <Pressable
-                onPress={() => {
-                  const day = parseDateTime(selectedDate, toTimeKey(scheduledAt));
-                  setScheduledAt(day);
-                  setScheduledDate(selectedDate);
-                }}
-                style={[styles.smallAction, { borderColor: theme.colors.border }]}
-              >
-                <Text muted>Usar dia selecionado</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setScheduledDate("");
-                  setShowDatePicker(false);
-                  setShowTimePicker(false);
-                }}
-                style={[styles.smallAction, { borderColor: theme.colors.border }]}
-              >
-                <Text muted>Sem data</Text>
-              </Pressable>
-            </View>
 
               <View style={styles.actions}>
               <Pressable
@@ -999,6 +977,17 @@ const TasksScreen: React.FC = () => {
                       });
                       console.log("[task] Task created successfully:", created.id);
                       upsertTask(created);
+
+                      // Create subtasks linked to parent
+                      const validSubtasks = subtasks.filter(s => s.text.trim().length > 0);
+                      for (const sub of validSubtasks) {
+                        const createdSub = await createTask({
+                          text: sub.text.trim(),
+                          parentId: created.id,
+                          scheduledDate: dateForTask,
+                        });
+                        upsertTask(createdSub);
+                      }
                     }
                     setShowModal(false);
                     showToast("Task salva ✓");
@@ -1117,7 +1106,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   screenScrollContent: {
-    paddingBottom: 96
+    paddingBottom: 120
   },
   headerRow: {
     flexDirection: "row",
@@ -1415,8 +1404,10 @@ const styles = StyleSheet.create({
   },
   fabRoot: {
     position: "absolute",
-    right: 16,
-    bottom: 24
+    right: 20,
+    bottom: 90,
+    zIndex: 999,
+    elevation: 10
   },
   fabMenuItemWrap: {
     position: "absolute",
@@ -1438,15 +1429,15 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   fabMain: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 10
   }
 });
 

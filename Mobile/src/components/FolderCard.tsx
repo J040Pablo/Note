@@ -12,16 +12,22 @@ interface FolderCardProps {
   onLongPress?: () => void;
   style?: ViewStyle;
   isLoading?: boolean;
+  variant?: "default" | "compact";
 }
+
+const CARD_HEIGHT = 130;
+const BANNER_HEIGHT = 64;
 
 const FolderCard = memo(({
   folder,
   onPress,
   onLongPress,
   style,
-  isLoading = false
+  isLoading = false,
+  variant = "default"
 }: FolderCardProps) => {
   const { theme } = useTheme();
+
 
   return (
     <Pressable
@@ -29,8 +35,10 @@ const FolderCard = memo(({
       onLongPress={onLongPress}
       style={[
         styles.container,
+        variant === "compact" && styles.containerCompact,
         style,
         {
+          height: variant === "compact" ? undefined : CARD_HEIGHT,
           backgroundColor: theme.colors.card,
           borderColor: theme.colors.border,
           opacity: isLoading ? 0.6 : 1
@@ -39,22 +47,25 @@ const FolderCard = memo(({
       disabled={isLoading}
     >
       {/* Banner */}
-      <View style={styles.bannerContainer}>
+      {variant !== "compact" && (
+      <View style={{ height: BANNER_HEIGHT }}>
         {folder.bannerPath ? (
           <Image
             source={{ uri: folder.bannerPath }}
-            style={styles.banner}
+            style={{ width: "100%", height: BANNER_HEIGHT }}
             resizeMode="cover"
           />
         ) : (
           <View
-            style={[
-              styles.bannerPlaceholder,
-              { backgroundColor: theme.colors.primaryAlpha20 }
-            ]}
+            style={{
+              width: "100%",
+              height: BANNER_HEIGHT,
+              backgroundColor: theme.colors.primaryAlpha20
+            }}
           />
         )}
       </View>
+      )}
 
       {/* Content */}
       <View style={styles.content}>
@@ -80,11 +91,11 @@ const FolderCard = memo(({
                 styles.title,
                 { color: theme.colors.textPrimary }
               ]}
-              numberOfLines={2}
+              numberOfLines={1}
             >
               {folder.name}
             </Text>
-            {folder.description && (
+            {folder.description && variant !== "compact" && (
               <Text
                 muted
                 variant="caption"
@@ -98,6 +109,7 @@ const FolderCard = memo(({
         </View>
 
         {/* Footer with count or action */}
+        {variant !== "compact" && (
         <View style={styles.footer}>
           <Ionicons
             name="folder-outline"
@@ -108,6 +120,7 @@ const FolderCard = memo(({
             Folder
           </Text>
         </View>
+        )}
       </View>
 
       {/* Overlay effect on press */}
@@ -128,24 +141,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     overflow: "hidden",
     borderWidth: 1,
-    backgroundColor: "#fff",
-    height: 200,
   },
-  bannerContainer: {
-    width: "100%",
+  containerCompact: {
     height: 100,
-    overflow: "hidden",
-  },
-  banner: {
-    width: "100%",
-    height: "100%",
-  },
-  bannerPlaceholder: {
-    width: "100%",
-    height: "100%",
+    width: 140,
+    justifyContent: "center"
   },
   content: {
-    flex: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
     justifyContent: "space-between",

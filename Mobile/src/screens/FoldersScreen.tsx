@@ -513,7 +513,7 @@ const FoldersScreen: React.FC = () => {
                     return;
                   }
                   withLock(() => {
-                    navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
+                    navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id], from: "folders" });
                     addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
                   });
                 }}
@@ -572,7 +572,7 @@ const FoldersScreen: React.FC = () => {
                     return;
                   }
                   withLock(() => {
-                    navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
+                    navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id], from: "folders" });
                     addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
                   });
                 }}
@@ -995,7 +995,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingVertical: 4,
-    paddingBottom: 24,
+    paddingBottom: 120,
     gap: 8
   },
   gridColumn: {
@@ -1092,8 +1092,10 @@ const styles = StyleSheet.create({
   },
   fabRoot: {
     position: "absolute",
-    right: 16,
-    bottom: 24
+    right: 20,
+    bottom: 90,
+    zIndex: 999,
+    elevation: 10
   },
   fabMenuItemWrap: {
     position: "absolute",
@@ -1115,15 +1117,15 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   fabMain: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 10
   }
 });
 

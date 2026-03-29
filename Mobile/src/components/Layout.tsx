@@ -11,7 +11,7 @@ interface ScreenProps {
   edges?: Edge[];
 }
 
-export const Screen: React.FC<ScreenProps> = ({ children, scroll, style, edges = ["top", "right", "left", "bottom"] }) => {
+export const Screen: React.FC<ScreenProps> = ({ children, scroll, style, edges = ["top", "right", "left"] }) => {
   const { theme } = useTheme();
   const Container = scroll ? ScrollView : View;
 

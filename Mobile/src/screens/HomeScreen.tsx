@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, FlatList, Animated, Share, Alert } from "react-native";
+import { View, StyleSheet, Pressable, FlatList, Animated, Share, Alert, Image, LayoutAnimation, UIManager, Platform } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useFeedback } from "@components/FeedbackProvider";
@@ -12,7 +12,7 @@ import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useTasksStore } from "@store/useTasksStore";
 import { useAppStore } from "@store/useAppStore";
 import { useFilesStore } from "@store/useFilesStore";
-import { getAllTasks, isTaskCompletedForDate, shouldAppearOnDate, toDateKey, toggleTaskForDate } from "@services/tasksService";
+import { getAllTasks, isTaskCompletedForDate, shouldAppearOnDate, toDateKey, toggleTaskForDate, updateTask } from "@services/tasksService";
 import { createNote, getAllNotes, getAllQuickNotes } from "@services/notesService";
 import { createFolder, getAllFolders } from "@services/foldersService";
 import { getAllFiles } from "@services/filesService";
@@ -22,6 +22,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { Task, Note, Folder, ID, PinnedItemType } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import { FolderIcon } from "@components/FolderIcon";
+import FolderCard from "@components/FolderCard";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
@@ -35,7 +36,18 @@ type SelectableKind = "folder" | "note" | "quick" | "task";
 type SelectedItem = { kind: SelectableKind; id: ID; label: string };
 type SelectionKey = `${SelectableKind}:${ID}`;
 
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const firstLine = (text: string): string => getRichNotePreviewLine(text, 90);
+
+const LIMITS = {
+  quick: 6,
+  folders: 6,
+  today: 5,
+  projects: 5,
+};
 
 interface SectionHeaderProps {
   title: string;
@@ -91,6 +103,7 @@ const HomeScreen: React.FC = () => {
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [fabOpen, setFabOpen] = useState(false);
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const progressAnim = useRef(new Animated.Value(0)).current;
   const fabAnim = useRef(new Animated.Value(0)).current;
 
@@ -181,12 +194,12 @@ const HomeScreen: React.FC = () => {
       .map((item) => {
         if (item.type === "folder") {
           const folder = foldersMap[item.id];
-          return folder ? { ...item, label: folder.name } : null;
+          return folder ? { ...item, label: folder.name, color: folder.color, photoPath: folder.photoPath, bannerPath: folder.bannerPath } : null;
         }
         const note = notesMap[item.id];
         return note ? { ...item, label: note.title, subtitle: firstLine(note.content) } : null;
       })
-      .filter(Boolean) as Array<{ type: "folder" | "note"; id: ID; openedAt: number; label: string; subtitle?: string }>;
+      .filter(Boolean) as Array<{ type: "folder" | "note"; id: ID; openedAt: number; label: string; subtitle?: string; color?: string; photoPath?: string; bannerPath?: string }>;
   }, [foldersMap, notesMap, recentItems]);
 
   const allSelectableItems = useMemo<SelectedItem[]>(() => {
@@ -295,7 +308,7 @@ const HomeScreen: React.FC = () => {
           screen: "Folders",
           params: {
             screen: "FolderDetail",
-            params: { folderId, trail: [folderId] }
+            params: { folderId, trail: [folderId], from: "home" }
           }
         });
         saveRecentItems(next); // fire-and-forget — does not delay navigation
@@ -457,9 +470,36 @@ const HomeScreen: React.FC = () => {
     );
   }, [handleClearSelection, removeFolder, removeNote, removeQuickNote, removeTask, selectedItems, showToast]);
 
+  const memoizedTodayTasks = useMemo(() => todaysTasks, [todaysTasks]);
+
+  const rootTasks = useMemo(() => {
+    const todayRootTasks = tasks.filter(t => {
+      if (t.parentId) return false;
+      return t.scheduledDate === todayKey;
+    });
+
+    const sortedTodayTasks = todayRootTasks.sort((a, b) => {
+      return (b.priority ?? 0) - (a.priority ?? 0);
+    });
+
+    return sortedTodayTasks.map(root => {
+      const allSubtasks = tasks.filter(t => t.parentId === root.id);
+      const subtasks = allSubtasks.filter(st => {
+        if (!st.scheduledDate) return true;
+        return st.scheduledDate === todayKey;
+      });
+      const total = subtasks.length;
+      const completed = subtasks.filter(st =>
+        st.completed || isTaskCompletedForDate(st, todayKey)
+      ).length;
+      const progress = total === 0 ? 0 : completed / total;
+      return { ...root, subtasks, total, completed, progress };
+    });
+  }, [tasks, todayKey]);
+
   const sectionData = useMemo(
-    () => ["pinned", "today", "recentNotes", "folders", "recent"],
-    []
+    () => ["quick", "folders", "taskOverview", "rootTasks"],
+    [rootTasks.length]
   );
 
   const folderPreviewCounts = useMemo(() => {
@@ -487,8 +527,8 @@ const HomeScreen: React.FC = () => {
 
   return (
     <SafeAreaView
-      style={[hsStyles.safe, { backgroundColor: theme.colors.background }]}
-      edges={["top", "right", "left", "bottom"]}
+      style={{ flex: 1, backgroundColor: theme.colors.background }}
+      edges={["top", "left", "right"]}
     >
       <View style={hsStyles.header}>
         {selectionMode ? (
@@ -519,27 +559,36 @@ const HomeScreen: React.FC = () => {
         ) : (
           <View style={hsStyles.headerTopRow}>
             <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
-            <Pressable
-              onPress={() => setOpenScanner(true)}
-              style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-              accessibilityRole="button"
-              accessibilityLabel="Abrir QR Code"
-            >
-              <Ionicons name="qr-code-outline" size={20} color={theme.colors.textPrimary} />
-            </Pressable>
+            <View style={{ flexDirection: "row", gap: 12 }}>
+              <Pressable
+                onPress={() => setOpenScanner(true)}
+                style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+                accessibilityRole="button"
+                accessibilityLabel="Abrir QR Code"
+              >
+                <Ionicons name="qr-code-outline" size={20} color={theme.colors.textPrimary} />
+              </Pressable>
+              <Pressable
+                onPress={() => navigation.navigate("Notifications" as never)}
+                style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+              >
+                <Ionicons name="notifications-outline" size={20} color={theme.colors.textPrimary} />
+              </Pressable>
+            </View>
           </View>
         )}
       </View>
 
       <FlatList
+        style={{ flex: 1, backgroundColor: theme.colors.background }}
         data={sectionData}
         keyExtractor={(item) => item}
-        contentContainerStyle={hsStyles.scroll}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120, backgroundColor: theme.colors.background }}
         keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => {
           if (item === "pinned") {
             return (
-              <View style={[hsStyles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
+              <View style={[hsStyles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, overflow: "visible" }]}> 
                 <SectionHeader title="Pinned" icon="pin-outline" />
                 {pinnedResolved.length === 0 ? (
                   <Text muted>Long press folders, notes or tasks to pin them.</Text>
@@ -548,7 +597,7 @@ const HomeScreen: React.FC = () => {
                     horizontal
                     data={pinnedResolved}
                     keyExtractor={(x) => `${x.type}-${x.id}`}
-                    contentContainerStyle={hsStyles.horizontalListContent}
+                    contentContainerStyle={{ paddingLeft: 0, paddingRight: 0, gap: 12 }}
                     showsHorizontalScrollIndicator={false}
                     renderItem={({ item: pin }) => (
                       <Pressable
@@ -603,260 +652,325 @@ const HomeScreen: React.FC = () => {
             );
           }
 
-          if (item === "today") {
+
+
+          if (item === "taskOverview") {
+            if (tasks.length === 0) return null;
+
+            const total = tasks.length;
+            const pendingCount = tasks.filter(t => {
+              return !isTaskCompletedForDate?.(t, todayKey);
+            }).length;
+
+            const upcomingCount = tasks.filter(t => {
+              return (
+                t.scheduledDate &&
+                t.scheduledDate > todayKey &&
+                !isTaskCompletedForDate?.(t, t.scheduledDate)
+              );
+            }).length;
+
+            const completedCount = tasks.filter(t => {
+              return isTaskCompletedForDate?.(t, todayKey);
+            }).length;
+
+            const progress = total === 0 ? 0 : completedCount / total;
+            const upcomingProgress = total === 0 ? 0 : upcomingCount / total;
+
+            let barColor = theme.colors.danger;
+            if (progress >= 0.7) barColor = theme.colors.primary;
+            else if (progress >= 0.3) barColor = theme.colors.secondary;
+
             return (
-              <View style={[hsStyles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-                <SectionHeader title="Today's tasks" icon="checkmark-done-outline" />
-                <View style={hsStyles.progressRow}>
-                  <Text muted variant="caption">
-                    {completedToday}/{todaysTasks.length} completed
-                  </Text>
-                  {!!recurringCount && (
-                    <Text variant="caption" style={{ color: theme.colors.primary }}>
-                      {recurringCount} recurring
-                    </Text>
-                  )}
+              <View style={{ marginTop: spacing.lg }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
+                   <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary }}>Task Overview</Text>
+                   <Pressable onPress={() => navigation.navigate("Tasks" as never)} hitSlop={8}>
+                     <Text style={{ color: theme.colors.primary, fontSize: 13, fontWeight: "600" }}>View All</Text>
+                   </Pressable>
                 </View>
-                <View style={[hsStyles.progressTrack, { backgroundColor: theme.colors.border }]}>
-                  <Animated.View
-                    style={[
-                      hsStyles.progressFill,
-                      {
-                        backgroundColor: theme.colors.primary,
-                        width: progressAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ["0%", "100%"]
-                        })
-                      }
-                    ]}
-                  />
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={{ flex: 1, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, backgroundColor: theme.colors.card, borderColor: theme.colors.border }}>
+                     <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: 4, color: theme.colors.textPrimary }}>Pending Tasks ({pendingCount})</Text>
+                     <Text style={{ fontSize: 12, marginBottom: 8, color: theme.colors.textSecondary }}>Progress</Text>
+                     <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
+                        <View style={{ height: "100%", borderRadius: 3, width: `${progress * 100}%`, backgroundColor: barColor }} />
+                     </View>
+                  </View>
+                  <View style={{ flex: 1, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, backgroundColor: theme.colors.card, borderColor: theme.colors.border }}>
+                     <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: 4, color: theme.colors.textPrimary }}>Upcoming Tasks ({upcomingCount})</Text>
+                     <Text style={{ fontSize: 12, marginBottom: 8, color: theme.colors.textSecondary }}>Progress</Text>
+                     <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
+                        <View style={{ height: "100%", borderRadius: 3, width: `${upcomingProgress * 100}%`, backgroundColor: theme.colors.secondary || theme.colors.primary }} />
+                     </View>
+                  </View>
                 </View>
-                {todaysTasks.length === 0 ? (
-                  <Text muted>No tasks for today.</Text>
-                ) : (
-                  todaysTasks.map((task) => (
-                    <Pressable
-                      key={task.id}
-                      style={[
-                        hsStyles.row,
-                        isSelected("task", task.id) && {
-                          backgroundColor: theme.colors.primaryAlpha20,
-                          borderRadius: 10,
-                          paddingHorizontal: 8
-                        }
-                      ]}
-                      onPress={() => {
-                        if (selectionMode) {
-                          toggleSelection({ kind: "task", id: task.id, label: task.text });
-                          return;
-                        }
-                        handleToggleTodayTask(task.id);
-                      }}
-                      onLongPress={() => {
-                        if (selectionMode) {
-                          toggleSelection({ kind: "task", id: task.id, label: task.text });
-                          return;
-                        }
-                        startSelection({ kind: "task", id: task.id, label: task.text });
-                      }}
-                      delayLongPress={260}
-                    >
-                      <Ionicons
-                        name={isTaskCompletedForDate(task, todayKey) ? "checkbox" : "square-outline"}
-                        size={18}
-                        color={isTaskCompletedForDate(task, todayKey) ? theme.colors.primary : theme.colors.textSecondary}
-                      />
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          hsStyles.rowText,
-                          isTaskCompletedForDate(task, todayKey) && {
-                            textDecorationLine: "line-through",
-                            color: theme.colors.textSecondary
-                          }
-                        ]}
-                      >
-                        {task.text}
-                      </Text>
-                      {!!task.repeatDays?.length && (
-                        <Text variant="caption" style={{ color: theme.colors.primary }}>
-                          Recurring • {task.repeatDays.length} day(s)
-                        </Text>
-                      )}
-                      <Ionicons name="pin-outline" size={14} color={theme.colors.textSecondary} />
-                    </Pressable>
-                  ))
-                )}
               </View>
             );
           }
 
-          if (item === "recentNotes") {
-            return (
-              <View style={[hsStyles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-                <SectionHeader title="Recent notes" icon="document-text-outline" />
-                {recentNotes.length === 0 ? (
-                  <Text muted>No notes yet.</Text>
-                ) : (
-                  (recentNotes ?? []).map((note) => (
-                    <Pressable
-                      key={note.id}
-                      style={[
-                        hsStyles.noteCard,
-                        {
-                          backgroundColor: theme.colors.surface,
-                          borderColor: isSelected(note.kind, note.id) ? theme.colors.primary : theme.colors.border
-                        },
-                        isSelected(note.kind, note.id) && { borderWidth: 1.5 }
-                      ]}
-                      onPress={() => {
-                        if (selectionMode) {
-                          toggleSelection({ kind: note.kind, id: note.id, label: note.title });
-                          return;
-                        }
-                        note.kind === "quick" ? handleOpenQuickNote(note.id) : handleOpenNote(note.id);
-                      }}
-                      onLongPress={() => {
-                        if (selectionMode) {
-                          toggleSelection({ kind: note.kind, id: note.id, label: note.title });
-                          return;
-                        }
-                        startSelection({ kind: note.kind, id: note.id, label: note.title });
-                      }}
-                      delayLongPress={260}
-                    >
-                      <View style={hsStyles.noteTopRow}>
-                        <Text numberOfLines={1} style={hsStyles.noteTitle}>{note.title}</Text>
-                        {note.kind === "quick" ? (
-                          <Ionicons name="flash-outline" size={14} color={theme.colors.textSecondary} />
-                        ) : (
-                          <Ionicons
-                            name={pinnedItems.some((x) => x.type === "note" && x.id === note.id) ? "pin" : "pin-outline"}
-                            size={14}
-                            color={theme.colors.textSecondary}
-                          />
-                        )}
+          if (item === "rootTasks") {
+             const limitedRootTasks = rootTasks.slice(0, 5);
+             const hasMore = rootTasks.length > 5;
+             
+             return (
+               <View style={{ marginTop: spacing.lg }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary, marginBottom: 12 }}>Today</Text>
+                  {rootTasks.length === 0 ? (
+                    <Text style={{ color: theme.colors.textSecondary, marginBottom: 16 }}>
+                      Nenhuma task para hoje
+                    </Text>
+                  ) : (
+                    <>
+                      <View style={{ gap: 12 }}>
+                    {limitedRootTasks.map(root => {
+                       const isExpanded = expandedTaskId === root.id;
+                       
+                       return (
+                         <View key={root.id} style={{ borderRadius: 16, backgroundColor: theme.colors.card, borderColor: theme.colors.border, borderWidth: StyleSheet.hairlineWidth, overflow: 'hidden' }}>
+                            <Pressable
+                               android_ripple={{ color: theme.colors.primaryAlpha20 }}
+                               style={{ padding: 14 }}
+                               onPress={() => {
+                                  LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                                  setExpandedTaskId(prev => (prev === root.id ? null : root.id));
+                               }}
+                            >
+                               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                  <Pressable
+                                     hitSlop={8}
+                                     onPress={async () => {
+                                        LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                                        try {
+                                          const updated = await updateTask({
+                                            ...root,
+                                            subtasks: undefined,
+                                            total: undefined,
+                                            completed: !root.completed,
+                                            updatedAt: Date.now(),
+                                          } as any);
+                                          upsertTask(updated);
+                                        } catch (e) {
+                                          console.error("[HomeScreen] toggle root task failed", e);
+                                        }
+                                     }}
+                                  >
+                                     <Ionicons
+                                        name={root.completed ? "checkmark-circle" : "ellipse-outline"}
+                                        size={22}
+                                        color={root.completed ? theme.colors.primary : theme.colors.textSecondary}
+                                     />
+                                  </Pressable>
+                                  <Text style={{ flex: 1, fontSize: 16, fontWeight: "600", color: root.completed ? theme.colors.textSecondary : theme.colors.textPrimary, marginRight: 8, marginLeft: 8, textDecorationLine: root.completed ? "line-through" : "none" }} numberOfLines={1}>{root.text}</Text>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                                     <Pressable
+                                        hitSlop={8}
+                                        onPress={() => handleOpenTask(root.id)}
+                                     >
+                                        <Ionicons name="open-outline" size={20} color={theme.colors.primary} />
+                                     </Pressable>
+                                     <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={theme.colors.textSecondary} />
+                                  </View>
+                               </View>
+
+                               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                  <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{root.completed}/{root.total} completas</Text>
+                                  <Text style={{ fontSize: 13, color: theme.colors.textSecondary }}>{Math.round(root.progress * 100)}%</Text>
+                               </View>
+                               
+                               <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
+                                  <View style={{ height: "100%", borderRadius: 3, width: `${root.progress * 100}%`, backgroundColor: root.progress === 1 ? theme.colors.primary : theme.colors.secondary || theme.colors.primary }} />
+                               </View>
+                            </Pressable>
+
+                            {isExpanded && (
+                               <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 4, gap: 6 }}>
+                                 {root.subtasks.map(subtask => {
+                                    const completed = subtask.completed || isTaskCompletedForDate(subtask, todayKey);
+                                    return (
+                                       <Pressable
+                                          key={subtask.id}
+                                          android_ripple={{ color: theme.colors.primaryAlpha20 }}
+                                          style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}
+                                          onPress={async () => {
+                                             LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                                             try {
+                                               const updated = await toggleTaskForDate(subtask, todayKey);
+                                               upsertTask(updated);
+                                             } catch (e) {
+                                               console.error("[HomeScreen] toggle subtask failed", e);
+                                             }
+                                          }}
+                                          onLongPress={() => {
+                                             if (selectionMode) {
+                                               toggleSelection({ kind: "task", id: subtask.id, label: subtask.text });
+                                               return;
+                                             }
+                                             startSelection({ kind: "task", id: subtask.id, label: subtask.text });
+                                          }}
+                                       >
+                                          <Ionicons
+                                             name={completed ? "checkmark-circle" : "ellipse-outline"}
+                                             size={20}
+                                             color={completed ? theme.colors.primary : theme.colors.textSecondary}
+                                          />
+                                          <Text style={{ flex: 1, fontSize: 14, color: completed ? theme.colors.textSecondary : theme.colors.textPrimary, textDecorationLine: completed ? "line-through" : "none" }}>{subtask.text}</Text>
+                                       </Pressable>
+                                    );
+                                 })}
+                               </View>
+                            )}
+                         </View>
+                       );
+                    })}
                       </View>
-                      {!!firstLine(note.content) && (
-                        <Text muted numberOfLines={1} style={hsStyles.notePreview}>
-                          {firstLine(note.content)}
-                        </Text>
+
+                      {hasMore && (
+                        <Pressable
+                          onPress={() => navigation.navigate("Tasks" as never)}
+                          style={{ marginTop: 12, alignItems: "center", paddingVertical: 10 }}
+                        >
+                          <Text style={{ color: theme.colors.primary, fontWeight: "600", fontSize: 14 }}>Ver mais ({rootTasks.length - 5})</Text>
+                        </Pressable>
                       )}
-                      {isSelected(note.kind, note.id) && (
-                        <View style={hsStyles.selectedBadge}>
-                          <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
-                        </View>
-                      )}
-                    </Pressable>
-                  ))
-                )}
-              </View>
-            );
+                    </>
+                  )}
+               </View>
+             );
           }
 
           if (item === "folders") {
+            if (previewFolders.length === 0) return null;
+            const limitedFolders = previewFolders.slice(0, LIMITS.folders);
+            const hasMoreFolders = previewFolders.length > LIMITS.folders;
             return (
-              <View style={[hsStyles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-                <SectionHeader title="Folders preview" icon="folder-outline" />
-                {previewFolders.length === 0 ? (
-                  <Text muted>No folders yet.</Text>
-                ) : (
-                  (previewFolders ?? []).map((folder) => (
-                    <Pressable
-                      key={folder.id}
-                      style={[
-                        hsStyles.row,
-                        isSelected("folder", folder.id) && {
-                          backgroundColor: theme.colors.primaryAlpha20,
-                          borderRadius: 10,
-                          paddingHorizontal: 8
-                        }
-                      ]}
-                      onPress={() => {
-                        if (selectionMode) {
-                          toggleSelection({ kind: "folder", id: folder.id, label: folder.name });
-                          return;
-                        }
-                        handleOpenFolder(folder.id);
-                      }}
-                      onLongPress={() => {
-                        if (selectionMode) {
-                          toggleSelection({ kind: "folder", id: folder.id, label: folder.name });
-                          return;
-                        }
-                        startSelection({ kind: "folder", id: folder.id, label: folder.name });
-                      }}
-                      delayLongPress={260}
-                    >
-                      <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={18} />
-                      <View style={{ flex: 1 }}>
-                        <Text style={hsStyles.rowText} numberOfLines={1}>{folder.name}</Text>
-                        <Text muted variant="caption" numberOfLines={1}>
-                          {folderPreviewCounts[folder.id]?.subfolders ?? 0} folders • {folderPreviewCounts[folder.id]?.notes ?? 0} notes • {folderPreviewCounts[folder.id]?.files ?? 0} files
-                        </Text>
-                      </View>
-                      <Ionicons
-                        name={pinnedItems.some((x) => x.type === "folder" && x.id === folder.id) ? "pin" : "chevron-forward"}
-                        size={14}
-                        color={theme.colors.textSecondary}
-                      />
+              <View style={{ marginTop: spacing.lg, overflow: "visible" }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary }}>My Folders</Text>
+                  {hasMoreFolders && (
+                    <Pressable onPress={() => navigation.navigate("Folders" as never)}>
+                      <Text style={{ color: theme.colors.primary, fontSize: 13, fontWeight: "600" }}>View All ({previewFolders.length})</Text>
                     </Pressable>
-                  ))
-                )}
+                  )}
+                </View>
+                <FlatList
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    data={limitedFolders}
+                    keyExtractor={f => f.id}
+                    contentContainerStyle={{ paddingLeft: 0, paddingRight: 0, gap: 12 }}
+                    renderItem={({ item: folder }) => (
+                        <FolderCard 
+                            folder={folder} 
+                            variant="compact"
+                            onPress={() => {
+                              if (selectionMode) {
+                                toggleSelection({ kind: "folder", id: folder.id, label: folder.name });
+                                return;
+                              }
+                              handleOpenFolder(folder.id);
+                            }}
+                            onLongPress={() => {
+                              if (selectionMode) {
+                                toggleSelection({ kind: "folder", id: folder.id, label: folder.name });
+                                return;
+                              }
+                              startSelection({ kind: "folder", id: folder.id, label: folder.name });
+                            }}
+                        />
+                    )}
+                  />
               </View>
             );
           }
 
-          return (
-            <View style={[hsStyles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}> 
-              <SectionHeader title="Recent" icon="time-outline" />
-              {recentResolved.length === 0 ? (
-                <Text muted>No recently opened items.</Text>
-              ) : (
-                (recentResolved ?? []).map((item) => (
-                  <Pressable
-                    key={`${item.type}-${item.id}`}
-                    style={[
-                      hsStyles.row,
-                      isSelected(item.type, item.id) && {
-                        backgroundColor: theme.colors.primaryAlpha20,
-                        borderRadius: 10,
-                        paddingHorizontal: 8
-                      }
-                    ]}
-                    onPress={() => {
-                      if (selectionMode) {
-                        toggleSelection({ kind: item.type, id: item.id, label: item.label });
-                        return;
-                      }
-                      item.type === "folder" ? handleOpenFolder(item.id) : handleOpenNote(item.id);
-                    }}
-                    onLongPress={() => {
-                      if (selectionMode) {
-                        toggleSelection({ kind: item.type, id: item.id, label: item.label });
-                        return;
-                      }
-                      startSelection({ kind: item.type, id: item.id, label: item.label });
-                    }}
-                  >
-                    <Ionicons
-                      name={item.type === "folder" ? "folder-outline" : "document-text-outline"}
-                      size={16}
-                      color={theme.colors.textSecondary}
-                    />
-                    <View style={{ flex: 1 }}>
-                      <Text numberOfLines={1}>{item.label}</Text>
-                      {!!item.subtitle && (
-                        <Text muted variant="caption" numberOfLines={1}>
-                          {item.subtitle}
-                        </Text>
-                      )}
-                    </View>
-                  </Pressable>
-                ))
-              )}
-            </View>
-          );
+          if (item === "quick") {
+            if (recentResolved.length === 0) return null;
+            const limitedRecent = recentResolved.slice(0, LIMITS.quick);
+            const hasMoreRecent = recentResolved.length > LIMITS.quick;
+            return (
+              <View style={{ marginTop: spacing.lg, overflow: "visible" }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary }}>Quick Access</Text>
+                  {hasMoreRecent && (
+                    <Pressable onPress={() => navigation.navigate("FoldersRoot" as never)} hitSlop={8}>
+                      <Text style={{ color: theme.colors.primary, fontSize: 13, fontWeight: "600" }}>View All ({recentResolved.length})</Text>
+                    </Pressable>
+                  )}
+                </View>
+                <FlatList
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    data={limitedRecent}
+                    keyExtractor={(x) => `${x.type}-${x.id}`}
+                    contentContainerStyle={{ paddingLeft: 0, paddingRight: 0, gap: 12 }}
+                    renderItem={({ item: act }) => (
+                      <Pressable
+                        android_ripple={{ color: theme.colors.primaryAlpha20 }}
+                        onPress={() => {
+                          if (selectionMode) {
+                            toggleSelection({ kind: act.type as any, id: act.id, label: act.label });
+                            return;
+                          }
+                          act.type === "folder" ? handleOpenFolder(act.id) : handleOpenNote(act.id);
+                        }}
+                        onLongPress={() => {
+                          if (selectionMode) {
+                            toggleSelection({ kind: act.type as any, id: act.id, label: act.label });
+                            return;
+                          }
+                          startSelection({ kind: act.type as any, id: act.id, label: act.label });
+                        }}
+                        style={[
+                          {
+                            width: 160,
+                            borderWidth: StyleSheet.hairlineWidth,
+                            borderRadius: 16,
+                            overflow: 'hidden',
+                            backgroundColor: theme.colors.card,
+                            borderColor: isSelected(act.type as any, act.id) ? theme.colors.primary : theme.colors.border
+                          },
+                          isSelected(act.type as any, act.id) && { borderWidth: 1.5 }
+                        ]}
+                      >
+                        {act.type === "folder" ? (
+                          <View>
+                             {act.bannerPath ? (
+                                <Image source={{ uri: act.bannerPath }} style={{ width: '100%', height: 64 }} resizeMode="cover" />
+                             ) : (
+                                <View style={{ width: '100%', height: 64, backgroundColor: theme.colors.primaryAlpha20 }} />
+                             )}
+                             <View style={{ position: 'absolute', top: 48, left: 12, width: 32, height: 32, borderRadius: 8, backgroundColor: theme.colors.card, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
+                                {act.photoPath ? (
+                                  <Image source={{ uri: act.photoPath }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="cover" />
+                                ) : (
+                                  <FolderIcon color={act.color} fallbackColor={theme.colors.primary} size={18} />
+                                )}
+                             </View>
+                             <View style={{ padding: 12, paddingTop: 20 }}>
+                                <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", marginBottom: 2, color: theme.colors.textPrimary }}>{act.label}</Text>
+                                {!!act.subtitle && <Text numberOfLines={1} variant="caption" muted>{act.subtitle}</Text>}
+                             </View>
+                          </View>
+                        ) : (
+                          <>
+                             <View style={{ width: '100%', height: 80, backgroundColor: theme.colors.primaryAlpha20, alignItems: 'center', justifyContent: 'center' }}>
+                                <Ionicons name="document-text" size={32} color={theme.colors.primary} />
+                             </View>
+                             <View style={{ padding: 12 }}>
+                                <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", marginBottom: 2, color: theme.colors.textPrimary }}>{act.label}</Text>
+                                {!!act.subtitle && <Text numberOfLines={1} variant="caption" muted>{act.subtitle}</Text>}
+                             </View>
+                          </>
+                        )}
+                      </Pressable>
+                    )}
+                  />
+              </View>
+            );
+          }
+
+          return null;
         }}
       />
 
@@ -1306,8 +1420,10 @@ const hsStyles = StyleSheet.create({
   },
   fabRoot: {
     position: "absolute",
-    right: spacing.md,
-    bottom: spacing.lg
+    right: 20,
+    bottom: 90,
+    zIndex: 999,
+    elevation: 10
   },
   fabMenuItemWrap: {
     position: "absolute",
@@ -1329,15 +1445,15 @@ const hsStyles = StyleSheet.create({
     fontWeight: "600"
   },
   fabMain: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: "center",
     justifyContent: "center",
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 10
   }
 });
 

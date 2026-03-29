@@ -72,12 +72,12 @@ const parseTask = (row: Task & { repeatDays?: string; completedDates?: string; r
 });
 
 export const isTaskCompletedForDate = (task: Task, dateKey: string): boolean => {
-  const repeats = task.repeatDays ?? [];
-  const completedDates = task.completedDates ?? [];
-  if (repeats.length > 0 || task.scheduledDate) {
-    return completedDates.includes(dateKey);
+  if (!task.scheduledDate && !task.repeatDays?.length) {
+    // Non-scheduled task: use the boolean field only
+    return task.completed;
   }
-  return task.completed;
+  // Scheduled or recurring: use completedDates array
+  return (task.completedDates ?? []).includes(dateKey);
 };
 
 export const shouldAppearOnDate = (task: Task, dateKey: string): boolean => {
@@ -94,8 +94,9 @@ export const shouldAppearOnDate = (task: Task, dateKey: string): boolean => {
 export const createTask = async (payload: {
   id?: ID;
   text: string;
-  priority: TaskPriority;
+  priority?: TaskPriority;
   noteId?: ID | null;
+  parentId?: ID | null;
   scheduledDate?: string | null;
   scheduledTime?: string | null;
   repeatDays?: number[];
@@ -128,8 +129,9 @@ export const createTask = async (payload: {
       completed: false,
       updatedAt,
       orderIndex,
-      priority: payload.priority,
+      priority: payload.priority ?? 1,
       noteId: payload.noteId ?? null,
+      parentId: payload.parentId ?? null,
       scheduledDate: payload.scheduledDate ?? null,
       scheduledTime: payload.scheduledTime ?? null,
       repeatDays,
@@ -142,7 +144,7 @@ export const createTask = async (payload: {
     try {
       if (payload.scheduledDate && payload.scheduledTime) {
         task.notificationIds = await scheduleTaskNotifications(task);
-        if (shouldLogDev) {
+        if (__DEV__) {
           console.log(`[NOTIF] Scheduled task notifications for ID: ${task.id}`);
         }
       }
@@ -151,14 +153,15 @@ export const createTask = async (payload: {
     }
 
     await db.runAsync(
-      "INSERT INTO tasks (id, text, completed, updatedAt, orderIndex, priority, noteId, scheduledDate, scheduledTime, repeatDays, completedDates, reminders, notificationIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO tasks (id, text, completed, updatedAt, orderIndex, priority, noteId, parentId, scheduledDate, scheduledTime, repeatDays, completedDates, reminders, notificationIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       id,
       taskText,
       0,
       updatedAt,
       orderIndex,
-      payload.priority,
+      payload.priority ?? 1,
       payload.noteId ?? null,
+      payload.parentId ?? null,
       payload.scheduledDate ?? null,
       payload.scheduledTime ?? null,
       JSON.stringify(repeatDays),
@@ -258,9 +261,9 @@ export const updateTask = async (task: Task): Promise<Task> => {
     if (task.scheduledDate && task.scheduledTime && !task.completed) {
       // Reschedule notifications (this cancels old ones and creates new ones)
       updatedTask.notificationIds = await rescheduleTaskNotifications(task);
-      if (shouldLogDev) {
-        console.log(`[NOTIF] Rescheduled notifications for task ID: ${task.id}`);
-      }
+        if (__DEV__) {
+          console.log(`[NOTIF] Rescheduled notifications for task ID: ${task.id}`);
+        }
     } else if (task.completed && task.notificationIds && task.notificationIds.length > 0) {
       // Cancel notifications if task is marked as completed
       await cancelTaskNotifications(task.notificationIds);

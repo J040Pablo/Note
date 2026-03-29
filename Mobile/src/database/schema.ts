@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   orderIndex INTEGER NOT NULL DEFAULT 0,
   priority INTEGER NOT NULL DEFAULT 0,
   noteId TEXT REFERENCES notes(id) ON DELETE CASCADE,
+  parentId TEXT,
   scheduledDate TEXT,
   scheduledTime TEXT,
   repeatDays TEXT NOT NULL DEFAULT '[]',

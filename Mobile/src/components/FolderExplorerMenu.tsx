@@ -113,7 +113,7 @@ const FolderExplorerMenu: React.FC<FolderExplorerMenuProps> = ({
           ]}
         >
           <Pressable style={styles.menuTouchBlock} onPress={(e) => e.stopPropagation()}>
-          <SafeAreaView style={styles.safeArea}>
+          <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
             {/* Header */}
             <View style={[styles.menuHeader, { borderBottomColor: borderColor }]}>
               <Text variant="subtitle" style={{ color: textPrimary }}>

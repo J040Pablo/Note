@@ -150,8 +150,7 @@ const styles = StyleSheet.create({
     height: 280,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#000",
+    overflow: "hidden"
   },
   centered: {
     flex: 1,

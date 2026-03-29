@@ -49,7 +49,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onClose, onScan }) => {
 
   return (
     <Modal visible animationType="slide" onRequestClose={onClose}>
-      <View style={styles.root}>
+      <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
         {permission === "granted" ? (
           <CameraView
             style={StyleSheet.absoluteFill}
@@ -97,8 +97,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onClose, onScan }) => {
 
 const styles = StyleSheet.create({
   root: {
-    flex: 1,
-    backgroundColor: "#000",
+    flex: 1
   },
   permissionFallback: {
     flex: 1,

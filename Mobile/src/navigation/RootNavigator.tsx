@@ -14,7 +14,9 @@ import SaveSharedFileScreen from "@screens/SaveSharedFileScreen";
 import ImportFolderPackageScreen from "@screens/ImportFolderPackageScreen";
 import TasksScreen from "@screens/TasksScreen";
 import SettingsScreen from "@screens/SettingsScreen";
+import NotificationsScreen from "@screens/NotificationsScreen";
 import { useTheme } from "@hooks/useTheme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 
 export type RootStackParamList = {
@@ -25,11 +27,12 @@ export type RootStackParamList = {
   ImageViewer: { path: string; name: string };
   SaveSharedFile: { uri: string; name?: string; mimeType?: string | null };
   ImportFolderPackage: { destinationFolderId?: string | null } | undefined;
+  Notifications: undefined;
 };
 
 export type FoldersStackParamList = {
   FoldersRoot: undefined;
-  FolderDetail: { folderId: string | null; trail?: string[] };
+  FolderDetail: { folderId: string | null; trail?: string[]; from?: "home" | "folders" };
 };
 
 export type TabsParamList = {
@@ -81,6 +84,8 @@ const FoldersStackNavigator = () => {
 
 const TabsNavigator = () => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -89,14 +94,21 @@ const TabsNavigator = () => {
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: theme.colors.surface,
-          borderTopColor: theme.colors.border,
-          borderTopWidth: 1,
-          elevation: 4,
-          shadowColor: "#000000",
-          shadowOpacity: 0.2,
-          shadowRadius: 6,
-          shadowOffset: { width: 0, height: -2 }
+          position: "absolute",
+          left: 16,
+          right: 16,
+          bottom: 12,
+          height: 60,
+          paddingBottom: 8,
+          paddingTop: 6,
+          borderRadius: 16,
+          backgroundColor: theme.colors.card,
+          borderTopWidth: 0,
+          elevation: 8,
+          shadowColor: "#000",
+          shadowOpacity: 0.12,
+          shadowRadius: 10,
+          shadowOffset: { width: 0, height: 4 },
         },
         tabBarIcon: ({ color, size }) => {
           let iconName: keyof typeof Ionicons.glyphMap = "home";
@@ -183,6 +195,15 @@ const RootNavigator = () => {
           title: "Import Package",
           presentation: "modal",
           animation: "slide_from_bottom"
+        }}
+      />
+      <RootStack.Screen
+        name="Notifications"
+        component={NotificationsScreen}
+        options={{
+          headerShown: true,
+          title: "Notifications",
+          animation: "slide_from_right"
         }}
       />
     </RootStack.Navigator>
