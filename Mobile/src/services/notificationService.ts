@@ -211,6 +211,7 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
           title: 'Task reminder',
           body: `You need to: ${task.text}`,
           sound: true,
+          data: { taskId: task.id },
           ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
         },
         trigger: reminderDate as any,
@@ -314,4 +315,11 @@ export const getScheduledNotifications = async (): Promise<any[]> => {
  */
 export const areNotificationsAvailable = (): boolean => {
   return notificationsAvailable;
+};
+
+export const addNotificationResponseListener = (callback: (response: any) => void) => {
+  if (!notificationsAvailable || !Notifications) {
+    return { remove: () => {} };
+  }
+  return Notifications.addNotificationResponseReceivedListener(callback);
 };

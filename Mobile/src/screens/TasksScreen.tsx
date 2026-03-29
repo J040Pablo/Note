@@ -114,6 +114,7 @@ const TasksScreen: React.FC = () => {
   const upsertTask = useTasksStore((s) => s.upsertTask);
   const removeTask = useTasksStore((s) => s.removeTask);
   const togglePinned = useAppStore((s) => s.togglePinned);
+  const pinnedItems = useAppStore((s) => s.pinnedItems);
 
   const [newText, setNewText] = useState("");
   const [priority, setPriority] = useState<TaskPriority>(1);
@@ -208,21 +209,33 @@ const TasksScreen: React.FC = () => {
   );
 
   const sortedRootTasks = useMemo(() => {
-    if (sortMode === "name_asc") return [...rootTasksForDate].sort((a, b) => a.text.localeCompare(b.text));
-    if (sortMode === "name_desc") return [...rootTasksForDate].sort((a, b) => b.text.localeCompare(a.text));
-    if (sortMode === "recent") {
-      return [...rootTasksForDate].sort((a, b) => {
+    let sortedList = [...rootTasksForDate];
+    if (sortMode === "name_asc") sortedList.sort((a, b) => a.text.localeCompare(b.text));
+    else if (sortMode === "name_desc") sortedList.sort((a, b) => b.text.localeCompare(a.text));
+    else if (sortMode === "recent") {
+      sortedList.sort((a, b) => {
         const ad = a.scheduledDate ? Number(a.scheduledDate.replace(/-/g, "")) : 0;
         const bd = b.scheduledDate ? Number(b.scheduledDate.replace(/-/g, "")) : 0;
         if (bd !== ad) return bd - ad;
         return Number(b.id) - Number(a.id);
       });
+    } else {
+      sortedList.sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
     }
-    return [...rootTasksForDate].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
-  }, [sortMode, rootTasksForDate]);
+    
+    const taskPins = pinnedItems.filter(p => p.type === "task").map(p => p.id);
+    return sortedList.sort((a, b) => {
+      const aPinned = taskPins.includes(a.id);
+      const bPinned = taskPins.includes(b.id);
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+      return 0;
+    });
+  }, [sortMode, rootTasksForDate, pinnedItems]);
 
   // Enrich each root task with its subtasks + progress (mirrors HomeScreen rootTasks)
   const enrichedTasks = useMemo(() => {
+    const taskPins = pinnedItems.filter(p => p.type === "task").map(p => p.id);
     return sortedRootTasks.map(root => {
       const allSubtasks = tasks.filter(t => t.parentId === root.id);
       const subtasks = allSubtasks.filter(st => !st.scheduledDate || st.scheduledDate === selectedDate);
@@ -231,9 +244,11 @@ const TasksScreen: React.FC = () => {
       const progress = total === 0 ? 0 : completedCount / total;
       // Parent done only when ALL subtasks are done; no-subtask fallback uses isTaskCompletedForDate
       const parentCompleted = total > 0 ? total === completedCount : isTaskCompletedForDate(root, selectedDate);
-      return { ...root, subtasks, total, completedCount, progress, parentCompleted };
+      const isPinned = taskPins.includes(root.id);
+      
+      return { ...root, subtasks, total, completedCount, progress, parentCompleted, isPinned };
     });
-  }, [sortedRootTasks, tasks, selectedDate]);
+  }, [sortedRootTasks, tasks, selectedDate, pinnedItems]);
 
   // Progress card counts root-level completion
   const completedToday = useMemo(
@@ -616,8 +631,8 @@ const TasksScreen: React.FC = () => {
                     numberOfLines={1}
                     style={{
                       flex: 1,
-                      fontSize: 15,
-                      fontWeight: "600",
+                      fontSize: 16,
+                      fontWeight: "500",
                       marginHorizontal: 8,
                       color: root.parentCompleted ? theme.colors.textSecondary : theme.colors.textPrimary,
                       textDecorationLine: root.parentCompleted ? "line-through" : "none"
@@ -625,6 +640,9 @@ const TasksScreen: React.FC = () => {
                   >
                     {root.text}
                   </Text>
+                  {root.isPinned && (
+                    <Ionicons name="pin" size={12} color={theme.colors.primary} style={{ marginLeft: 6 }} />
+                  )}
 
                   {/* Priority badge */}
                   <Pressable
@@ -778,12 +796,17 @@ const TasksScreen: React.FC = () => {
         title="Ações secundárias"
         onClose={() => setShowSelectionMenu(false)}
         actions={[
-          {
-            key: "pin",
-            label: "Pinar",
-            icon: "pin-outline",
-            onPress: handlePinSelected
-          },
+          (() => {
+            const allPinned = selectedItems.every(i =>
+              pinnedItems.some(p => p.type === "task" && p.id === i.id)
+            );
+            return {
+              key: "pin",
+              label: allPinned ? "Despinar" : "Pinar",
+              icon: allPinned ? "pin" : "pin-outline" as const,
+              onPress: handlePinSelected
+            };
+          })(),
           {
             key: "duplicate",
             label: "Duplicar / Copiar",
@@ -1175,7 +1198,7 @@ const TasksScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 16, 24) + 68 + 24 }]} pointerEvents="box-none">
+      <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 68 + 20 }]} pointerEvents="box-none">
         <Animated.View
           pointerEvents={fabOpen ? "auto" : "none"}
           style={[

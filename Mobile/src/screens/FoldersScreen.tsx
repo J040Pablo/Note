@@ -657,12 +657,19 @@ const FoldersScreen: React.FC = () => {
         title="Ações secundárias"
         onClose={() => setShowSelectionMenu(false)}
         actions={[
-          {
-            key: "pin",
-            label: "Pinar",
-            icon: "pin-outline",
-            onPress: handlePinSelected
-          },
+          (() => {
+            const pinnable = selectedItems.filter(i => i.kind !== "quick");
+            const allPinned = pinnable.length > 0 && pinnable.every(i => {
+              const type = i.kind === "folder" ? "folder" : "note";
+              return pinnedItems.some(p => p.type === type && p.id === i.id);
+            });
+            return {
+              key: "pin",
+              label: allPinned ? "Despinar" : "Pinar",
+              icon: allPinned ? "pin" : "pin-outline" as const,
+              onPress: handlePinSelected
+            };
+          })(),
           {
             key: "duplicate",
             label: "Duplicar / Copiar",
@@ -813,7 +820,7 @@ const FoldersScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={[styles.fabRoot, { bottom: 100 + insets.bottom }]} pointerEvents="box-none">
+      <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 68 + 20 }]} pointerEvents="box-none">
         {([
           {
             key: "note",
@@ -1118,15 +1125,15 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   fabMain: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: "center",
     justifyContent: "center",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 10
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 12
   }
 });
 

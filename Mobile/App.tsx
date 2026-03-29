@@ -9,6 +9,7 @@ import { DatabaseProvider } from "@database/DatabaseProvider";
 import { FeedbackProvider } from "@components/FeedbackProvider";
 import { useNotificationSetup } from "@hooks/useNotificationSetup";
 import { useTaskSyncServer } from "@hooks/useTaskSyncServer";
+import { addNotificationResponseListener } from "@services/notificationService";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 
 const navRef = createNavigationContainerRef<RootStackParamList>();
@@ -55,7 +56,20 @@ const ThemedNavigation: React.FC = () => {
     RNLinking.getInitialURL().then(handleUrl).catch(() => undefined);
 
     const sub = RNLinking.addEventListener("url", ({ url }) => handleUrl(url));
-    return () => sub.remove();
+
+    const notificationSub = addNotificationResponseListener((response) => {
+      const taskId = response?.notification?.request?.content?.data?.taskId;
+      if (taskId && navRef.isReady()) {
+        navRef.navigate("Tabs", { screen: "Tasks", params: { focusTaskId: taskId } });
+      }
+    });
+
+    return () => {
+      sub.remove();
+      if (notificationSub && notificationSub.remove) {
+        notificationSub.remove();
+      }
+    };
   }, []);
 
   return (

@@ -171,24 +171,81 @@ const HomeScreen: React.FC = () => {
       .map((item) => {
         if (item.type === "folder") {
           const folder = foldersMap[item.id];
-          return folder ? { ...item, label: folder.name, icon: "folder" as const } : null;
+          if (!folder) return null;
+          return {
+            ...item,
+            label: folder.name,
+            subtitle: folder.description ?? undefined,
+            icon: "folder-outline" as keyof typeof Ionicons.glyphMap,
+            photoPath: folder.photoPath ?? undefined,
+            bannerPath: folder.bannerPath ?? undefined,
+            color: folder.color ?? undefined,
+            priority: undefined as number | undefined,
+            progress: undefined as number | undefined,
+            completedCount: undefined as number | undefined,
+            totalCount: undefined as number | undefined,
+            taskCompleted: undefined as boolean | undefined,
+          };
         }
         if (item.type === "note") {
           const note = notesMap[item.id];
-          return note
-            ? {
-                ...item,
-                label: note.title,
-                subtitle: firstLine(note.content),
-                icon: "document-text-outline" as const
-              }
-            : null;
+          if (!note) return null;
+          return {
+            ...item,
+            label: note.title,
+            subtitle: firstLine(note.content),
+            icon: "document-text-outline" as keyof typeof Ionicons.glyphMap,
+            photoPath: undefined,
+            bannerPath: undefined,
+            color: undefined,
+            priority: undefined,
+            progress: undefined,
+            completedCount: undefined,
+            totalCount: undefined,
+            taskCompleted: undefined,
+          };
         }
+        // Task
         const task = tasksMap[item.id];
-        return task ? { ...item, label: task.text, icon: "checkmark-done-outline" as const } : null;
+        if (!task) return null;
+        
+        const subtasks = Object.values(tasksMap).filter(t => t.parentId === task.id);
+        const total = subtasks.length;
+        const completedCount = subtasks.filter(st => isTaskCompletedForDate(st, todayKey)).length;
+        const progress = total > 0 ? completedCount / total : (isTaskCompletedForDate(task, todayKey) ? 1 : 0);
+        const taskCompleted = total > 0 ? (total === completedCount) : isTaskCompletedForDate(task, todayKey);
+
+        return {
+          ...item,
+          label: task.text,
+          subtitle: undefined,
+          icon: (taskCompleted ? "checkmark-circle" : "ellipse-outline") as keyof typeof Ionicons.glyphMap,
+          photoPath: undefined,
+          bannerPath: undefined,
+          color: undefined,
+          priority: task.priority,
+          progress,
+          completedCount,
+          totalCount: total,
+          taskCompleted,
+        };
       })
-      .filter(Boolean) as Array<{ type: PinnedItemType; id: ID; label: string; subtitle?: string; icon: keyof typeof Ionicons.glyphMap }>;
-  }, [foldersMap, notesMap, pinnedItems, tasksMap]);
+      .filter(Boolean) as Array<{
+        type: PinnedItemType;
+        id: ID;
+        label: string;
+        subtitle?: string;
+        icon: keyof typeof Ionicons.glyphMap;
+        photoPath?: string;
+        bannerPath?: string;
+        color?: string;
+        priority?: number;
+        progress?: number;
+        completedCount?: number;
+        totalCount?: number;
+        taskCompleted?: boolean;
+      }>;
+  }, [foldersMap, notesMap, pinnedItems, tasksMap, todayKey]);
 
   const recentResolved = useMemo(() => {
     return recentItems
@@ -508,8 +565,8 @@ const HomeScreen: React.FC = () => {
   }, [tasks, todayKey]);
 
   const sectionData = useMemo(
-    () => ["quick", "folders", "taskOverview", "rootTasks"],
-    [rootTasks.length]
+    () => ["pinned", "quick", "folders", "taskOverview", "rootTasks"],
+    [rootTasks.length, pinnedResolved.length]
   );
 
   const folderPreviewCounts = useMemo(() => {
@@ -597,67 +654,133 @@ const HomeScreen: React.FC = () => {
         keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => {
           if (item === "pinned") {
+            if (pinnedResolved.length === 0) return null;
             return (
-              <View style={[hsStyles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border, overflow: "visible" }]}> 
-                <SectionHeader title="Pinned" icon="pin-outline" />
-                {pinnedResolved.length === 0 ? (
-                  <Text muted>Long press folders, notes or tasks to pin them.</Text>
-                ) : (
-                  <FlatList
-                    horizontal
-                    data={pinnedResolved}
-                    keyExtractor={(x) => `${x.type}-${x.id}`}
-                    contentContainerStyle={{ paddingLeft: 0, paddingRight: 0, gap: 12 }}
-                    showsHorizontalScrollIndicator={false}
-                    renderItem={({ item: pin }) => (
+              <View style={{ marginTop: spacing.lg, overflow: "visible" }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 12 }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: theme.colors.textPrimary }}>Pinned</Text>
+                </View>
+                <FlatList
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  data={pinnedResolved}
+                  keyExtractor={(x) => `${x.type}-${x.id}`}
+                  contentContainerStyle={{ paddingLeft: 0, paddingRight: 0, gap: 12 }}
+                  renderItem={({ item: pin }) => {
+                    const selected = isSelected(pin.type, pin.id);
+                    const isTask = pin.type === "task";
+                    const isFolder = pin.type === "folder";
+                    const priorityColor = pin.priority === 0
+                      ? theme.colors.priorityLow
+                      : pin.priority === 1
+                      ? theme.colors.priorityMedium
+                      : theme.colors.priorityHigh;
+                    const priorityLabel = pin.priority === 0 ? "LOW" : pin.priority === 1 ? "MED" : "HIGH";
+
+                    return (
                       <Pressable
+                        android_ripple={{ color: theme.colors.primaryAlpha20 }}
                         onPress={() => {
-                          if (selectionMode) {
-                            toggleSelection({ kind: pin.type, id: pin.id, label: pin.label });
-                            return;
-                          }
+                          if (selectionMode) { toggleSelection({ kind: pin.type, id: pin.id, label: pin.label }); return; }
                           if (pin.type === "folder") return handleOpenFolder(pin.id);
                           if (pin.type === "note") return handleOpenNote(pin.id);
                           return handleOpenTask(pin.id);
                         }}
                         onLongPress={() => {
-                          if (selectionMode) {
-                            toggleSelection({ kind: pin.type, id: pin.id, label: pin.label });
-                            return;
-                          }
+                          if (selectionMode) { toggleSelection({ kind: pin.type, id: pin.id, label: pin.label }); return; }
                           startSelection({ kind: pin.type, id: pin.id, label: pin.label });
                         }}
                         delayLongPress={260}
-                        style={[
-                          hsStyles.pinnedCard,
-                          {
-                            backgroundColor: theme.colors.surfaceElevated,
-                            borderColor: isSelected(pin.type, pin.id) ? theme.colors.primary : theme.colors.border
-                          },
-                          isSelected(pin.type, pin.id) && { borderWidth: 1.5 }
-                        ]}
+                        style={{
+                          width: 160,
+                          borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
+                          borderRadius: 16,
+                          overflow: "hidden",
+                          backgroundColor: theme.colors.card,
+                          borderColor: selected ? theme.colors.primary : theme.colors.border
+                        }}
                       >
-                        <View style={hsStyles.pinnedTopRow}>
-                          <Ionicons name={pin.icon} size={16} color={theme.colors.primary} />
-                          <Pressable onPress={() => handleTogglePin(pin.type, pin.id)} hitSlop={8}>
-                            <Ionicons name="pin" size={14} color={theme.colors.primary} />
-                          </Pressable>
-                        </View>
-                        <Text numberOfLines={1} style={hsStyles.pinnedTitle}>{pin.label}</Text>
-                        {!!pin.subtitle && (
-                          <Text muted variant="caption" numberOfLines={2}>
-                            {pin.subtitle}
-                          </Text>
+                        {isFolder ? (
+                          <View>
+                            {pin.bannerPath ? (
+                              <Image source={{ uri: pin.bannerPath }} style={{ width: "100%", height: 64 }} resizeMode="cover" />
+                            ) : (
+                              <View style={{ width: "100%", height: 64, backgroundColor: theme.colors.primaryAlpha20 }} />
+                            )}
+                            <View style={{ position: "absolute", top: 48, left: 12, width: 32, height: 32, borderRadius: 8, backgroundColor: theme.colors.card, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
+                              {pin.photoPath ? (
+                                <Image source={{ uri: pin.photoPath }} style={{ width: "100%", height: "100%", borderRadius: 8 }} resizeMode="cover" />
+                              ) : (
+                                <FolderIcon color={pin.color} fallbackColor={theme.colors.primary} size={18} />
+                              )}
+                            </View>
+                            <View style={{ padding: 12, paddingTop: 20 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "600", color: theme.colors.textPrimary }}>{pin.label}</Text>
+                                <Pressable onPress={() => handleTogglePin(pin.type, pin.id)} hitSlop={10}>
+                                  <Ionicons name="pin" size={13} color={theme.colors.primary} />
+                                </Pressable>
+                              </View>
+                              {!!pin.subtitle && <Text numberOfLines={1} variant="caption" muted>{pin.subtitle}</Text>}
+                            </View>
+                          </View>
+                        ) : isTask ? (
+                          <>
+                            <View style={{ width: "100%", height: 72, backgroundColor: pin.taskCompleted ? theme.colors.primaryAlpha20 : theme.colors.surfaceElevated, alignItems: "center", justifyContent: "center" }}>
+                              <Ionicons
+                                name={pin.taskCompleted ? "checkmark-circle" : "ellipse-outline"}
+                                size={28}
+                                color={pin.taskCompleted ? theme.colors.primary : theme.colors.textSecondary}
+                              />
+                            </View>
+                            <View style={{ padding: 12 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: 2 }}>
+                                <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "600", color: pin.taskCompleted ? theme.colors.textSecondary : theme.colors.textPrimary, textDecorationLine: pin.taskCompleted ? "line-through" : "none" }}>{pin.label}</Text>
+                                {pin.priority !== undefined && (
+                                  <View style={{ paddingHorizontal: 5, paddingVertical: 2, borderRadius: 999, backgroundColor: priorityColor }}>
+                                    <Text style={{ fontSize: 9, fontWeight: "700", color: theme.colors.onPrimary }}>{priorityLabel}</Text>
+                                  </View>
+                                )}
+                                <Pressable onPress={() => handleTogglePin(pin.type, pin.id)} hitSlop={10}>
+                                  <Ionicons name="pin" size={13} color={theme.colors.primary} />
+                                </Pressable>
+                              </View>
+                              {pin.totalCount !== undefined && (
+                                <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 6 }}>{pin.completedCount}/{pin.totalCount} subtasks</Text>
+                              )}
+                              {pin.progress !== undefined && (
+                                <View style={{ height: 4, borderRadius: 2, backgroundColor: theme.colors.border, overflow: "hidden" }}>
+                                  <View style={{ height: "100%", borderRadius: 2, width: `${(pin.progress) * 100}%`, backgroundColor: pin.taskCompleted ? theme.colors.primary : (theme.colors.secondary ?? theme.colors.primary) }} />
+                                </View>
+                              )}
+                            </View>
+                          </>
+                        ) : (
+                          <>
+                            <View style={{ width: "100%", height: 72, backgroundColor: theme.colors.primaryAlpha20, alignItems: "center", justifyContent: "center" }}>
+                              <Ionicons name={pin.icon} size={28} color={theme.colors.primary} />
+                            </View>
+                            <View style={{ padding: 12 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "600", color: theme.colors.textPrimary }}>{pin.label}</Text>
+                                <Pressable onPress={() => handleTogglePin(pin.type, pin.id)} hitSlop={10}>
+                                  <Ionicons name="pin" size={13} color={theme.colors.primary} />
+                                </Pressable>
+                              </View>
+                              {!!pin.subtitle && <Text numberOfLines={1} variant="caption" muted>{pin.subtitle}</Text>}
+                            </View>
+                          </>
                         )}
-                        {isSelected(pin.type, pin.id) && (
+
+                        {selected && (
                           <View style={hsStyles.selectedBadge}>
                             <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
                           </View>
                         )}
                       </Pressable>
-                    )}
-                  />
-                )}
+                    );
+                  }}
+                />
               </View>
             );
           }
@@ -1034,12 +1157,17 @@ const HomeScreen: React.FC = () => {
         title="Acoes secundarias"
         onClose={() => setShowSelectionMenu(false)}
         actions={[
-          {
-            key: "pin",
-            label: "Pinar",
-            icon: "pin-outline",
-            onPress: handlePinSelected
-          },
+          (() => {
+            const allPinned = selectedItems
+              .filter(i => i.kind !== "quick")
+              .every(i => pinnedItems.some(p => p.type === i.kind && p.id === i.id));
+            return {
+              key: "pin",
+              label: allPinned ? "Despinar" : "Pinar",
+              icon: allPinned ? "pin" : "pin-outline" as const,
+              onPress: handlePinSelected
+            };
+          })(),
           {
             key: "duplicate",
             label: "Duplicar / Copiar",
@@ -1093,7 +1221,7 @@ const HomeScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={hsStyles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={[hsStyles.fabRoot, { bottom: Math.max(insets.bottom + 16, 24) + 68 + 24 }]} pointerEvents="box-none">
+      <View style={[hsStyles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 68 + 20 }]} pointerEvents="box-none">
         {([
           {
             key: "note",
