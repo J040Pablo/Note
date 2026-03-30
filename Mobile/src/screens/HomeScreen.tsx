@@ -820,14 +820,20 @@ const HomeScreen: React.FC = () => {
                 <View style={{ flexDirection: "row", gap: 12 }}>
                   <View style={{ flex: 1, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, backgroundColor: theme.colors.card, borderColor: theme.colors.border }}>
                     <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: 4, color: theme.colors.textPrimary }}>Pending Tasks ({pendingCount})</Text>
-                    <Text style={{ fontSize: 12, marginBottom: 8, color: theme.colors.textSecondary }}>Progress</Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>Progress</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: theme.colors.textPrimary }}>{allRootBase.length - pendingCount}/{allRootBase.length}</Text>
+                    </View>
                     <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
                       <View style={{ height: "100%", borderRadius: 3, width: `${pendingProgress * 100}%`, backgroundColor: getBarColor(pendingProgress) }} />
                     </View>
                   </View>
                   <View style={{ flex: 1, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, padding: 14, backgroundColor: theme.colors.card, borderColor: theme.colors.border }}>
                     <Text style={{ fontSize: 14, fontWeight: "600", marginBottom: 4, color: theme.colors.textPrimary }}>Today Tasks ({todayCount})</Text>
-                    <Text style={{ fontSize: 12, marginBottom: 8, color: theme.colors.textSecondary }}>Progress</Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>Progress</Text>
+                      <Text style={{ fontSize: 12, fontWeight: "600", color: theme.colors.textPrimary }}>{completedToday}/{todayCount}</Text>
+                    </View>
                     <View style={{ height: 6, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
                       <View style={{ height: "100%", borderRadius: 3, width: `${todayProgress * 100}%`, backgroundColor: getBarColor(todayProgress) }} />
                     </View>

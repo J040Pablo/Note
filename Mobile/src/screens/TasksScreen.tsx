@@ -165,6 +165,43 @@ const TasksScreen: React.FC = () => {
     setSubtasks(prev => prev.length > 1 ? prev.filter(s => s.id !== id) : prev);
   };
 
+  const now = new Date();
+  const todayKey = toDateKey(now);
+  const currentTime = toTimeKey(now);
+
+  const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
+
+  const getTaskStatus = useCallback((task: Task, dateKey: string) => {
+    const isDirectlyDone = isTaskCompletedForDate(task, dateKey);
+    const childTasks = tasks.filter(t => t.parentId === task.id);
+    const subtasks = childTasks.filter(st => !st.scheduledDate || st.scheduledDate === dateKey);
+    
+    if (subtasks.length > 0) {
+      const completedCount = subtasks.filter(st => st.completed || isTaskCompletedForDate(st, dateKey)).length;
+      const total = subtasks.length;
+      const progress = total === 0 ? 0 : completedCount / total;
+      const isCompleted = completedCount === total;
+      return { isCompleted, progress, completedCount, total, subtasks };
+    }
+
+    return { 
+      isCompleted: isDirectlyDone, 
+      progress: isDirectlyDone ? 1 : 0, 
+      completedCount: isDirectlyDone ? 1 : 0, 
+      total: 0, 
+      subtasks: [] 
+    };
+  }, [tasks]);
+
+  const isExpired = useCallback((task: Task) => {
+    if (task.parentId || !task.scheduledDate) return false;
+    const { isCompleted } = getTaskStatus(task, task.scheduledDate);
+    if (isCompleted) return false;
+    if (task.scheduledDate < todayKey) return true;
+    if (task.scheduledDate === todayKey && task.scheduledTime && task.scheduledTime < currentTime) return true;
+    return false;
+  }, [todayKey, currentTime, getTaskStatus]);
+
   useEffect(() => {
     (async () => {
       const [all, savedSort] = await Promise.all([
@@ -176,36 +213,42 @@ const TasksScreen: React.FC = () => {
     })();
   }, [setTasks]);
 
+  // Handle route params
   useEffect(() => {
-    const focusTaskId = route.params?.focusTaskId;
-    const targetDate = route.params?.dateKey;
-    if (route.params?.openCreate) {
+    const { dateKey, openCreate, focusTaskId } = route.params || {};
+
+    if (openCreate) {
       openCreateModal();
       navigation.setParams({ openCreate: undefined });
-      return;
     }
-    if (targetDate) {
-      setSelectedDate(targetDate);
-      return;
-    }
-    if (!focusTaskId) return;
-    const task = tasksMap[focusTaskId];
-    if (!task) return;
-    if (task.scheduledDate) {
-      setSelectedDate(task.scheduledDate);
-    } else {
-      setSelectedDate(toDateKey(new Date()));
-    }
-  }, [navigation, route.params?.dateKey, route.params?.focusTaskId, route.params?.openCreate, tasksMap]);
 
-  const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
+    if (dateKey) {
+      setSelectedDate(dateKey);
+      navigation.setParams({ dateKey: undefined });
+    } else if (focusTaskId) {
+      const task = tasksMap[focusTaskId];
+      if (task) {
+        if (task.scheduledDate) setSelectedDate(task.scheduledDate);
+        navigation.setParams({ focusTaskId: undefined });
+      }
+    }
+  }, [route.params, tasksMap, navigation]);
 
   const monthCells = useMemo(() => buildMonthCells(monthCursor), [monthCursor]);
 
+  const expiredTasks = useMemo(() => {
+    return tasks
+      .filter(isExpired)
+      .map(root => {
+        const status = getTaskStatus(root, root.scheduledDate!);
+        return { ...root, ...status, parentCompleted: status.isCompleted };
+      });
+  }, [tasks, isExpired, getTaskStatus]);
+
   // Only root tasks (no parentId) appear in the list — subtasks render inside their parent card
   const rootTasksForDate = useMemo(
-    () => tasks.filter((task) => !task.parentId && shouldAppearOnDate(task, selectedDate)),
-    [selectedDate, tasks]
+    () => tasks.filter((task) => !task.parentId && shouldAppearOnDate(task, selectedDate) && !isExpired(task)),
+    [selectedDate, tasks, isExpired]
   );
 
   const sortedRootTasks = useMemo(() => {
@@ -237,18 +280,13 @@ const TasksScreen: React.FC = () => {
   const enrichedTasks = useMemo(() => {
     const taskPins = pinnedItems.filter(p => p.type === "task").map(p => p.id);
     return sortedRootTasks.map(root => {
-      const allSubtasks = tasks.filter(t => t.parentId === root.id);
-      const subtasks = allSubtasks.filter(st => !st.scheduledDate || st.scheduledDate === selectedDate);
-      const total = subtasks.length;
-      const completedCount = subtasks.filter(st => st.completed || isTaskCompletedForDate(st, selectedDate)).length;
-      const progress = total === 0 ? 0 : completedCount / total;
-      // Parent done only when ALL subtasks are done; no-subtask fallback uses isTaskCompletedForDate
-      const parentCompleted = total > 0 ? total === completedCount : isTaskCompletedForDate(root, selectedDate);
+      const status = getTaskStatus(root, selectedDate);
       const isPinned = taskPins.includes(root.id);
-      
-      return { ...root, subtasks, total, completedCount, progress, parentCompleted, isPinned };
+      return { ...root, ...status, parentCompleted: status.isCompleted, isPinned };
     });
-  }, [sortedRootTasks, tasks, selectedDate, pinnedItems]);
+  }, [sortedRootTasks, selectedDate, pinnedItems, getTaskStatus]);
+
+
 
   // Progress card counts root-level completion
   const completedToday = useMemo(
@@ -555,6 +593,192 @@ const TasksScreen: React.FC = () => {
               </View>
             </View>
 
+            {expiredTasks.length > 0 && (
+              <View style={{ marginBottom: 24 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <Ionicons name="time-outline" size={20} color={theme.colors.danger} />
+                  <Text variant="subtitle" style={{ color: theme.colors.danger }}>Expired Tasks</Text>
+                </View>
+                <View style={{ gap: 10 }}>
+                  {expiredTasks.map(root => {
+                    const isExpanded = expandedTaskId === root.id;
+                    const taskSelected = isSelected({ kind: "task", id: root.id, label: root.text });
+
+                    return (
+                      <View
+                        key={root.id}
+                        style={[
+                          styles.taskCard,
+                          {
+                            backgroundColor: theme.colors.card,
+                            borderColor: theme.colors.danger + "40",
+                            borderWidth: 1.5,
+                          }
+                        ]}
+                      >
+                        <Pressable
+                          android_ripple={{ color: theme.colors.primaryAlpha20 }}
+                          style={{ padding: 14 }}
+                          onPress={() => {
+                            if (selectionMode) {
+                              toggleSelection({ kind: "task", id: root.id, label: root.text });
+                              return;
+                            }
+                            LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                            setExpandedTaskId(prev => prev === root.id ? null : root.id);
+                          }}
+                          onLongPress={() => {
+                            if (selectionMode) {
+                              toggleSelection({ kind: "task", id: root.id, label: root.text });
+                              return;
+                            }
+                            startSelection({ kind: "task", id: root.id, label: root.text });
+                          }}
+                          delayLongPress={280}
+                        >
+                          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: root.total > 0 ? 8 : 0 }}>
+                            <Pressable
+                              hitSlop={8}
+                              onPress={async () => {
+                                if (root.total > 0) {
+                                  if (root.parentCompleted) return;
+                                  if (root.completedCount < root.total) {
+                                    showToast("Conclua as subtarefas primeiro");
+                                    return;
+                                  }
+                                }
+                                LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                                try {
+                                  const updated = await toggleTaskForDate(root, root.scheduledDate!);
+                                  upsertTask(updated);
+                                } catch (e) {
+                                  console.error("[TasksScreen] toggle expired task failed", e);
+                                }
+                              }}
+                            >
+                              <Ionicons
+                                name={root.parentCompleted ? "checkmark-circle" : "ellipse-outline"}
+                                size={22}
+                                color={root.parentCompleted ? theme.colors.primary : theme.colors.textSecondary}
+                              />
+                            </Pressable>
+
+                            <Text
+                              numberOfLines={1}
+                              style={{
+                                flex: 1,
+                                fontSize: 16,
+                                fontWeight: "500",
+                                marginHorizontal: 8,
+                                color: root.parentCompleted ? theme.colors.textSecondary : theme.colors.textPrimary,
+                                textDecorationLine: root.parentCompleted ? "line-through" : "none"
+                              }}
+                            >
+                              {root.text}
+                            </Text>
+
+                            <View style={{ backgroundColor: theme.colors.danger + "20", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginRight: 8 }}>
+                              <Text style={{ fontSize: 10, color: theme.colors.danger, fontWeight: "700" }}>EXPIRED</Text>
+                            </View>
+
+                            <Pressable
+                              hitSlop={8}
+                              onPress={async () => {
+                                const nextPriority = ((root.priority + 1) % 3) as TaskPriority;
+                                const updated = await updateTaskPriority(root, nextPriority);
+                                upsertTask(updated);
+                              }}
+                              style={{ marginRight: 8 }}
+                            >
+                              <View
+                                style={[
+                                  styles.priorityBadge,
+                                  {
+                                    backgroundColor:
+                                      root.priority === 0
+                                        ? theme.colors.priorityLow
+                                        : root.priority === 1
+                                        ? theme.colors.priorityMedium
+                                        : theme.colors.priorityHigh
+                                  }
+                                ]}
+                              >
+                                <Text style={{ color: theme.colors.onPrimary, fontSize: 10 }}>
+                                  {root.priority === 0 ? "LOW" : root.priority === 1 ? "MED" : "HIGH"}
+                                </Text>
+                              </View>
+                            </Pressable>
+
+                            {root.total > 0 && (
+                              <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color={theme.colors.textSecondary} />
+                            )}
+                          </View>
+
+                          {root.total > 0 && (
+                            <>
+                              <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 4 }}>
+                                <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>{root.completedCount}/{root.total} done</Text>
+                                <Text style={{ fontSize: 12, color: theme.colors.textSecondary }}>{Math.round(root.progress * 100)}%</Text>
+                              </View>
+                              <View style={{ height: 5, borderRadius: 3, backgroundColor: theme.colors.border, overflow: "hidden" }}>
+                                <View style={{ height: "100%", borderRadius: 3, width: `${root.progress * 100}%`, backgroundColor: root.progress === 1 ? theme.colors.primary : (theme.colors.secondary || theme.colors.primary) }} />
+                              </View>
+                            </>
+                          )}
+
+                          {root.total === 0 && (
+                            <Text muted variant="caption" style={{ marginTop: 2, color: theme.colors.danger }}>
+                              {root.scheduledDate}{root.scheduledTime ? ` • ${root.scheduledTime}` : ""}
+                            </Text>
+                          )}
+                        </Pressable>
+
+                        {isExpanded && root.total > 0 && (
+                          <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 2, gap: 4 }}>
+                            {root.subtasks.map((subtask: Task) => {
+                              const subDone = subtask.completed || isTaskCompletedForDate(subtask, root.scheduledDate!);
+                              return (
+                                <Pressable
+                                  key={subtask.id}
+                                  android_ripple={{ color: theme.colors.primaryAlpha20 }}
+                                  style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8 }}
+                                  onPress={async () => {
+                                    LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
+                                    try {
+                                      const updated = await toggleTaskForDate(subtask, root.scheduledDate!);
+                                      upsertTask(updated);
+                                    } catch (e) {
+                                      console.error("[TasksScreen] toggle expired subtask failed", e);
+                                    }
+                                  }}
+                                >
+                                  <Ionicons
+                                    name={subDone ? "checkmark-circle" : "ellipse-outline"}
+                                    size={18}
+                                    color={subDone ? theme.colors.primary : theme.colors.textSecondary}
+                                  />
+                                  <Text
+                                    style={{
+                                      flex: 1,
+                                      fontSize: 14,
+                                      color: subDone ? theme.colors.textSecondary : theme.colors.textPrimary,
+                                      textDecorationLine: subDone ? "line-through" : "none"
+                                    }}
+                                  >
+                                    {subtask.text}
+                                  </Text>
+                                </Pressable>
+                              );
+                            })}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
             <View style={styles.dayTitleRow}>
               <Text variant="subtitle">{selectedDate === toDateKey(new Date()) ? "Today's Tasks" : `Tasks • ${selectedDate}`}</Text>
             </View>
@@ -611,6 +835,13 @@ const TasksScreen: React.FC = () => {
                   <Pressable
                     hitSlop={8}
                     onPress={async () => {
+                      if (root.total > 0) {
+                        if (root.parentCompleted) return;
+                        if (root.completedCount < root.total) {
+                          showToast("Conclua as subtarefas primeiro");
+                          return;
+                        }
+                      }
                       LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
                       try {
                         const updated = await toggleTaskForDate(root, selectedDate);
