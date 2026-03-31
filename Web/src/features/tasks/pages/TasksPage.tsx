@@ -24,7 +24,14 @@ import {
 } from "../sync";
 import type { TaskDraft, TaskFilters, TaskItem } from "../types";
 import { useAppMode } from "../../../app/mode";
-import { getTasks, loadData, saveData, type DataTask } from "../../../services/webData";
+import {
+  getAllTasks,
+  createTask,
+  updateTask,
+  deleteTask,
+  toggleTask as serviceToggleTask,
+  reorderTasks as serviceReorderTasks
+} from "../../../services/tasksService.web";
 import styles from "./TasksPage.module.css";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -92,36 +99,7 @@ const defaultFilters: TaskFilters = {
   query: "",
 };
 
-// Maps normalized data-layer task shape into the UI task model consumed by existing components.
-const mapTaskToUI = (task: DataTask, fallbackOrder: number): TaskItem => ({
-  id: task.id,
-  title: task.title,
-  completed: task.completed,
-  priority: task.priority === "low" || task.priority === "high" ? task.priority : "medium",
-  dueDate: typeof task.dueDate === "string" ? task.dueDate : null,
-  dueTime: typeof task.dueTime === "string" ? task.dueTime : null,
-  repeatDays: Array.isArray(task.repeatDays) ? task.repeatDays : [],
-  order: typeof task.order === "number" ? task.order : fallbackOrder,
-  createdAt: task.createdAt,
-  updatedAt: task.updatedAt,
-});
-
-const mapTaskToData = (task: TaskItem): DataTask => ({
-  id: task.id,
-  title: task.title,
-  completed: task.completed,
-  priority: task.priority,
-  dueDate: task.dueDate,
-  dueTime: task.dueTime,
-  repeatDays: task.repeatDays,
-  order: task.order,
-  createdAt: task.createdAt,
-  updatedAt: task.updatedAt,
-});
-
 const makeTaskId = () => `task-${Date.now()}-${Math.round(Math.random() * 1e4)}`;
-
-const loadTasksFromStore = (): TaskItem[] => getTasks().map((task, index) => mapTaskToUI(task, index));
 
 const createDraftFromTask = (task: TaskItem, fallbackSelectedDate: string): TaskDraft => {
   const dueDate = task.dueDate ?? fallbackSelectedDate;
@@ -163,7 +141,7 @@ const TasksPage: React.FC = () => {
   const isMobileSync = mode === "mobile-sync";
 
   // Data is loaded from the single shared data layer at initialization.
-  const [tasks, setTasks] = React.useState<TaskItem[]>(() => loadTasksFromStore());
+  const [tasks, setTasks] = React.useState<TaskItem[]>(() => getAllTasks());
   const [mobileIp, setMobileIp] = React.useState<string>(() => localStorage.getItem("tasks.sync.ip") ?? "192.168.1.107");
   const [mobilePort, setMobilePort] = React.useState<string>(() => localStorage.getItem("tasks.sync.port") ?? "8787");
   const [syncStatus, setSyncStatus] = React.useState(getTaskSyncStatus());
@@ -199,26 +177,7 @@ const TasksPage: React.FC = () => {
     return `ws://${ip}:${normalizedPort}`;
   }, [mobileIp, mobilePort]);
 
-  const persistStandaloneTasks = React.useCallback((nextTasks: TaskItem[]) => {
-    if (isMobileSync) return;
-    try {
-      const store = loadData();
-      const tasksForStore = nextTasks.map((task) => mapTaskToData(task));
-
-      // task persisted here
-      saveData({
-        ...store,
-        tasks: tasksForStore,
-      });
-    } catch {
-      // Ignore persistence errors so task UX remains unchanged.
-    }
-  }, [isMobileSync]);
-
-  // Persist tasks list to shared data layer whenever it changes in standalone mode.
-  React.useEffect(() => {
-    persistStandaloneTasks(tasks);
-  }, [persistStandaloneTasks, tasks]);
+  // Removed bulk persistStandaloneTasks hook. Let operations use tasksService inline to modify persistent store.
 
   React.useEffect(() => {
     if (isMobileSync) {
@@ -228,7 +187,7 @@ const TasksPage: React.FC = () => {
 
     disconnectTaskSync();
     setSyncStatus("disconnected");
-    setTasks(loadTasksFromStore());
+    setTasks(getAllTasks());
   }, [isMobileSync]);
 
   React.useEffect(() => {
@@ -407,33 +366,27 @@ const TasksPage: React.FC = () => {
         if (task.id === targetTaskId) targetOrder = task.order;
       });
 
-      setTasks((prev) =>
-        prev.map((task) => {
-          if (task.id === taskId) {
-            const updated = { ...task, order: targetOrder, updatedAt: Date.now() };
-            sendSyncEvent({
-              type: "TASK_UPDATE",
-              taskId,
-              payload: updated as unknown as Record<string, unknown>,
-            });
-            return updated;
+      setTasks((prev) => {
+        const next = [...prev];
+        const t1 = next.find(t => t.id === taskId);
+        const t2 = next.find(t => t.id === targetTaskId);
+        if (t1 && t2) {
+          t1.order = targetOrder;
+          t1.updatedAt = Date.now();
+          t2.order = sourceOrder;
+          t2.updatedAt = Date.now();
+          
+          if (!isMobileSync) {
+             serviceReorderTasks(next.sort((a,b) => a.order - b.order).map(t => t.id));
+          } else {
+             sendSyncEvent({ type: "TASK_UPDATE", taskId: t1.id, payload: t1 as any });
+             sendSyncEvent({ type: "TASK_UPDATE", taskId: t2.id, payload: t2 as any });
           }
-
-          if (task.id === targetTaskId) {
-            const updated = { ...task, order: sourceOrder, updatedAt: Date.now() };
-            sendSyncEvent({
-              type: "TASK_UPDATE",
-              taskId: targetTaskId,
-              payload: updated as unknown as Record<string, unknown>,
-            });
-            return updated;
-          }
-
-          return task;
-        })
-      );
+        }
+        return next;
+      });
     },
-    [filteredTaskIds, sendSyncEvent, tasks]
+    [filteredTaskIds, isMobileSync, sendSyncEvent, tasks]
   );
 
   const handleContextAction = React.useCallback(
@@ -452,12 +405,17 @@ const TasksPage: React.FC = () => {
           prev.map((task) => {
             if (task.id !== selectedContextTask.id) return task;
             const completed = !task.completed;
-            sendSyncEvent({
-              type: "TASK_TOGGLE",
-              taskId: task.id,
-              payload: { ...task, completed, updatedAt: Date.now() } as unknown as Record<string, unknown>,
-            });
-            return { ...task, completed, updatedAt: Date.now() };
+            const updatedTask = { ...task, completed, updatedAt: Date.now() };
+            if (!isMobileSync) {
+               serviceToggleTask(task.id);
+            } else {
+               sendSyncEvent({
+                 type: "TASK_TOGGLE",
+                 taskId: task.id,
+                 payload: updatedTask as any,
+               });
+            }
+            return updatedTask;
           })
         );
         return;
@@ -468,16 +426,21 @@ const TasksPage: React.FC = () => {
         return;
       }
 
+      if (!isMobileSync) deleteTask(selectedContextTask.id);
+      
       setTasks((prev) => prev.filter((task) => task.id !== selectedContextTask.id));
-      sendSyncEvent({
-        type: "TASK_DELETE",
-        taskId: selectedContextTask.id,
-      });
+      if (isMobileSync) {
+        sendSyncEvent({
+          type: "TASK_DELETE",
+          taskId: selectedContextTask.id,
+        });
+      }
+      
       if (moveModeTaskId === selectedContextTask.id) {
         setMoveModeTaskId(null);
       }
     },
-    [closeContextMenu, moveModeTaskId, openEditModal, selectedContextTask, sendSyncEvent]
+    [closeContextMenu, isMobileSync, moveModeTaskId, openEditModal, selectedContextTask, sendSyncEvent]
   );
 
   return (
@@ -766,11 +729,15 @@ const TasksPage: React.FC = () => {
                   updatedAt: Date.now(),
                 };
 
-                sendSyncEvent({
-                  type: "TASK_UPDATE",
-                  taskId: task.id,
-                  payload: updated as unknown as Record<string, unknown>,
-                });
+                if (!isMobileSync) {
+                  updateTask(updated);
+                } else {
+                  sendSyncEvent({
+                    type: "TASK_UPDATE",
+                    taskId: task.id,
+                    payload: updated as unknown as Record<string, unknown>,
+                  });
+                }
 
                 return updated;
               })
@@ -779,7 +746,20 @@ const TasksPage: React.FC = () => {
             return;
           }
 
-          const nextOrder = tasks.length > 0 ? Math.max(...tasks.map((task) => task.order)) + 1 : 0;
+          if (!isMobileSync) {
+             const createdDataTask = createTask({
+                title: safeTitle,
+                priority: draft.priority,
+                dueDate: normalizedDate,
+                dueTime: normalizedTime,
+                repeatDays: draft.repeatDays,
+             });
+             setTasks((prev) => [createdDataTask, ...prev]);
+             setModalOpen(false);
+             return;
+          }
+
+          const nextOrder = tasks.length > 0 ? Math.max(...tasks.map((task) => typeof task.order === 'number' ? task.order : 0)) + 1 : 0;
 
           const createdTask: TaskItem = {
             id: makeTaskId(),

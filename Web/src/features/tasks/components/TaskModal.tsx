@@ -10,6 +10,7 @@ type TaskModalProps = {
   mode: "create" | "edit";
   selectedDate: string;
   initialDraft: TaskDraft;
+  parentTaskTitle?: string;
   onClose: () => void;
   onSave: (draft: TaskDraft) => void;
 };
@@ -19,6 +20,7 @@ const TaskModal: React.FC<TaskModalProps> = ({
   mode,
   selectedDate,
   initialDraft,
+  parentTaskTitle,
   onClose,
   onSave,
 }) => {

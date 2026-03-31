@@ -2,7 +2,7 @@ export type FolderViewMode = "list" | "grid";
 
 export type FolderSortMode = "custom" | "date" | "name" | "color";
 
-export type FolderItemType = "folder" | "file" | "note";
+export type FolderItemType = "folder" | "file" | "note" | "quick-note";
 
 export type FolderEntry = {
   id: string;

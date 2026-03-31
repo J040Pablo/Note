@@ -1,0 +1,317 @@
+.blockEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 200px;
+}
+
+/* ─── Add Block Button ──────────────────────────────── */
+
+.addBlockRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  opacity: 0.5;
+  transition: opacity 180ms;
+}
+
+.addBlockRow:hover {
+  opacity: 1;
+}
+
+.addBlockBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px dashed #334155;
+  background: transparent;
+  color: #94a3b8;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 180ms;
+}
+
+.addBlockBtn:hover {
+  background: #1e293b;
+  border-color: #64748b;
+  color: #e2e8f0;
+}
+
+.addBlockMenu {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  animation: fadeSlideIn 140ms ease;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.addBlockMenuItem {
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid #1e293b;
+  background: #0f172a;
+  color: #94a3b8;
+  padding: 0 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 140ms;
+}
+
+.addBlockMenuItem:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+/* ─── Block Wrapper ─────────────────────────────────── */
+
+.blockWrapper {
+  position: relative;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition: border-color 150ms, background 150ms;
+}
+
+.blockWrapper:hover {
+  border-color: #1e293b;
+}
+
+.blockWrapper:focus-within {
+  border-color: #334155;
+  background: rgba(15, 23, 42, 0.35);
+}
+
+.blockToolbar {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 150ms;
+  z-index: 2;
+}
+
+.blockWrapper:hover .blockToolbar {
+  opacity: 1;
+}
+
+.blockToolbarBtn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: #1e293b;
+  color: #94a3b8;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: all 120ms;
+}
+
+.blockToolbarBtn:hover {
+  background: #334155;
+  color: #e2e8f0;
+}
+
+.blockToolbarBtnDanger:hover {
+  background: #7f1d1d;
+  color: #fca5a5;
+}
+
+/* ─── Text Block ────────────────────────────────────── */
+
+.textBlock {
+  width: 100%;
+  min-height: 36px;
+  border: none;
+  background: transparent;
+  color: #e2e8f0;
+  font-size: 1rem;
+  line-height: 1.7;
+  padding: 8px 12px;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  overflow: hidden;
+}
+
+.textBlock::placeholder {
+  color: #475569;
+}
+
+/* ─── Code Block ────────────────────────────────────── */
+
+.codeBlockWrap {
+  padding: 4px;
+}
+
+.codeBlockHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+}
+
+.codeBlockLang {
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid #1e293b;
+  background: #0c1322;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.codeBlockTextarea {
+  width: 100%;
+  min-height: 80px;
+  border: none;
+  background: #0a0e17;
+  color: #a5f3fc;
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Consolas, monospace;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  padding: 10px 12px;
+  border-radius: 8px;
+  resize: vertical;
+  outline: none;
+  tab-size: 2;
+}
+
+.codeBlockTextarea::placeholder {
+  color: #334155;
+}
+
+/* ─── Image Block ───────────────────────────────────── */
+
+.imageBlockWrap {
+  padding: 4px 8px;
+}
+
+.imageBlockPreview {
+  width: 100%;
+  max-height: 440px;
+  border-radius: 10px;
+  object-fit: contain;
+  background: #0a0e17;
+  border: 1px solid #1e293b;
+}
+
+.imageBlockUpload {
+  min-height: 100px;
+  border-radius: 10px;
+  border: 2px dashed #1e293b;
+  display: grid;
+  place-items: center;
+  color: #475569;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 180ms;
+}
+
+.imageBlockUpload:hover {
+  border-color: #334155;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.3);
+}
+
+.imageBlockCaption {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: #94a3b8;
+  font-size: 0.85rem;
+  padding: 6px 4px;
+  outline: none;
+  font-style: italic;
+}
+
+.imageBlockCaption::placeholder {
+  color: #334155;
+}
+
+/* ─── Drawing Block ─────────────────────────────────── */
+
+.drawingBlockWrap {
+  padding: 4px 8px;
+}
+
+.drawingCanvas {
+  width: 100%;
+  border-radius: 10px;
+  background: #0a0e17;
+  border: 1px solid #1e293b;
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.drawingToolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.drawingToolBtn {
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #1e293b;
+  background: #0f172a;
+  color: #94a3b8;
+  padding: 0 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.drawingToolBtn:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.drawingToolBtnActive {
+  background: #334155;
+  color: #f8fafc;
+  border-color: #475569;
+}
+
+.drawingColorInput {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 0;
+  background: transparent;
+}
+
+.drawingSizeInput {
+  width: 60px;
+  height: 28px;
+  accent-color: #64748b;
+}
+
+/* ─── Empty state ───────────────────────────────────── */
+
+.emptyHint {
+  text-align: center;
+  color: #475569;
+  font-size: 0.9rem;
+  padding: 24px 0;
+}

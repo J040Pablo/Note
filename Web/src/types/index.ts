@@ -1,25 +1,21 @@
-// filepath: /life-organizer-web/life-organizer-web/src/types/index.ts
-export interface User {
-  id: string;
-  username: string;
-  email: string;
-  profilePicture?: string;
+export type ID = string;
+
+export type TaskPriority = "low" | "medium" | "high";
+
+export type PinnedItemType = "folder" | "note" | "task";
+
+export interface PinnedItem {
+  type: PinnedItemType;
+  id: ID;
+  pinnedAt: number;
 }
 
-export interface Post {
-  id: string;
-  userId: string;
-  content: string;
-  createdAt: Date;
-  updatedAt?: Date;
-}
+export type RecentItemType = "folder" | "note";
 
-export interface Comment {
-  id: string;
-  postId: string;
-  userId: string;
-  content: string;
-  createdAt: Date;
+export interface RecentItem {
+  type: RecentItemType;
+  id: ID;
+  openedAt: number;
 }
 
 export interface SidebarLink {

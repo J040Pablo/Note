@@ -11,6 +11,7 @@ export type DataFolder = {
   description?: string;
   color?: string;
   createdAt: number;
+  updatedAt: number;
   imageUrl?: string;
   bannerUrl?: string;
 };
@@ -20,13 +21,19 @@ export type DataNote = {
   parentId: string | null;
   title: string;
   content: string;
+  folderId?: string | null;
   createdAt: number;
+  updatedAt: number;
 };
 
 export type DataQuickNote = {
   id: string;
+  title: string;
   text: string;
+  content: string;
+  folderId?: string | null;
   createdAt: number;
+  updatedAt: number;
 };
 
 export type DataTask = {
@@ -38,9 +45,10 @@ export type DataTask = {
   repeatDays?: number[];
   createdAt: number;
   updatedAt: number;
-  // Kept optional to preserve current behavior in task UI without changing layout.
   dueTime?: string | null;
   order?: number;
+  parentId?: string | null;
+  noteId?: string | null;
 };
 
 export type DataStore = {
@@ -48,56 +56,6 @@ export type DataStore = {
   notes: DataNote[];
   quickNotes: DataQuickNote[];
   tasks: DataTask[];
-};
-
-const seededData: DataStore = {
-  folders: [
-    {
-      id: "f-1",
-      parentId: null,
-      name: "Linux",
-      description: "Kernel, shell and distro notes",
-      color: "#3b82f6",
-      createdAt: Date.now() - 1000 * 60 * 60 * 8,
-    },
-    {
-      id: "f-2",
-      parentId: null,
-      name: "C Language",
-      description: "Low-level references",
-      color: "#3b82f6",
-      createdAt: Date.now() - 1000 * 60 * 60 * 5,
-    },
-  ],
-  notes: [
-    {
-      id: "n-1",
-      parentId: "f-1",
-      title: "Linux quick commands",
-      content: "sudo apt update\nls -la\ncat /etc/os-release",
-      createdAt: Date.now() - 1000 * 60 * 20,
-    },
-  ],
-  quickNotes: [
-    {
-      id: "qn-1",
-      text: "Refine quick note UX",
-      createdAt: Date.now() - 1000 * 60 * 10,
-    },
-  ],
-  tasks: [
-    {
-      id: "t-1",
-      title: "Review folder structure",
-      completed: false,
-      priority: "medium",
-      dueDate: null,
-      repeatDays: [],
-      order: 0,
-      createdAt: Date.now() - 1000 * 60 * 30,
-      updatedAt: Date.now() - 1000 * 60 * 30,
-    },
-  ],
 };
 
 const emptyData = (): DataStore => ({
@@ -135,6 +93,7 @@ const normalizeFolder = (input: unknown, index: number): DataFolder => {
     description: typeof item.description === "string" ? item.description : undefined,
     color: typeof item.color === "string" ? item.color : undefined,
     createdAt: asNumber(item.createdAt, now),
+    updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, now)),
     imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : undefined,
     bannerUrl: typeof item.bannerUrl === "string" ? item.bannerUrl : undefined,
   };
@@ -143,22 +102,31 @@ const normalizeFolder = (input: unknown, index: number): DataFolder => {
 const normalizeNote = (input: unknown, index: number): DataNote => {
   const now = Date.now();
   const item = asRecord(input);
+  const folderId = asNullableString(item.folderId);
   return {
     id: asString(item.id, `note-${now}-${index}`),
-    parentId: asNullableString(item.parentId),
+    parentId: asNullableString(item.parentId) ?? folderId,
     title: asString(item.title, asString(item.name, "Untitled note")),
     content: typeof item.content === "string" ? item.content : "",
+    folderId,
     createdAt: asNumber(item.createdAt, now),
+    updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, now)),
   };
 };
 
 const normalizeQuickNote = (input: unknown, index: number): DataQuickNote => {
   const now = Date.now();
   const item = asRecord(input);
+  const text = typeof item.text === "string" ? item.text : "";
+  const content = typeof item.content === "string" ? item.content : text;
   return {
     id: asString(item.id, `quick-note-${now}-${index}`),
-    text: asString(item.text, ""),
+    title: asString(item.title, "Quick Note"),
+    text: text || content,
+    content: content || text,
+    folderId: asNullableString(item.folderId),
     createdAt: asNumber(item.createdAt, now),
+    updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, now)),
   };
 };
 
@@ -177,6 +145,8 @@ const normalizeTask = (input: unknown, index: number): DataTask => {
     updatedAt: asNumber(item.updatedAt, createdAt),
     dueTime: typeof item.dueTime === "string" ? item.dueTime : null,
     order: asNumber(item.order, index),
+    parentId: asNullableString(item.parentId),
+    noteId: asNullableString(item.noteId),
   };
 };
 
@@ -194,23 +164,22 @@ const normalizeData = (input: unknown): DataStore => {
   };
 };
 
-// Safely reads from localStorage and seeds only the very first time.
+// Safely reads from localStorage. Returns empty data if synced before, else empty.
 export const loadData = (): DataStore => {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     const hasSynced = localStorage.getItem(SYNCED_FLAG_KEY) === "1";
 
     if (!raw) {
-      // If already synced, NEVER reseed fake data
       if (hasSynced) {
         const empty = emptyData();
         saveData(empty);
         return empty;
       }
 
-      // First app load only
-      saveData(seededData);
-      return seededData;
+      const empty = emptyData();
+      saveData(empty);
+      return empty;
     }
 
     return normalizeData(JSON.parse(raw));
@@ -223,8 +192,9 @@ export const loadData = (): DataStore => {
       return empty;
     }
 
-    saveData(seededData);
-    return seededData;
+    const empty = emptyData();
+    saveData(empty);
+    return empty;
   }
 };
 
@@ -236,6 +206,10 @@ export const saveData = (data: DataStore): void => {
   } catch {
     // Ignore storage errors to keep UI/runtime stable.
   }
+};
+
+export const markSynced = (): void => {
+  localStorage.setItem(SYNCED_FLAG_KEY, "1");
 };
 
 export const getFolders = (): DataFolder[] => loadData().folders;

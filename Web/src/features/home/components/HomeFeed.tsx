@@ -10,18 +10,9 @@ import {
   Square,
   type LucideIcon,
 } from "lucide-react";
-import {
-  type DataNote,
-  type DataQuickNote,
-  getFolders,
-  getNotes,
-  getQuickNotes,
-  getTasks,
-  loadData,
-  saveData,
-  type DataFolder,
-  type DataTask,
-} from "../../../services/webData";
+import { getAllTasks, toggleTask as serviceToggleTask } from "../../../services/tasksService.web";
+import { getAllNotes, getAllQuickNotes, createQuickNote as serviceCreateQuickNote } from "../../../services/notesService.web";
+import { getFolders, type DataFolder } from "../../../services/webData";
 import { useAppMode } from "../../../app/mode";
 import {
   dispatchEntitySyncEvent,
@@ -70,14 +61,7 @@ type FolderItem = {
   files: number;
 };
 
-// Map normalized data-layer entities to the existing Home UI shape.
-const mapTaskToUI = (task: DataTask): TaskItem => ({
-    id: task.id,
-    text: task.title,
-    completed: task.completed,
-    recurringDays: Array.isArray(task.repeatDays) ? task.repeatDays.length : undefined,
-  });
-
+// Mapper helpers for Sync UI
 const mapSyncTaskToUI = (task: SyncTask): TaskItem => ({
   id: task.id,
   text: task.title,
@@ -85,32 +69,51 @@ const mapSyncTaskToUI = (task: SyncTask): TaskItem => ({
   recurringDays: Array.isArray(task.repeatDays) ? task.repeatDays.length : undefined,
 });
 
-const loadHomeTasks = (): TaskItem[] =>
-  getTasks().map((task) => mapTaskToUI(task));
-
-const mapNoteToUI = (note: DataNote): NoteItem => ({
+const mapNoteToUI = (note: { id: string | number; title: string; content: string; createdAt: number }): NoteItem => ({
   id: String(note.id),
   title: note.title.trim() || "Untitled",
   preview: note.content,
   createdAt: note.createdAt,
 });
 
-const mapQuickNoteToUI = (quickNote: DataQuickNote): NoteItem => ({
-  id: String(quickNote.id),
+const mapQuickNoteToUI = (note: { id: string | number; text: string; createdAt: number }): NoteItem => ({
+  id: String(note.id),
   title:
-    quickNote.text.trim().length > 32
-      ? `${quickNote.text.trim().slice(0, 32)}...`
-      : quickNote.text.trim() || "Untitled",
-  preview: quickNote.text,
-  createdAt: quickNote.createdAt,
+    note.text.trim().length > 32
+      ? `${note.text.trim().slice(0, 32)}...`
+      : note.text.trim() || "Untitled",
+  preview: note.text,
+  createdAt: note.createdAt,
 });
 
-const loadHomeNotes = (): NoteItem[] => getNotes().map((note) => mapNoteToUI(note));
-const loadHomeQuickNotes = (): NoteItem[] => getQuickNotes().map((note) => mapQuickNoteToUI(note));
+const loadHomeTasks = (): TaskItem[] =>
+  getAllTasks().map((task) => ({
+    id: task.id,
+    text: task.title,
+    completed: task.completed,
+    recurringDays: Array.isArray(task.repeatDays) ? task.repeatDays.length : undefined,
+  }));
+
+const loadHomeNotes = (): NoteItem[] => getAllNotes().map((note) => ({
+  id: String(note.id),
+  title: note.title.trim() || "Untitled",
+  preview: note.content,
+  createdAt: note.createdAt,
+}));
+
+const loadHomeQuickNotes = (): NoteItem[] => getAllQuickNotes().map((note) => ({
+  id: String(note.id),
+  title:
+    note.text.trim().length > 32
+      ? `${note.text.trim().slice(0, 32)}...`
+      : note.text.trim() || "Untitled",
+  preview: note.text,
+  createdAt: note.createdAt,
+}));
 
 const loadHomeFolders = (): FolderItem[] => {
   const folders = getFolders();
-  const notes = getNotes();
+  const notes = getAllNotes();
   const folderIds = new Set(folders.map((folder) => folder.id));
 
   const noteCountByFolderId = notes.reduce<Record<string, number>>((acc, note) => {
@@ -274,15 +277,8 @@ const HomeFeed: React.FC = () => {
   const toggleTask = React.useCallback((taskId: string) => {
     setTasks((prev) => {
       const next = prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task));
-      // Persist task completion in the shared data source so all screens stay consistent.
-      try {
-        const store = loadData();
-        const nextTasks = store.tasks.map((task) =>
-          task.id === taskId ? { ...task, completed: !task.completed, updatedAt: Date.now() } : task
-        );
-        saveData({ ...store, tasks: nextTasks });
-      } catch {
-        // Ignore persistence failures to keep interactions stable.
+      if (!isMobileSync) {
+        serviceToggleTask(taskId);
       }
       return next;
     });
@@ -307,7 +303,7 @@ const HomeFeed: React.FC = () => {
       dispatchEntitySyncEvent({
         type: "UPSERT_QUICK_NOTE",
         payload: {
-          id,
+          id: created.id,
           text: content,
           createdAt: created.createdAt,
           updatedAt: Date.now(),
@@ -316,13 +312,8 @@ const HomeFeed: React.FC = () => {
       return;
     }
 
-    // quick note persisted here
-    try {
-      const store = loadData();
-      const nextQuickNotes = [{ id, text: content, createdAt: created.createdAt }, ...store.quickNotes];
-      saveData({ ...store, quickNotes: nextQuickNotes });
-    } catch {
-      // Ignore persistence errors to keep UX unchanged.
+    if (!isMobileSync) {
+       serviceCreateQuickNote({ text: content });
     }
   }, [isMobileSync, quickNote]);
 

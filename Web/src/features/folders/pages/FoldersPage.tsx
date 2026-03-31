@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
   Check,
@@ -26,8 +27,8 @@ import type {
   FolderViewMode,
 } from "../types";
 import { useAppMode } from "../../../app/mode";
-import { getFolders, getNotes, loadData, saveData } from "../../../services/webData";
-import { dispatchEntitySyncEvent, subscribeTaskSyncMessages, type SyncFolder, type SyncNote } from "../../tasks/sync";
+import { getFolders, getNotes, getQuickNotes, loadData, saveData } from "../../../services/webData";
+import { dispatchEntitySyncEvent, subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQuickNote } from "../../tasks/sync";
 import styles from "./FoldersPage.module.css";
 
 const VIEW_MODE_STORAGE_KEY = "folders:view-mode";
@@ -62,7 +63,20 @@ const loadFolderEntries = (): FolderEntry[] => {
       createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
     }));
 
-  return [...folders, ...notes];
+  const quickNotes: FolderEntry[] = (getQuickNotes?.() || [])
+    .filter((note: any) => typeof note.id === "string")
+    .map((note: any) => ({
+      id: note.id as string,
+      parentId: typeof note.folderId === "string" ? note.folderId : null,
+      type: "quick-note" as any,
+      name: typeof note.title === "string" ? note.title : "Untitled quick note",
+      description: typeof note.text === "string" ? note.text.slice(0, 120) : "",
+      color: "#f59e0b",
+      content: typeof note.content === "string" ? note.content : "",
+      createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
+    }));
+
+  return [...folders, ...notes, ...quickNotes];
 };
 
 const defaultFilters: FolderFilters = {
@@ -109,6 +123,7 @@ const mapEntryToFolder = (entry: FolderEntry) => ({
   description: entry.description,
   color: entry.color,
   createdAt: entry.createdAt,
+  updatedAt: entry.createdAt,
   imageUrl: entry.imageUrl,
   bannerUrl: entry.bannerUrl,
 });
@@ -119,6 +134,7 @@ const mapEntryToNote = (entry: FolderEntry) => ({
   title: entry.name.trim() || "Untitled note",
   content: entry.content ?? "",
   createdAt: entry.createdAt,
+  updatedAt: entry.createdAt,
 });
 
 const mapSyncFolderToEntry = (folder: SyncFolder): FolderEntry => ({
@@ -167,6 +183,7 @@ const getDescendantIds = (sourceId: string, entries: FolderEntry[]) => {
 
 const FoldersPage: React.FC = () => {
   const { mode } = useAppMode();
+  const navigate = useNavigate();
   const isMobileSync = mode === "mobile-sync";
   // Data source moved from hardcoded array to persistent webData layer.
   const [entries, setEntries] = React.useState<FolderEntry[]>(() => loadFolderEntries());
@@ -410,11 +427,21 @@ const FoldersPage: React.FC = () => {
         return;
       }
 
+      if (item.type === "note") {
+        navigate(`/notes/${item.id}`);
+        return;
+      }
+
+      if (item.type === "quick-note" as any) {
+        navigate(`/quicknotes/${item.id}`);
+        return;
+      }
+
       setModalState({ mode: "edit", itemId: item.id });
       setEditorTitle(item.name);
       setEditorBody(item.content ?? "");
     },
-    [entries, navigateWithTransition, path]
+    [entries, navigateWithTransition, path, navigate]
   );
 
   const handleCreateFolder = React.useCallback(
@@ -462,27 +489,16 @@ const FoldersPage: React.FC = () => {
       }
 
       if (actionId === "quick-note") {
-        const note: FolderEntry = {
-          id: makeId("note"),
-          parentId: toParentId(currentFolderId),
-          type: "note",
-          name: `Quick Note ${visibleEntries.filter((item) => item.type === "note").length + 1}`,
-          description: "Quick Note",
-          content: "",
-          color: "#f59e0b",
-          createdAt: Date.now(),
-        };
-
-        // persist note after create
-        updateEntries((prev) => [note, ...prev]);
+        navigate(`/quicknotes/new${currentFolderId ? `?folderId=${currentFolderId}` : ""}`);
         return;
       }
 
-      setEditorTitle("New Note");
-      setEditorBody("");
-      setModalState({ mode: "create-note" });
+      if (actionId === "create-note") {
+        navigate(`/notes/new${currentFolderId ? `?folderId=${currentFolderId}` : ""}`);
+        return;
+      }
     },
-    [currentFolderId, updateEntries, visibleEntries]
+    [currentFolderId, navigate, updateEntries, visibleEntries]
   );
 
   const handleOpenMenu = React.useCallback((itemId: string, anchor: DOMRect) => {

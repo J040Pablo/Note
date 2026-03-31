@@ -11,6 +11,8 @@ export type TaskItem = {
   order: number;
   createdAt: number;
   updatedAt: number;
+  parentId?: string | null;
+  noteId?: string | null;
 };
 
 export type TaskDraft = {
@@ -20,6 +22,7 @@ export type TaskDraft = {
   dueTime: string;
   repeatDays: number[];
   scheduleMode: "selected" | "custom" | "none";
+  parentId?: string | null;
 };
 
 export type TaskFilters = {

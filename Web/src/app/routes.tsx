@@ -1,5 +1,7 @@
 import React from 'react';
 import { Navigate, createBrowserRouter, RouterProvider } from 'react-router-dom';
+import NoteEditorPage from '../features/folders/pages/NoteEditorPage';
+import QuickNoteEditorPage from '../features/folders/pages/QuickNoteEditorPage';
 import DesktopLayout from '../layouts/DesktopLayout';
 import HomePage from '../features/home/pages/HomePage';
 import FoldersPage from '../features/folders/pages/FoldersPage';
@@ -57,6 +59,14 @@ const router = createBrowserRouter([
       {
         path: 'settings',
         element: <SettingsPage />,
+      },
+      {
+        path: 'notes/:id',
+        element: <NoteEditorPage />,
+      },
+      {
+        path: 'quicknotes/:id',
+        element: <QuickNoteEditorPage />,
       },
     ],
   },
