@@ -34,6 +34,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
+import PencilToolbarModal from "@components/PencilToolbarModal";
 import type { CanvasElement, CanvasNoteDocument, CanvasPage, ID } from "@models/types";
 import { pickAndStoreImage } from "@utils/mediaPicker";
 import { highlightCodeBlock } from "@utils/syntaxHighlighter";
@@ -74,7 +75,7 @@ const makeLocalId = (): ID => `${Date.now()}-${Math.floor(Math.random() * 100000
 
 type InteractionMode = "move" | "resize";
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
-type DrawingToolMode = "brush" | "eraser" | null;
+type DrawingToolMode = "pencil" | "transparentPencil" | "eraser" | null;
 type EditorInteractionMode = "draw" | "select" | "text";
 type TextInteractionMode = "move" | "edit";
 
@@ -533,6 +534,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const [showRenamePageModal, setShowRenamePageModal] = useState(false);
   const [renamePageDraft, setRenamePageDraft] = useState("");
   const [alignmentGuides, setAlignmentGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+  const [showPencilModal, setShowPencilModal] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const docRef = useRef(doc);
@@ -564,6 +566,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const animatedIndex = useRef(new Animated.Value(0)).current;
   const drawingSessionRef = useRef<{ active: boolean; pageId: ID | null }>({ active: false, pageId: null });
   const drawingLastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const drawingTouchModeRef = useRef<"draw" | "gesture" | null>(null);
 
   const lastSerializedRef = useRef(serializeCanvasNoteContent(parseCanvasNoteContent(value)));
   const serializeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -892,6 +895,18 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     setSelectedId(null);
   }, [pushUndoSnapshot, selectedId]);
 
+  const deleteSelectedOrAll = useCallback(() => {
+    pushUndoSnapshot();
+    if (selectedId) {
+      setDoc((prev) => ({ ...prev, elements: prev.elements.filter((x) => x.id !== selectedId) }));
+      setSelectedId(null);
+      return;
+    }
+
+    setDoc((prev) => ({ ...prev, elements: [] }));
+    setSelectedId(null);
+  }, [pushUndoSnapshot, selectedId]);
+
   // ── Element callbacks ──────────────────────────────────────────────────────
   const handleSelect = useCallback(
     (id: string) => {
@@ -1091,13 +1106,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           drawingLastPointRef.current = { x, y };
           return { ...prev, points: [...prev.points, null, { x, y }] };
         }
-        const effectiveSmoothness = drawingMode === "brush" ? 0 : drawingSmoothness;
+        const effectiveSmoothness = drawingMode === "eraser" ? drawingSmoothness : 0;
         const filteredX = last.x + (x - last.x) * (1 - effectiveSmoothness);
         const filteredY = last.y + (y - last.y) * (1 - effectiveSmoothness);
         const dx = filteredX - last.x;
         const dy = filteredY - last.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const minPointDistance = drawingMode === "brush" ? 0.2 : 0.8;
+        const minPointDistance = drawingMode === "eraser" ? 0.8 : 0.2;
         if (dist < minPointDistance) return prev;
 
         if (dist > MAX_STROKE_STEP) {
@@ -1145,9 +1160,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         id: `${Date.now()}-${Math.floor(Math.random() * 100000)}-${index}`,
         color: drawingColor,
         size: drawingSize,
-        opacity: drawingOpacity,
+        opacity: drawingMode === "transparentPencil" ? 0 : drawingOpacity,
         points,
-        isEraser: drawingMode === "eraser"
+        isEraser: false
       }));
 
       setDoc((prev) => {
@@ -1292,15 +1307,15 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         onStartShouldSetPanResponderCapture: (evt) => {
           if (isDraggingPageRef.current || overviewMode) return false;
           if (textInteractionMode === "edit") return false;
-          return !drawingMode && (evt.nativeEvent.touches?.length ?? 0) >= 2;
+          return (evt.nativeEvent.touches?.length ?? 0) >= 2;
         },
         onMoveShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponderCapture: (evt, gs) => {
           if (isDraggingPageRef.current || overviewMode) return false;
-          if (drawingMode) return false;
           if (textInteractionMode === "edit") return false;
           const touches = evt.nativeEvent.touches?.length ?? 0;
           if (touches >= 2) return true;
+          if (drawingMode) return false;
           if (touches === 1 && (Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1)) {
             return true;
           }
@@ -1308,10 +1323,17 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         },
 
         onPanResponderGrant: (evt) => {
-          if (drawingMode || isDraggingPageRef.current || overviewMode || textInteractionMode === "edit") return;
-          pageSwipeActiveRef.current = false;
           const touches = evt.nativeEvent.touches ?? [];
+          if (isDraggingPageRef.current || overviewMode || textInteractionMode === "edit") return;
+          if (drawingMode && touches.length < 2) return;
+          pageSwipeActiveRef.current = false;
           if (touches.length >= 2) {
+            if (drawingSessionRef.current.active) {
+              drawingTouchModeRef.current = "gesture";
+              drawingSessionRef.current = { active: false, pageId: null };
+              drawingLastPointRef.current = null;
+              setDrawingDraft(null);
+            }
             const scale = displayScaleRef.current || 1;
             const offsetX = canvasPositionRef.current.x;
             const offsetY = canvasPositionRef.current.y;
@@ -1334,8 +1356,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         },
 
         onPanResponderMove: (evt, gs: PanResponderGestureState) => {
-          if (drawingMode || isDraggingPageRef.current || overviewMode || textInteractionMode === "edit") return;
           const touches = evt.nativeEvent.touches ?? [];
+          if (isDraggingPageRef.current || overviewMode || textInteractionMode === "edit") return;
+          if (drawingMode && touches.length < 2) return;
           if (touches.length >= 2 && pinchStateRef.current) {
             const dist = touchDist(touches[0], touches[1]);
             const ratio = dist / Math.max(1, pinchStateRef.current.startDist);
@@ -1531,15 +1554,11 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       clampCanvasOffset,
       currentPageIndex,
       drawingMode,
-      finalizePageTransition,
-      goToPage,
       nextPageIndex,
       overviewMode,
-      pageCount,
       pageTransitionDirection,
       pageSwipeX,
       pagesById,
-      slideWidth,
       drawingSmoothness,
       getSnappedMove,
       selectedTextElement,
@@ -1566,29 +1585,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     setMode("text");
     setPendingFocusTextId(el.id);
   }, [addElement, defaultTextColor, doc.pageHeight, doc.pageWidth, getDefaultTargetPageId, pagesById]);
-
-  const addHeading = useCallback(() => {
-    const pageId = getDefaultTargetPageId();
-    if (!pageId) return;
-    const page = pagesById.get(pageId);
-    const baseWidth = 360;
-    const pageW = page?.width ?? doc.pageWidth;
-    const y = Math.max(28, (page?.height ?? doc.pageHeight) * 0.12);
-    const x = Math.max(16, (pageW - baseWidth) / 2);
-    const el = createCanvasTextElement("Heading", x, y, pageId);
-    addElement({
-      ...el,
-      width: baseWidth,
-      height: 72,
-      style: {
-        ...el.style,
-        fontSize: 36,
-        bold: true,
-        textColor: "#FFFFFF"
-      }
-    });
-    setPendingFocusTextId(el.id);
-  }, [addElement, doc.pageHeight, doc.pageWidth, getDefaultTargetPageId, pagesById]);
 
   const addImage = useCallback(async () => {
     const uri = await pickAndStoreImage("canvas-note");
@@ -1869,6 +1865,12 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     endDrawing();
   }, [endDrawing]);
 
+  const handleDrawingCancel = useCallback(() => {
+    drawingSessionRef.current = { active: false, pageId: null };
+    drawingLastPointRef.current = null;
+    setDrawingDraft(null);
+  }, []);
+
   const resetZoom = useCallback(() => {
     const pageW = toPositiveNumber(currentPage.width, toPositiveNumber(doc.pageWidth, 900));
     const pageH = toPositiveNumber(currentPage.height, toPositiveNumber(doc.pageHeight, 1200));
@@ -1929,29 +1931,54 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
 
   const toggleDrawingMode = useCallback(() => {
     if (!editable) return;
-    setDrawingMode((prev) => {
-      const next = prev === "brush" ? null : "brush";
-      setMode(next ? "draw" : "select");
-      return next;
-    });
+
+    if (drawingMode === "pencil" || drawingMode === "transparentPencil") {
+      // Se o lápis já está ativo, desativa tudo
+      setDrawingMode(null);
+      setMode("select");
+      setShowPencilModal(false);
+    } else if (showPencilModal) {
+      // Se o modal já está aberto, fecha
+      setDrawingMode(null);
+      setMode("select");
+      setShowPencilModal(false);
+    } else {
+      // Caso contrário, ativa o lápis e abre o modal
+      setDrawingMode("pencil");
+      setMode("draw");
+      setShowPencilModal(true);
+    }
+
+    setSelectedId(null);
+    setTextInteractionMode("move");
+    setPendingFocusTextId(null);
     setShowShapeMenu(false);
     setShowStylePanel(false);
     setShowAlignMenu(false);
-    clearSelection();
-  }, [clearSelection, editable]);
+    Keyboard.dismiss();
+  }, [editable, drawingMode, showPencilModal]);
 
   const toggleEraserMode = useCallback(() => {
     if (!editable) return;
-    setDrawingMode((prev) => {
-      const next = prev === "eraser" ? null : "eraser";
-      setMode(next ? "draw" : "select");
-      return next;
-    });
+
+    if (showPencilModal && drawingMode === "eraser") {
+      setDrawingMode(null);
+      setMode("select");
+      setShowPencilModal(false);
+    } else {
+      setDrawingMode("eraser");
+      setMode("draw");
+      setShowPencilModal(true);
+    }
+
+    setSelectedId(null);
+    setTextInteractionMode("move");
+    setPendingFocusTextId(null);
     setShowShapeMenu(false);
     setShowStylePanel(false);
     setShowAlignMenu(false);
-    clearSelection();
-  }, [clearSelection, editable]);
+    Keyboard.dismiss();
+  }, [drawingMode, editable, showPencilModal]);
 
   const renderPage = useCallback(
     (page: CanvasPage) => {
@@ -2018,14 +2045,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 )}
 
                 {drawingDraft?.pageId === page.id && drawingDraft.points.some((pt) => !!pt) && (
-                    <Path
-                      d={buildSmoothPath(drawingDraft.points)}
-                      stroke={drawingMode === "eraser" ? "#EF4444" : drawingColor}
-                      strokeWidth={drawingSize}
-                      strokeOpacity={drawingMode === "eraser" ? 0.6 : drawingOpacity}
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      fill="none"
+                  <Path
+                    d={buildSmoothPath(drawingDraft.points)}
+                    stroke={drawingMode === "eraser" ? "#EF4444" : drawingColor}
+                    strokeWidth={drawingSize}
+                    strokeOpacity={drawingMode === "eraser" ? 0.6 : drawingMode === "transparentPencil" ? 0 : drawingOpacity}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    fill="none"
                   />
                 )}
               </Svg>
@@ -2043,23 +2070,57 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 bottom: -DRAW_TOUCH_PAD
               }
             ]}
-            onStartShouldSetResponder={(evt) => mode === "draw" && editable && (evt.nativeEvent.touches?.length ?? 0) === 1}
+            onStartShouldSetResponder={() => false}
             onMoveShouldSetResponder={(evt) => mode === "draw" && editable && (evt.nativeEvent.touches?.length ?? 0) === 1}
-            onStartShouldSetResponderCapture={(evt) => !!drawingMode && editable && (evt.nativeEvent.touches?.length ?? 0) === 1}
-            onMoveShouldSetResponderCapture={(evt) => !!drawingMode && editable && (evt.nativeEvent.touches?.length ?? 0) === 1}
-            onResponderTerminationRequest={() => false}
+            onStartShouldSetResponderCapture={(evt) => {
+              const touches = evt.nativeEvent.touches?.length ?? 0;
+              if (touches >= 2) {
+                drawingTouchModeRef.current = "gesture";
+                handleDrawingCancel();
+                return false;
+              }
+              return false;
+            }}
+            onMoveShouldSetResponderCapture={(evt) => {
+              const touches = evt.nativeEvent.touches?.length ?? 0;
+              if (touches >= 2) {
+                drawingTouchModeRef.current = "gesture";
+                handleDrawingCancel();
+                return false;
+              }
+              return !!drawingMode && editable && touches === 1;
+            }}
+            onResponderTerminationRequest={() => drawingTouchModeRef.current === "gesture" || !drawingSessionRef.current.active}
             onResponderGrant={(evt) => {
+              if ((evt.nativeEvent.touches?.length ?? 0) !== 1) return;
+              drawingTouchModeRef.current = "draw";
               const point = getPagePointFromEvent(page, evt);
               drawingSessionRef.current = { active: true, pageId: page.id };
               beginDrawing(page.id, point.x, point.y);
             }}
             onResponderMove={(evt) => {
+              const touches = evt.nativeEvent.touches?.length ?? 0;
+              if (touches >= 2) {
+                drawingTouchModeRef.current = "gesture";
+                handleDrawingCancel();
+                return;
+              }
+              if (touches !== 1) {
+                handleDrawingRelease();
+                return;
+              }
               if (!drawingSessionRef.current.active || drawingSessionRef.current.pageId !== page.id) return;
               const point = getPagePointFromEvent(page, evt);
               updateDrawing(page.id, point.x, point.y);
             }}
-            onResponderRelease={handleDrawingRelease}
-            onResponderTerminate={handleDrawingRelease}
+            onResponderRelease={() => {
+              drawingTouchModeRef.current = null;
+              handleDrawingRelease();
+            }}
+            onResponderTerminate={() => {
+              drawingTouchModeRef.current = null;
+              handleDrawingRelease();
+            }}
           />
         </View>
       );
@@ -2229,9 +2290,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
             <Pressable style={tb()} onPress={addText}>
               <Ionicons name="text-outline" size={16} color={colors.textPrimary} />
             </Pressable>
-            <Pressable style={tb()} onPress={addHeading}>
-              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: "700" }}>H</Text>
-            </Pressable>
             <Pressable style={tb()} onPress={addImage}>
               <Ionicons name="image-outline" size={16} color={colors.textPrimary} />
             </Pressable>
@@ -2252,12 +2310,16 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         )}
 
         <Pressable
-          style={[tb(), drawingMode === "brush" && styles.activeToolBtn]}
+          style={[tb(), (drawingMode === "pencil" || drawingMode === "transparentPencil") && styles.activeToolBtn]}
           onPress={() => toggleDrawingMode()}
           accessibilityLabel="Brush tool"
           accessibilityHint="Toggle freehand brush mode"
         >
-          <Ionicons name="brush-outline" size={16} color={drawingMode === "brush" ? "#A78BFA" : colors.textPrimary} />
+          <Ionicons
+            name="brush-outline"
+            size={16}
+            color={drawingMode === "pencil" || drawingMode === "transparentPencil" ? "#A78BFA" : colors.textPrimary}
+          />
         </Pressable>
 
         <Pressable
@@ -2304,88 +2366,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           <Ionicons name="chevron-forward" size={16} color={currentPageIndex >= pageCount - 1 ? colors.textSecondary : colors.textPrimary} />
         </Pressable>
 
-        {drawingMode === "brush" && (
-          <>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <View style={styles.drawControlsRow}>
-              {DRAW_COLORS.map((color) => {
-                const active = drawingColor.toLowerCase() === color.toLowerCase();
-                return (
-                  <Pressable
-                    key={color}
-                    style={[
-                      styles.drawColor,
-                      { backgroundColor: color, borderColor: color === "#F9FAFB" ? "#9CA3AF" : color },
-                      active && styles.drawColorActive
-                    ]}
-                    onPress={() => setDrawingColor(color)}
-                  />
-                );
-              })}
-              <Pressable
-                style={[styles.menuBtnSmall, drawingSize <= DRAW_SIZES[0] && styles.disabledBtn]}
-                onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.max(0, DRAW_SIZES.indexOf(s) - 1)] ?? s)}
-              >
-                <Ionicons name="remove" size={16} color={colors.textPrimary} />
-              </Pressable>
-              <View style={[styles.textSizeChip, styles.textSizeChipPassive]}>
-                <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{drawingSize}px</Text>
-              </View>
-              <Pressable
-                style={[styles.menuBtnSmall, drawingSize >= DRAW_SIZES[DRAW_SIZES.length - 1] && styles.disabledBtn]}
-                onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.min(DRAW_SIZES.length - 1, DRAW_SIZES.indexOf(s) + 1)] ?? s)}
-              >
-                <Ionicons name="add" size={16} color={colors.textPrimary} />
-              </Pressable>
-
-              <Pressable
-                style={styles.menuBtnSmall}
-                onPress={() => {
-                  const idx = DRAW_OPACITIES.findIndex((x) => Math.abs(x - drawingOpacity) < 0.001);
-                  setDrawingOpacity(DRAW_OPACITIES[(idx + 1) % DRAW_OPACITIES.length] ?? drawingOpacity);
-                }}
-              >
-                <Text style={{ color: colors.textPrimary, fontSize: 11 }}>{Math.round(drawingOpacity * 100)}%</Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.menuBtnSmall}
-                onPress={() => {
-                  const idx = DRAW_SMOOTH_LEVELS.findIndex((x) => Math.abs(x - drawingSmoothness) < 0.001);
-                  setDrawingSmoothness(DRAW_SMOOTH_LEVELS[(idx + 1) % DRAW_SMOOTH_LEVELS.length] ?? drawingSmoothness);
-                }}
-              >
-                <Text style={{ color: colors.textPrimary, fontSize: 11 }}>S {Math.round(drawingSmoothness * 100)}</Text>
-              </Pressable>
-            </View>
-          </>
-        )}
-
-        {drawingMode === "eraser" && (
-          <>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <View style={styles.drawControlsRow}>
-              <Pressable
-                style={[styles.menuBtnSmall, drawingSize <= DRAW_SIZES[0] && styles.disabledBtn]}
-                onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.max(0, DRAW_SIZES.indexOf(s) - 1)] ?? s)}
-              >
-                <Ionicons name="remove" size={16} color={colors.textPrimary} />
-              </Pressable>
-              <View style={[styles.textSizeChip, styles.textSizeChipPassive]}>
-                <Text style={{ color: colors.textPrimary, fontSize: 12 }}>{drawingSize}px</Text>
-              </View>
-              <Pressable
-                style={[styles.menuBtnSmall, drawingSize >= DRAW_SIZES[DRAW_SIZES.length - 1] && styles.disabledBtn]}
-                onPress={() => setDrawingSize((s) => DRAW_SIZES[Math.min(DRAW_SIZES.length - 1, DRAW_SIZES.indexOf(s) + 1)] ?? s)}
-              >
-                <Ionicons name="add" size={16} color={colors.textPrimary} />
-              </Pressable>
-              <Pressable style={styles.menuBtnSmall} onPress={() => setDrawingMode("brush")}>
-                <Ionicons name="brush-outline" size={16} color={colors.textPrimary} />
-              </Pressable>
-            </View>
-          </>
-        )}
+        {/* Drawing controls moved to PencilToolbarModal */}
 
         {showSelectionDelete && (
           <>
@@ -2980,6 +2961,36 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         )}
 
       </View>
+
+      <PencilToolbarModal
+        visible={showPencilModal}
+        onDismiss={() => setShowPencilModal(false)}
+        currentColor={drawingColor}
+        onColorChange={setDrawingColor}
+        currentSize={drawingSize}
+        onSizeChange={setDrawingSize}
+        currentOpacity={drawingOpacity}
+        onOpacityChange={setDrawingOpacity}
+        isUsingEraser={drawingMode === "eraser"}
+        activeTool={drawingMode === "eraser" ? "eraser" : drawingMode === "transparentPencil" ? "transparentPencil" : drawingMode === "pencil" ? "pencil" : null}
+        onToolToggle={(tool) => {
+          if (tool === "eraser") {
+            setDrawingMode("eraser");
+            setMode("draw");
+            return;
+          }
+          if (tool === "transparentPencil") {
+            setDrawingMode("transparentPencil");
+            setMode("draw");
+            return;
+          }
+          setDrawingMode("pencil");
+          setMode("draw");
+        }}
+        onDelete={deleteSelectedOrAll}
+        colors={DRAW_COLORS}
+        sizes={DRAW_SIZES}
+      />
     </View>
   );
 };
