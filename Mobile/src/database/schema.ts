@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS folders (
   description TEXT,
   photoPath TEXT,
   bannerPath TEXT,
-  createdAt INTEGER NOT NULL
+  createdAt INTEGER NOT NULL,
+  updatedAt INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS notes (

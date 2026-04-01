@@ -24,7 +24,9 @@ export type SyncBridgeEvent =
   | { type: "NOTE_UPSERT"; note: DataNote }
   | { type: "NOTE_DELETE"; id: string }
   | { type: "QUICKNOTE_UPSERT"; quickNote: DataQuickNote }
-  | { type: "QUICKNOTE_DELETE"; id: string };
+  | { type: "QUICKNOTE_DELETE"; id: string }
+  | { type: "APP_META_UPSERT"; key: string }
+  | { type: "APP_META_DELETE"; key: string };
 
 type SyncBridgeListener = (event: SyncBridgeEvent) => void;
 
@@ -49,11 +51,23 @@ const emit = (event: SyncBridgeEvent) => {
 
 const syncTaskToTaskItem = (task: SyncTask, fallbackOrder = 0): TaskItem => ({
   id: task.id,
-  title: task.title,
+  title: task.title || task.text || "Untitled task",
   completed: !!task.completed,
   priority: task.priority,
-  dueDate: typeof task.dueDate === "string" ? task.dueDate : typeof task.date === "string" ? task.date : null,
-  dueTime: typeof task.dueTime === "string" ? task.dueTime : null,
+  dueDate:
+    typeof task.scheduledDate === "string"
+      ? task.scheduledDate
+      : typeof task.dueDate === "string"
+      ? task.dueDate
+      : typeof task.date === "string"
+      ? task.date
+      : null,
+  dueTime:
+    typeof task.scheduledTime === "string"
+      ? task.scheduledTime
+      : typeof task.dueTime === "string"
+      ? task.dueTime
+      : null,
   repeatDays: Array.isArray(task.repeatDays) ? task.repeatDays : [],
   order: typeof task.order === "number" ? task.order : fallbackOrder,
   createdAt: typeof task.createdAt === "number" ? task.createdAt : task.updatedAt,
@@ -88,12 +102,12 @@ const syncNoteToDataNote = (note: SyncNote): DataNote => {
 };
 
 const syncQuickNoteToData = (q: SyncQuickNote): DataQuickNote => {
-  const content = (q as SyncQuickNote & { content?: string }).content;
+  const content = q.content ?? q.text ?? "";
   return {
     id: q.id,
     title: q.title ?? "Quick Note",
-    text: q.text ?? content ?? "",
-    content: content ?? q.text ?? "",
+    text: content,
+    content,
     folderId: q.folderId ?? null,
     createdAt: q.createdAt,
     updatedAt: q.updatedAt,
@@ -216,6 +230,16 @@ const handleEntityMessage = (message: SyncIncomingMessage) => {
       store.tasks = store.tasks.filter((t) => t.id !== message.payload.id);
       saveData(store);
       emit({ type: "TASK_DELETE", id: message.payload.id });
+      break;
+    }
+    case "UPSERT_APP_META": {
+      localStorage.setItem(`note.sync.meta.${message.payload.key}`, message.payload.value);
+      emit({ type: "APP_META_UPSERT", key: message.payload.key });
+      break;
+    }
+    case "DELETE_APP_META": {
+      localStorage.removeItem(`note.sync.meta.${message.payload.key}`);
+      emit({ type: "APP_META_DELETE", key: message.payload.key });
       break;
     }
     default:

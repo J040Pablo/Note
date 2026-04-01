@@ -32,6 +32,7 @@ import {
   toggleTask as serviceToggleTask,
   reorderTasks as serviceReorderTasks
 } from "../../../services/tasksService.web";
+import { subscribeSyncBridge } from "../../../services/syncBridge";
 import styles from "./TasksPage.module.css";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -125,11 +126,23 @@ const createDefaultDraft = (selectedDate: string): TaskDraft => ({
 
 const mapSyncTaskToTaskItem = (task: SyncTask, fallbackOrder = 0): TaskItem => ({
   id: task.id,
-  title: task.title,
+  title: task.title || task.text || "Untitled task",
   completed: !!task.completed,
   priority: task.priority,
-  dueDate: typeof task.dueDate === "string" ? task.dueDate : typeof task.date === "string" ? task.date : null,
-  dueTime: typeof task.dueTime === "string" ? task.dueTime : null,
+  dueDate:
+    typeof task.scheduledDate === "string"
+      ? task.scheduledDate
+      : typeof task.dueDate === "string"
+      ? task.dueDate
+      : typeof task.date === "string"
+      ? task.date
+      : null,
+  dueTime:
+    typeof task.scheduledTime === "string"
+      ? task.scheduledTime
+      : typeof task.dueTime === "string"
+      ? task.dueTime
+      : null,
   repeatDays: Array.isArray(task.repeatDays) ? task.repeatDays : [],
   order: typeof task.order === "number" ? task.order : fallbackOrder,
   createdAt: typeof task.createdAt === "number" ? task.createdAt : task.updatedAt,
@@ -228,6 +241,16 @@ const TasksPage: React.FC = () => {
       unsubStatus();
       unsubMessages();
     };
+  }, [isMobileSync]);
+
+  React.useEffect(() => {
+    if (!isMobileSync) return;
+    const unsub = subscribeSyncBridge((event) => {
+      if (event.type === "TASK_UPSERT" || event.type === "TASK_DELETE" || event.type === "FULL_SYNC") {
+        setTasks(getAllTasks());
+      }
+    });
+    return () => unsub();
   }, [isMobileSync]);
 
   React.useEffect(() => {

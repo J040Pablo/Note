@@ -1,7 +1,10 @@
 .editorPage {
-  max-width: 860px;
-  margin: 0 auto;
-  padding-bottom: 80px;
+  height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #020617;
 }
 
 /* ─── Header ────────────────────────────────────────── */
@@ -118,7 +121,10 @@
 /* ─── Editor body ───────────────────────────────────── */
 
 .editorBody {
-  min-height: 400px;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
 }
 
 /* ─── Folder info ───────────────────────────────────── */

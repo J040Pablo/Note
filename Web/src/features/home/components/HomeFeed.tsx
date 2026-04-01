@@ -22,6 +22,7 @@ import {
   type SyncQuickNote,
   type SyncTask,
 } from "../../tasks/sync";
+import { subscribeSyncBridge } from "../../../services/syncBridge";
 import styles from "./HomeFeed.module.css";
 
 type ItemType = "folder" | "note" | "task";
@@ -64,7 +65,7 @@ type FolderItem = {
 // Mapper helpers for Sync UI
 const mapSyncTaskToUI = (task: SyncTask): TaskItem => ({
   id: task.id,
-  text: task.title,
+  text: task.title || task.text || "Untitled task",
   completed: !!task.completed,
   recurringDays: Array.isArray(task.repeatDays) ? task.repeatDays.length : undefined,
 });
@@ -85,6 +86,11 @@ const mapQuickNoteToUI = (note: { id: string | number; text: string; createdAt: 
   preview: note.text,
   createdAt: note.createdAt,
 });
+
+const mapSyncQuickNoteToUI = (note: SyncQuickNote): NoteItem => {
+  const content = note.content ?? note.text ?? "";
+  return mapQuickNoteToUI({ id: note.id, text: content, createdAt: note.createdAt });
+};
 
 const loadHomeTasks = (): TaskItem[] =>
   getAllTasks().map((task) => ({
@@ -185,8 +191,19 @@ const HomeFeed: React.FC = () => {
       const syncQuickNotes = (message.payload.quickNotes ?? []) as SyncQuickNote[];
       const syncFolders = (message.payload.folders ?? []) as SyncFolder[];
       setNotes(syncNotes.map((note) => mapNoteToUI(note)));
-      setQuickNotes(syncQuickNotes.map((note) => mapQuickNoteToUI(note)));
+      setQuickNotes(syncQuickNotes.map((note) => mapSyncQuickNoteToUI(note)));
       setFolders(mapSyncFoldersToUI(syncFolders, syncNotes));
+    });
+    return () => unsub();
+  }, [isMobileSync]);
+
+  React.useEffect(() => {
+    if (!isMobileSync) return;
+    const unsub = subscribeSyncBridge(() => {
+      setTasks(loadHomeTasks());
+      setNotes(loadHomeNotes());
+      setQuickNotes(loadHomeQuickNotes());
+      setFolders(loadHomeFolders());
     });
     return () => unsub();
   }, [isMobileSync]);
@@ -260,19 +277,40 @@ const HomeFeed: React.FC = () => {
   const togglePin = React.useCallback((type: ItemType, id: string) => {
     setPinnedItems((prev) => {
       const exists = prev.some((item) => item.type === type && item.id === id);
-      if (exists) {
-        return prev.filter((item) => !(item.type === type && item.id === id));
+      const next = exists
+        ? prev.filter((item) => !(item.type === type && item.id === id))
+        : [{ type, id }, ...prev];
+      if (isMobileSync) {
+        dispatchEntitySyncEvent({
+          type: "UPSERT_APP_META",
+          payload: {
+            key: "web.pinned_items",
+            value: JSON.stringify(next),
+            updatedAt: Date.now(),
+          },
+        });
       }
-      return [{ type, id }, ...prev];
+      return next;
     });
-  }, []);
+  }, [isMobileSync]);
 
   const addRecent = React.useCallback((entry: Omit<RecentItem, "openedAt">) => {
     setRecentItems((prev) => {
       const next = [{ ...entry, openedAt: Date.now() }, ...prev.filter((x) => !(x.type === entry.type && x.id === entry.id))];
-      return next.slice(0, 10);
+      const sliced = next.slice(0, 10);
+      if (isMobileSync) {
+        dispatchEntitySyncEvent({
+          type: "UPSERT_APP_META",
+          payload: {
+            key: "web.recent_items",
+            value: JSON.stringify(sliced),
+            updatedAt: Date.now(),
+          },
+        });
+      }
+      return sliced;
     });
-  }, []);
+  }, [isMobileSync]);
 
   const toggleTask = React.useCallback((taskId: string) => {
     setTasks((prev) => {
@@ -304,6 +342,8 @@ const HomeFeed: React.FC = () => {
         type: "UPSERT_QUICK_NOTE",
         payload: {
           id: created.id,
+          title: created.title,
+          content,
           text: content,
           createdAt: created.createdAt,
           updatedAt: Date.now(),

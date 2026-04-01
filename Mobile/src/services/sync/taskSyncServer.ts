@@ -1,8 +1,20 @@
 import * as Network from "expo-network";
-import { getAllFolders } from "@services/foldersService";
-import { getAllNotes, getAllQuickNotes } from "@services/notesService";
+import { createFolder, deleteFolder, getAllFolders, updateFolder } from "@services/foldersService";
+import {
+  createNote,
+  createQuickNote,
+  deleteNote,
+  deleteQuickNote,
+  getAllNotes,
+  getAllQuickNotes,
+  getQuickNoteById,
+  updateNote,
+  updateQuickNote,
+} from "@services/notesService";
 import { createTask, deleteTask, getAllTasks, updateTask } from "@services/tasksService";
+import { deleteMetaKey, upsertMetaKey } from "@services/appMetaService";
 import { emitTaskServerEvent, subscribeTaskServerEvents, type TaskServerEvent } from "@services/sync/taskSyncEvents";
+import { subscribeEntityServerEvents, type EntityServerEvent } from "@services/sync/entitySyncEvents";
 import { fromSyncPriority, toSyncTask, type SyncPriority, type SyncTask } from "@services/sync/taskSyncProtocol";
 import type { Task } from "@models/types";
 import { isExpoGo, shouldLogDev } from "@utils/runtimeEnv";
@@ -41,14 +53,67 @@ type SyncIncomingMessage =
       };
     }
   | { type: "TASK_DELETE"; payload?: { id?: string; updatedAt?: number } }
-  | { type: "TASK_TOGGLE"; payload?: { id?: string; completed?: boolean; updatedAt?: number } };
+  | { type: "TASK_TOGGLE"; payload?: { id?: string; completed?: boolean; updatedAt?: number } }
+  | { type: "UPSERT_TASK"; payload?: Partial<SyncTask> & { id?: string } }
+  | { type: "DELETE_TASK"; payload?: { id?: string; updatedAt?: number } }
+  | {
+      type: "UPSERT_FOLDER";
+      payload?: {
+        id?: string;
+        parentId?: string | null;
+        name?: string;
+        description?: string;
+        color?: string;
+        imageUrl?: string;
+        bannerUrl?: string;
+        createdAt?: number;
+        updatedAt?: number;
+      };
+    }
+  | { type: "DELETE_FOLDER"; payload?: { id?: string; updatedAt?: number } }
+  | {
+      type: "UPSERT_NOTE";
+      payload?: {
+        id?: string;
+        parentId?: string | null;
+        folderId?: string | null;
+        title?: string;
+        content?: string;
+        createdAt?: number;
+        updatedAt?: number;
+      };
+    }
+  | { type: "DELETE_NOTE"; payload?: { id?: string; updatedAt?: number } }
+  | {
+      type: "UPSERT_QUICK_NOTE";
+      payload?: {
+        id?: string;
+        title?: string;
+        content?: string;
+        text?: string;
+        folderId?: string | null;
+        createdAt?: number;
+        updatedAt?: number;
+      };
+    }
+  | { type: "DELETE_QUICK_NOTE"; payload?: { id?: string; updatedAt?: number } }
+  | { type: "UPSERT_APP_META"; payload?: { key?: string; value?: string; updatedAt?: number } }
+  | { type: "DELETE_APP_META"; payload?: { key?: string; updatedAt?: number } };
 
 type SyncTaskPayload = {
   id?: string;
   title?: string;
+  text?: string;
   completed?: boolean;
   priority?: SyncPriority;
   date?: string | null;
+  scheduledDate?: string | null;
+  scheduledTime?: string | null;
+  repeatDays?: number[];
+  completedDates?: string[];
+  order?: number;
+  parentId?: string | null;
+  noteId?: string | null;
   updatedAt?: number;
 };
 
@@ -67,6 +132,7 @@ const DEFAULT_SYNC_PORT = 8787;
 let server: ServerInstance | null = null;
 let serverUrl: string | null = null;
 let unsubscribeTaskBroadcast: (() => void) | null = null;
+let unsubscribeEntityBroadcast: (() => void) | null = null;
 const clients = new Map<string, SocketClient>();
 
 let hasLoggedExpoGoWsUnsupported = false;
@@ -114,20 +180,40 @@ const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Tas
       : existing.priority;
 
   const hasDate = payload && "date" in payload;
+  const nextTitle =
+    payload && typeof payload.title === "string"
+      ? payload.title
+      : payload && typeof payload.text === "string"
+      ? payload.text
+      : existing.text;
+  const nextDate =
+    typeof payload?.scheduledDate === "string"
+      ? payload.scheduledDate
+      : hasDate
+      ? (payload.date ?? null)
+      : existing.scheduledDate ?? null;
+  const nextTime =
+    typeof payload?.scheduledTime === "string"
+      ? payload.scheduledTime
+      : hasDate
+      ? null
+      : existing.scheduledTime ?? null;
 
   return {
     ...existing,
-    text:
-      payload && "title" in payload && typeof payload.title === "string"
-        ? payload.title.trim() || existing.text
-        : existing.text,
+    text: nextTitle.trim() || existing.text,
     completed:
       payload && "completed" in payload && typeof payload.completed === "boolean"
         ? payload.completed
         : existing.completed,
     priority: nextPriority,
-    scheduledDate: hasDate ? (payload.date ?? null) : existing.scheduledDate ?? null,
-    scheduledTime: hasDate ? null : existing.scheduledTime ?? null,
+    scheduledDate: nextDate,
+    scheduledTime: nextTime,
+    repeatDays: Array.isArray(payload?.repeatDays) ? payload.repeatDays : existing.repeatDays,
+    completedDates: Array.isArray(payload?.completedDates) ? payload.completedDates : existing.completedDates,
+    orderIndex: typeof payload?.order === "number" ? payload.order : existing.orderIndex,
+    parentId: typeof payload?.parentId === "string" ? payload.parentId : existing.parentId ?? null,
+    noteId: typeof payload?.noteId === "string" ? payload.noteId : existing.noteId ?? null,
     updatedAt: Date.now(),
   };
 };
@@ -194,15 +280,18 @@ const sendInitialData = async (socket: SocketClient) => {
 };
 
 const handleTaskCreate = async (payload: Extract<SyncIncomingMessage, { type: "TASK_CREATE" }>["payload"]) => {
-  const title = (payload?.title ?? "").trim();
+  const title = (payload?.title ?? payload?.text ?? "").trim();
   if (!title) return;
 
   const created = await createTask({
     id: payload?.id,
     text: title,
     priority: fromSyncPriority(payload?.priority),
-    scheduledDate: payload?.date ?? null,
-    repeatDays: [],
+    scheduledDate: payload?.scheduledDate ?? payload?.date ?? null,
+    scheduledTime: payload?.scheduledTime ?? null,
+    repeatDays: Array.isArray(payload?.repeatDays) ? payload.repeatDays : [],
+    parentId: typeof payload?.parentId === "string" ? payload.parentId : null,
+    noteId: typeof payload?.noteId === "string" ? payload.noteId : null,
     updatedAt: Number(payload?.updatedAt ?? Date.now()),
   });
 
@@ -267,6 +356,24 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
     return;
   }
 
+  if (message.type === "UPSERT_TASK") {
+    const id = String(message.payload?.id ?? "").trim();
+    if (!id) {
+      await handleTaskCreate(message.payload);
+      return;
+    }
+
+    const all = await getAllTasks();
+    const existing = all.find((task) => String(task.id) === id);
+    if (!existing) {
+      await handleTaskCreate(message.payload);
+      return;
+    }
+
+    await handleTaskUpdate(message.payload);
+    return;
+  }
+
   if (message.type === "TASK_UPDATE") {
     await handleTaskUpdate(message.payload);
     return;
@@ -277,12 +384,163 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
     return;
   }
 
+  if (message.type === "DELETE_TASK") {
+    await handleTaskDelete(message.payload);
+    return;
+  }
+
   if (message.type === "TASK_TOGGLE") {
     await handleTaskToggle(message.payload);
+    return;
+  }
+
+  if (message.type === "UPSERT_NOTE") {
+    const id = String(message.payload?.id ?? "").trim();
+    const title = String(message.payload?.title ?? "").trim();
+    if (!id || !title) return;
+
+    const all = await getAllNotes();
+    const current = all.find((n) => String(n.id) === id);
+    const folderId = (message.payload?.folderId ?? message.payload?.parentId ?? null) as string | null;
+    const content = typeof message.payload?.content === "string" ? message.payload.content : "";
+
+    if (!current) {
+      await createNote({
+        id,
+        title,
+        content,
+        folderId,
+        createdAt: Number(message.payload?.createdAt ?? Date.now()),
+        updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
+      });
+    } else {
+      await updateNote({
+        ...current,
+        title,
+        content,
+        folderId,
+        updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
+      });
+    }
+
+    return;
+  }
+
+  if (message.type === "DELETE_NOTE") {
+    const id = String(message.payload?.id ?? "").trim();
+    if (!id) return;
+    await deleteNote(id);
+    return;
+  }
+
+  if (message.type === "UPSERT_QUICK_NOTE") {
+    const id = String(message.payload?.id ?? "").trim();
+    if (!id) return;
+    const title = String(message.payload?.title ?? "Quick Note").trim() || "Quick Note";
+    const content =
+      typeof message.payload?.content === "string"
+        ? message.payload.content
+        : typeof message.payload?.text === "string"
+        ? message.payload.text
+        : "";
+    const folderId = (message.payload?.folderId ?? null) as string | null;
+    const current = await getQuickNoteById(id);
+
+    if (!current) {
+      await createQuickNote({
+        id,
+        title,
+        content,
+        folderId,
+        createdAt: Number(message.payload?.createdAt ?? Date.now()),
+        updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
+      });
+    } else {
+      await updateQuickNote(id, { title, content, folderId });
+    }
+
+    return;
+  }
+
+  if (message.type === "DELETE_QUICK_NOTE") {
+    const id = String(message.payload?.id ?? "").trim();
+    if (!id) return;
+    await deleteQuickNote(id);
+    return;
+  }
+
+  if (message.type === "UPSERT_FOLDER") {
+    const id = String(message.payload?.id ?? "").trim();
+    const name = String(message.payload?.name ?? "").trim();
+    if (!id || !name) return;
+
+    const all = await getAllFolders();
+    const current = all.find((f) => String(f.id) === id);
+    const parentId = (message.payload?.parentId ?? null) as string | null;
+
+    if (!current) {
+      await createFolder(
+        name,
+        parentId,
+        message.payload?.color ?? null,
+        message.payload?.description ?? null,
+        message.payload?.imageUrl ?? null,
+        message.payload?.bannerUrl ?? null,
+        {
+          id,
+          createdAt: Number(message.payload?.createdAt ?? Date.now()),
+          updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
+        }
+      );
+    } else {
+      await updateFolder({
+        ...current,
+        id,
+        name,
+        parentId,
+        color: message.payload?.color ?? current.color ?? null,
+        description: message.payload?.description ?? current.description ?? null,
+        photoPath: message.payload?.imageUrl ?? current.photoPath ?? null,
+        bannerPath: message.payload?.bannerUrl ?? current.bannerPath ?? null,
+        createdAt: Number(message.payload?.createdAt ?? current.createdAt ?? Date.now()),
+        updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
+      } as typeof current & { updatedAt: number });
+    }
+
+    return;
+  }
+
+  if (message.type === "DELETE_FOLDER") {
+    const id = String(message.payload?.id ?? "").trim();
+    if (!id) return;
+    await deleteFolder(id);
+    return;
+  }
+
+  if (message.type === "UPSERT_APP_META") {
+    const key = String(message.payload?.key ?? "").trim();
+    if (!key) return;
+    const value = String(message.payload?.value ?? "");
+    await upsertMetaKey(key, value);
+    return;
+  }
+
+  if (message.type === "DELETE_APP_META") {
+    const key = String(message.payload?.key ?? "").trim();
+    if (!key) return;
+    await deleteMetaKey(key);
   }
 };
 
 const onTaskEvent = (event: TaskServerEvent) => {
+  if (event.type === "TASK_CREATED" || event.type === "TASK_UPDATED") {
+    broadcast({ type: "UPSERT_TASK", payload: event.payload });
+    return;
+  }
+  broadcast({ type: "DELETE_TASK", payload: event.payload });
+};
+
+const onEntityEvent = (event: EntityServerEvent) => {
   broadcast(event);
 };
 
@@ -361,6 +619,10 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
     unsubscribeTaskBroadcast = subscribeTaskServerEvents(onTaskEvent);
   }
 
+  if (!unsubscribeEntityBroadcast) {
+    unsubscribeEntityBroadcast = subscribeEntityServerEvents(onEntityEvent);
+  }
+
   console.log(`[sync] server started at ${serverUrl}`);
   return { url: serverUrl };
 };
@@ -377,6 +639,11 @@ export const stopTaskSyncServer = () => {
   if (unsubscribeTaskBroadcast) {
     unsubscribeTaskBroadcast();
     unsubscribeTaskBroadcast = null;
+  }
+
+  if (unsubscribeEntityBroadcast) {
+    unsubscribeEntityBroadcast();
+    unsubscribeEntityBroadcast = null;
   }
 };
 

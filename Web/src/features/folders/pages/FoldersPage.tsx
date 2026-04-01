@@ -29,6 +29,7 @@ import type {
 import { useAppMode } from "../../../app/mode";
 import { getFolders, getNotes, getQuickNotes, loadData, saveData } from "../../../services/webData";
 import { dispatchEntitySyncEvent, subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQuickNote } from "../../tasks/sync";
+import { subscribeSyncBridge } from "../../../services/syncBridge";
 import styles from "./FoldersPage.module.css";
 
 const VIEW_MODE_STORAGE_KEY = "folders:view-mode";
@@ -306,6 +307,14 @@ const FoldersPage: React.FC = () => {
         mapSyncNoteToEntry(note as SyncNote)
       );
       setEntries([...syncedFolders, ...syncedNotes]);
+    });
+    return () => unsub();
+  }, [isMobileSync]);
+
+  React.useEffect(() => {
+    if (!isMobileSync) return;
+    const unsub = subscribeSyncBridge(() => {
+      setEntries(loadFolderEntries());
     });
     return () => unsub();
   }, [isMobileSync]);

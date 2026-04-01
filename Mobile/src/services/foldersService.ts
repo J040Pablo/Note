@@ -1,5 +1,6 @@
 import { getDB, runDbWrite, withDbWriteTransaction } from "@db/database";
 import type { Folder, ID } from "@models/types";
+import { emitEntityServerEvent } from "@services/sync/entitySyncEvents";
 
 const getNextFolderOrderIndex = async (db: Awaited<ReturnType<typeof getDB>>, parentId: ID | null): Promise<number> => {
   const row =
@@ -20,16 +21,19 @@ export const createFolder = async (
   color: string | null = null,
   description: string | null = null,
   photoPath: string | null = null,
-  bannerPath: string | null = null
+  bannerPath: string | null = null,
+  options?: { id?: ID; createdAt?: number; updatedAt?: number }
 ): Promise<Folder> => {
   return withDbWriteTransaction("createFolder", async (db) => {
     const now = Date.now();
-    const id = String(now);
+    const createdAt = Number(options?.createdAt ?? now);
+    const updatedAt = Number(options?.updatedAt ?? createdAt);
+    const id = options?.id ?? String(now);
     const safeParentId = parentId ?? null;
     const orderIndex = await getNextFolderOrderIndex(db, safeParentId);
 
     await db.runAsync(
-      "INSERT INTO folders (id, name, parentId, orderIndex, color, description, photoPath, bannerPath, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO folders (id, name, parentId, orderIndex, color, description, photoPath, bannerPath, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       id,
       name,
       safeParentId,
@@ -38,10 +42,39 @@ export const createFolder = async (
       description,
       photoPath,
       bannerPath,
-      now
+      createdAt,
+      updatedAt
     );
 
-    return { id, name, parentId: safeParentId, orderIndex, color, description, photoPath, bannerPath, createdAt: now };
+    const created: Folder = {
+      id,
+      name,
+      parentId: safeParentId,
+      orderIndex,
+      color,
+      description,
+      photoPath,
+      bannerPath,
+      createdAt,
+      updatedAt,
+    };
+
+    emitEntityServerEvent({
+      type: "UPSERT_FOLDER",
+      payload: {
+        id: created.id,
+        parentId: created.parentId,
+        name: created.name,
+        description: created.description ?? undefined,
+        color: created.color ?? undefined,
+        createdAt: created.createdAt,
+        updatedAt: created.updatedAt,
+        imageUrl: created.photoPath ?? undefined,
+        bannerUrl: created.bannerPath ?? undefined,
+      },
+    });
+
+    return created;
   });
 };
 
@@ -73,9 +106,9 @@ export const updateFolder = async (folder: Folder): Promise<Folder> => {
     const current = await db.getFirstAsync<{ parentId: ID | null }>("SELECT parentId FROM folders WHERE id = ?", folder.id);
     const parentChanged = (current?.parentId ?? null) !== (folder.parentId ?? null);
     const nextOrderIndex = parentChanged ? await getNextFolderOrderIndex(db, folder.parentId ?? null) : folder.orderIndex;
-    const updatedFolder: Folder = { ...folder, orderIndex: nextOrderIndex };
+    const updatedFolder: Folder = { ...folder, orderIndex: nextOrderIndex, updatedAt: Date.now() };
     await db.runAsync(
-      "UPDATE folders SET name = ?, color = ?, parentId = ?, orderIndex = ?, description = ?, photoPath = ?, bannerPath = ? WHERE id = ?",
+      "UPDATE folders SET name = ?, color = ?, parentId = ?, orderIndex = ?, description = ?, photoPath = ?, bannerPath = ?, updatedAt = ? WHERE id = ?",
       updatedFolder.name,
       updatedFolder.color ?? null,
       updatedFolder.parentId,
@@ -83,8 +116,25 @@ export const updateFolder = async (folder: Folder): Promise<Folder> => {
       updatedFolder.description ?? null,
       updatedFolder.photoPath ?? null,
       updatedFolder.bannerPath ?? null,
+      updatedFolder.updatedAt,
       updatedFolder.id
     );
+
+    emitEntityServerEvent({
+      type: "UPSERT_FOLDER",
+      payload: {
+        id: updatedFolder.id,
+        parentId: updatedFolder.parentId,
+        name: updatedFolder.name,
+        description: updatedFolder.description ?? undefined,
+        color: updatedFolder.color ?? undefined,
+        createdAt: updatedFolder.createdAt,
+        updatedAt: updatedFolder.updatedAt,
+        imageUrl: updatedFolder.photoPath ?? undefined,
+        bannerUrl: updatedFolder.bannerPath ?? undefined,
+      },
+    });
+
     return updatedFolder;
   });
 };
@@ -110,4 +160,8 @@ export const reorderFolders = async (parentId: ID | null, orderedIds: ID[]): Pro
 
 export const deleteFolder = async (folderId: ID): Promise<void> => {
   await runDbWrite("DELETE FROM folders WHERE id = ?", folderId);
+  emitEntityServerEvent({
+    type: "DELETE_FOLDER",
+    payload: { id: String(folderId), updatedAt: Date.now() },
+  });
 };

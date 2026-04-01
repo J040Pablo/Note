@@ -51,29 +51,25 @@ const PagesModal: React.FC<Props> = ({
                   className={styles.miniMap}
                 >
                   <rect width={page.width} height={page.height} fill="#ffffff" />
-                  {elements
-                    .filter(el => el.id && el.pageId === page.id)
-                    .map(el => {
-                      if (el.type === "drawing") {
-                        return (
-                          <g key={el.id}>
-                            {el.strokes.map(s => (
-                              <polyline
-                                key={s.id}
-                                points={s.points.map(p => `${p.x},${p.y}`).join(" ")}
-                                fill="none"
-                                stroke={s.color}
-                                strokeWidth={s.size * 2}
-                              />
-                            ))}
-                          </g>
-                        );
-                      }
-                      if (el.type === "image") {
-                        return <rect key={el.id} x={el.x} y={el.y} width={el.width} height={el.height} fill="#e2e8f0" />;
-                      }
-                      return <rect key={el.id} x={el.x} y={el.y} width={el.width} height={el.height} fill="#cbd5e1" rx={4} />;
-                    })}
+                    {/* Render per-page drawings */}
+                    {page.drawings?.map(s => (
+                      <polyline
+                        key={s.id}
+                        points={s.points.map(p => `${p.x},${p.y}`).join(" ")}
+                        fill="none"
+                        stroke={s.color}
+                        strokeWidth={s.size * 2}
+                      />
+                    ))}
+
+                    {elements
+                      .filter(el => el.id && el.pageId === page.id)
+                      .map(el => {
+                        if (el.type === "image") {
+                          return <rect key={el.id} x={el.x} y={el.y} width={el.width} height={el.height} fill="#e2e8f0" />;
+                        }
+                        return <rect key={el.id} x={el.x} y={el.y} width={el.width} height={el.height} fill="#cbd5e1" rx={4} />;
+                      })}
                 </svg>
                 <div className={styles.pageNumberBadge}>{index + 1}</div>
               </div>

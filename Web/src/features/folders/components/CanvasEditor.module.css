@@ -1,196 +1,337 @@
-.workspace {
-  position: relative;
-  width: 100%;
-  height: 100%;
+.editorContainer {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  background-color: #000;
+  color: #fff;
   overflow: hidden;
-  background-color: #0f1115;
-  user-select: none;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
-.workspace:active {
-  cursor: grabbing;
-}
-
-.toolbarContainer {
-  position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #1e2230;
-  border-radius: 12px;
-  padding: 8px 16px;
+/* --- SIDEBAR --- */
+.sidebar {
+  width: 72px;
+  background-color: #0d0f14;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  z-index: 10000;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-  width: auto;
-  min-width: 440px;
+  align-items: center;
+  padding-top: 12px;
+  z-index: 200;
 }
 
-.toolbarRow {
+.sidebarItem {
+  width: 100%;
+  padding: 12px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: #8b92a5;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.sidebarItem:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebarItem span {
+  text-transform: capitalize;
+}
+
+/* --- MAIN LAYOUT --- */
+.mainContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* --- TOP BAR --- */
+.topBar {
+  height: 56px;
+  background-color: #12141a;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0 16px;
+  z-index: 150;
 }
 
-.toolbarTools {
+.topBarLeft, .topBarRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topBarBtn {
+  background: transparent;
+  border: none;
+  color: #e5e7eb;
+  font-size: 13px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.topBarBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.primaryBtn {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.shareBtn {
+  background: #ffffff;
+  color: #000;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* --- VIEWPORT --- */
+.viewport {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background-color: #0d0f14;
+  cursor: default;
+}
+
+.viewport:active {
+  cursor: grabbing;
+}
+
+.canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5000px;
+  height: 5000px;
+  transform-origin: 0 0;
+  pointer-events: auto;
+  cursor: grab;
+  background-color: #0d0f14;
+}
+
+.canvas:active {
+  cursor: grabbing;
+}
+
+.pageSheet {
+  position: absolute;
+  top: 2500px;
+  left: 2500px;
+  transform: translate(-50%, -50%);
+  background-color: #ffffff;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 8px 40px rgba(0, 0, 0, 0.5);
+  pointer-events: auto;
+}
+
+.pageBackground {
+  position: absolute;
+  top: 0;
+  left: 0;
+  background-color: #ffffff;
+  z-index: 0;
+}
+
+.drawingSvg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* --- BOTTOM BAR --- */
+.bottomBar {
+  height: 48px;
+  background-color: #12141a;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 150;
+}
+
+.bottomLeft, .bottomRight {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.toolbarBtn {
+.bottomBtn {
   background: transparent;
   border: none;
-  color: #a0a4b8;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
-  transition: all 0.2s;
+  color: #8b92a5;
+  font-size: 12px;
   display: flex;
   align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.bottomCenter {
+  flex: 1;
+  display: flex;
   justify-content: center;
 }
 
-.toolbarBtn:hover:not(:disabled) {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.08);
-}
-
-.toolbarBtn:disabled {
-  opacity: 0.3;
-  cursor: not-allowed;
-}
-
-.toolbarBtnActive {
-  color: #4ade80; /* match the green active signal in the screenshot */
-  background: rgba(74, 222, 128, 0.15);
-}
-
-.toolbarDivider {
-  width: 1px;
-  height: 20px;
-  background: #3f4458;
-}
-
-.toolbarSecondary {
+.filmstrip {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  border-top: 1px solid #3f4458;
-  padding-top: 12px;
-  font-size: 13px;
+  gap: 8px;
+}
+
+.pageThumb {
+  width: 32px;
+  height: 32px;
+  background: #1e2230;
+  border: 1px solid #3f4458;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.pageThumbActive {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+.addPageThumb {
+  width: 32px;
+  height: 32px;
+  background: rgba(255, 126, 126, 0);
+  border: 1px dashed #3f4458;
+  border-radius: 4px;
   color: #8b92a5;
-}
-
-.zoomIndicator {
-  font-family: monospace;
-  font-size: 13px;
-}
-
-.pagePicker {
   display: flex;
   align-items: center;
-  gap: 12px;
-  font-size: 14px;
+  justify-content: center;
+  cursor: pointer;
 }
 
-.canvasPanZoom {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform-origin: 0 0;
+.addPageThumb:hover {
+    border-color: #fff;
+    color: #fff;
 }
 
-.pageContainer {
-  position: absolute;
-  background: #ffffff;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-  overflow: hidden; 
+.zoomText {
+  color: #8b92a5;
+  font-size: 12px;
+  min-width: 40px;
 }
 
-/* Make page white if editing standard doc, but Mobile uses a dark background context with blocks matching? Wait, in screenshot it's dark! The background is very dark grey, the "page" outline isn't strictly white, it's just the workspace limit. Actually, we will just use #1a1d27 for the page */
+.zoomSlider {
+  width: 120px;
+  accent-color: #3b82f6;
+}
 
+.gridBtn {
+  background: transparent;
+  border: none;
+  color: #8b92a5;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+}
+
+.gridBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* --- ELEMENTS --- */
 .elementWrapper {
   position: absolute;
-  border-radius: 8px;
-  transition: box-shadow 0.2s, border-color 0.2s;
   cursor: default;
 }
 
 .elementWrapperSelected {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
-  z-index: 100 !important;
-}
-
-.deleteBtn {
-  position: absolute;
-  top: -32px;
-  right: 0;
-  background: #ef4444;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  z-index: 101;
-}
-
-.deleteBtn:hover {
-  background: #dc2626;
+  outline: 1.5px solid #3b82f6;
+  z-index: 1000 !important;
 }
 
 .resizeHandle {
   position: absolute;
-  width: 12px;
-  height: 12px;
-  background: #232736;
+  width: 10px;
+  height: 10px;
+  background: #ffffff;
+  border: 1.5px solid #3b82f6;
   border-radius: 50%;
-  border: 2px solid #3b82f6;
-  z-index: 10;
+  z-index: 1010;
 }
 
-.resizeHandle:hover {
-  transform: scale(1.2);
+.resizeSE { bottom: -5px; right: -5px; cursor: nwse-resize; }
+.resizeSW { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.resizeNE { top: -5px; right: -5px; cursor: nesw-resize; }
+.resizeNW { top: -5px; left: -5px; cursor: nwse-resize; }
+.resizeN  { top: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.resizeS  { bottom: -5px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.resizeE  { top: 50%; right: -5px; transform: translateY(-50%); cursor: ew-resize; }
+.resizeW  { top: 50%; left: -5px; transform: translateY(-50%); cursor: ew-resize; }
+
+.deleteBtn {
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  background: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0.8;
 }
 
-.resizeSE { bottom: -6px; right: -6px; cursor: nwse-resize; }
-.resizeSW { bottom: -6px; left: -6px; cursor: nesw-resize; }
-.resizeNE { top: -6px; right: -6px; cursor: nesw-resize; }
-.resizeNW { top: -6px; left: -6px; cursor: nwse-resize; }
-.resizeN  { top: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-.resizeS  { bottom: -6px; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
-.resizeE  { top: 50%; right: -6px; transform: translateY(-50%); cursor: ew-resize; }
-.resizeW  { top: 50%; left: -6px; transform: translateY(-50%); cursor: ew-resize; }
+.deleteBtn:hover { opacity: 1; }
 
 .contentContainer {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 6px;
 }
 
-/* Specific elements */
+/* --- ELEMENT SPECIFIC --- */
 .textElement {
   width: 100%;
   height: 100%;
   border: none;
   background: transparent;
-  color: #1a1d27;
-  font-size: 18px;
-  padding: 4px;
-  resize: none;
   outline: none;
-  font-family: inherit;
-  line-height: 1.4;
-  overflow: hidden;
 }
 
 .imageElement {
@@ -206,17 +347,29 @@
   border: none;
   background: #111827;
   color: #e5e7eb;
-  font-family: monospace;
-  font-size: 16px;
-  padding: 8px;
-  resize: none;
+  font-family: inherit;
   outline: none;
-  border-radius: 8px;
+  padding: 8px;
 }
 
-.drawingElement {
-  width: 100%;
-  height: 100%;
+.toolbarDivider {
+  width: 1px;
+  height: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
+}
+
+.toolbarBtn {
   background: transparent;
-  cursor: crosshair;
+  border: none;
+  color: #8b92a5;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 6px;
+  display: flex;
+}
+
+.toolbarBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
 }

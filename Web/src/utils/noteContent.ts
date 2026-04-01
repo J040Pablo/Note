@@ -63,6 +63,7 @@ export interface CanvasPage {
   id: ID;
   width: number;
   height: number;
+  drawings: DrawingStroke[];
 }
 
 export interface CanvasElementBase {
@@ -116,21 +117,22 @@ export interface CanvasNoteDocument {
   pageWidth: number;
   pageHeight: number;
   pages: CanvasPage[];
-  zoom: number;
+  currentPageIndex: number;
   elements: CanvasElement[];
 }
 
 // ─── Factories ─────────────────────────────────────────────────────────────
 
-export const DEFAULT_PAGE_W = 2000;
-export const DEFAULT_PAGE_H = 3000;
+export const DEFAULT_PAGE_W = 800;
+export const DEFAULT_PAGE_H = 1100;
 
 export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
 export const createCanvasPage = (w = DEFAULT_PAGE_W, h = DEFAULT_PAGE_H): CanvasPage => ({
   id: makeId(),
   width: w,
-  height: h
+  height: h,
+  drawings: []
 });
 
 export const createEmptyCanvasNote = (): CanvasNoteDocument => ({
@@ -139,7 +141,7 @@ export const createEmptyCanvasNote = (): CanvasNoteDocument => ({
   pageWidth: DEFAULT_PAGE_W,
   pageHeight: DEFAULT_PAGE_H,
   pages: [createCanvasPage(DEFAULT_PAGE_W, DEFAULT_PAGE_H)],
-  zoom: 1,
+  currentPageIndex: 0,
   elements: []
 });
 

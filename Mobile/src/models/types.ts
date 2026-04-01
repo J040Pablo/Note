@@ -11,6 +11,7 @@ export interface Folder {
   photoPath?: string | null;
   bannerPath?: string | null;
   createdAt: number;
+  updatedAt: number;
 }
 
 export interface Note {

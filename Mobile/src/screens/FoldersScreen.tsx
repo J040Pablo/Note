@@ -44,6 +44,10 @@ type FolderSortMode = "custom" | "recent" | "name_asc" | "name_desc";
 type FolderViewMode = "list" | "grid";
 const FOLDER_ORDER_SCOPE = "folders.root";
 const FOLDER_SORT_SCOPE = "folders.root.sort";
+const FLOATING_TAB_BAR_HEIGHT = 68;
+const FLOATING_TAB_BAR_MARGIN = 8;
+const FLOATING_TAB_BAR_MIN_BOTTOM = 16;
+const LIST_BOTTOM_EXTRA = 72;
 
 const FoldersScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -120,6 +124,11 @@ const FoldersScreen: React.FC = () => {
   const looseQuickNotes = useMemo(
     () => Object.values(quickNotesMap).filter((q) => q.folderId == null),
     [quickNotesMap]
+  );
+
+  const listBottomPadding = useMemo(
+    () => Math.max(insets.bottom + FLOATING_TAB_BAR_MARGIN, FLOATING_TAB_BAR_MIN_BOTTOM) + FLOATING_TAB_BAR_HEIGHT + LIST_BOTTOM_EXTRA,
+    [insets.bottom]
   );
 
   const selectableItems = useMemo<SelectedItem[]>(
@@ -354,7 +363,7 @@ const FoldersScreen: React.FC = () => {
 
       <DraggableFlatList
         key={viewMode}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
         data={visibleFolders}
         keyExtractor={(item) => item.id}
         numColumns={viewMode === "grid" ? 2 : 1}
@@ -1004,7 +1013,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingVertical: 4,
-    paddingBottom: 120,
     gap: 8
   },
   gridColumn: {

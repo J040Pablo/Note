@@ -30,7 +30,17 @@ const FolderListItem: React.FC<FolderListItemProps> = ({
 
   return (
     <article className={styles.item}>
-      <button type="button" className={styles.openButton} onClick={() => onActivate(item.id)}>
+      <div 
+        className={styles.openButton} 
+        onClick={() => onActivate(item.id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            onActivate(item.id);
+          }
+        }}
+      >
         <div className={styles.previewBlock}>
           {item.bannerUrl ? <img src={item.bannerUrl} alt="" className={styles.bannerImg} /> : null}
           <div className={styles.previewOverlay}>
@@ -61,7 +71,7 @@ const FolderListItem: React.FC<FolderListItemProps> = ({
             </button>
           </div>
         </div>
-      </button>
+      </div>
     </article>
   );
 };

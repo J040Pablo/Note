@@ -66,6 +66,7 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
   await ensureColumn(db, "folders", "description", "TEXT");
   await ensureColumn(db, "folders", "photoPath", "TEXT");
   await ensureColumn(db, "folders", "bannerPath", "TEXT");
+  await ensureColumn(db, "folders", "updatedAt", "INTEGER NOT NULL DEFAULT 0");
 
   await ensureColumn(db, "quick_notes", "title", "TEXT NOT NULL DEFAULT ''");
   await ensureColumn(db, "quick_notes", "folderId", "TEXT");
@@ -89,6 +90,10 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
     UPDATE folders
     SET orderIndex = createdAt
     WHERE orderIndex = 0;
+
+    UPDATE folders
+    SET updatedAt = createdAt
+    WHERE updatedAt IS NULL OR updatedAt = 0;
 
     UPDATE files
     SET orderIndex = createdAt

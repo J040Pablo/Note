@@ -13,6 +13,7 @@ import {
 } from "../../../services/webData";
 import { useAppMode } from "../../../app/mode";
 import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncTask } from "../../tasks/sync";
+import { subscribeSyncBridge } from "../../../services/syncBridge";
 import styles from "./SearchPage.module.css";
 
 type SearchType = "folder" | "note" | "task";
@@ -115,6 +116,14 @@ const SearchPage: React.FC = () => {
       if (message.type !== "INIT") return;
       // received from mobile
       setSearchIndex(buildSearchIndexFromSyncPayload(message.payload));
+    });
+    return () => unsub();
+  }, [isMobileSync]);
+
+  React.useEffect(() => {
+    if (!isMobileSync) return;
+    const unsub = subscribeSyncBridge(() => {
+      setSearchIndex(buildSearchIndex());
     });
     return () => unsub();
   }, [isMobileSync]);

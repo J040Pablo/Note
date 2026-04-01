@@ -24,9 +24,9 @@ export type SyncNote = {
 
 export type SyncQuickNote = {
   id: string;
-  title?: string;
-  text: string;
-  content?: string;
+  title: string;
+  content: string;
+  text?: string;
   folderId?: string | null;
   createdAt: number;
   updatedAt: number;
@@ -34,13 +34,17 @@ export type SyncQuickNote = {
 
 export type SyncTask = {
   id: string;
+  text?: string;
   title: string;
   completed: boolean;
   priority: SyncPriority;
   date?: string | null;
+  scheduledDate?: string | null;
+  scheduledTime?: string | null;
   dueDate?: string | null;
   dueTime?: string | null;
   repeatDays?: number[];
+  completedDates?: string[];
   order?: number;
   createdAt?: number;
   updatedAt: number;
@@ -66,6 +70,8 @@ export type SyncIncomingMessage =
   | { type: "DELETE_QUICK_NOTE"; payload: { id: string } }
   | { type: "UPSERT_TASK"; payload: SyncTask }
   | { type: "DELETE_TASK"; payload: { id: string } }
+  | { type: "UPSERT_APP_META"; payload: { key: string; value: string; updatedAt: number } }
+  | { type: "DELETE_APP_META"; payload: { key: string; updatedAt: number } }
   | {
       type: "INIT_DATA";
       payload: {
@@ -106,6 +112,9 @@ type StatusListener = (status: SyncStatus) => void;
 let socket: WebSocket | null = null;
 let status: SyncStatus = "disconnected";
 let activeUrl = "";
+let shouldReconnect = false;
+let reconnectAttempts = 0;
+let reconnectTimer: number | null = null;
 
 const messageListeners = new Set<MessageListener>();
 const statusListeners = new Set<StatusListener>();
@@ -117,6 +126,21 @@ const emitStatus = (nextStatus: SyncStatus) => {
 
 const emitMessage = (message: SyncIncomingMessage) => {
   messageListeners.forEach((listener) => listener(message));
+};
+
+const reconnectDelayForAttempt = (attempt: number): number => {
+  if (attempt <= 0) return 1000;
+  if (attempt === 1) return 1000;
+  if (attempt === 2) return 2000;
+  if (attempt === 3) return 5000;
+  return 10000;
+};
+
+const clearReconnectTimer = () => {
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
 };
 
 const readTimestamp = (value: unknown): number =>
@@ -155,7 +179,9 @@ const applyConflictAware = (message: SyncIncomingMessage): SyncIncomingMessage |
       notes: "notes" in message.payload ? (message.payload.notes as SyncNote[]) : [],
       quickNotes:
         "quickNotes" in message.payload ? (message.payload.quickNotes as SyncQuickNote[]) : [],
-      tasks: message.payload.tasks as SyncTask[],
+      tasks: Array.isArray((message.payload as { tasks?: unknown }).tasks)
+        ? ((message.payload as { tasks: SyncTask[] }).tasks ?? [])
+        : [],
     });
     return {
       type: "INIT",
@@ -217,6 +243,10 @@ const applyConflictAware = (message: SyncIncomingMessage): SyncIncomingMessage |
     return message;
   }
 
+  if (message.type === "UPSERT_APP_META" || message.type === "DELETE_APP_META") {
+    return message;
+  }
+
   if (message.type === "TASK_CREATED" || message.type === "TASK_UPDATED") {
     const normalized: SyncIncomingMessage = { type: "UPSERT_TASK", payload: message.payload };
     return applyConflictAware(normalized);
@@ -258,16 +288,35 @@ const normalizePayload = (payload?: Record<string, unknown>) => {
 
 const normalizeOutgoingTask = (taskId: string, payload?: Record<string, unknown>) => {
   const normalized = normalizePayload(payload);
+  const title = String(normalized.title ?? normalized.text ?? "Untitled task");
+  const scheduledDate =
+    typeof normalized.scheduledDate === "string"
+      ? normalized.scheduledDate
+      : typeof normalized.date === "string"
+      ? normalized.date
+      : typeof normalized.dueDate === "string"
+      ? normalized.dueDate
+      : null;
+  const scheduledTime =
+    typeof normalized.scheduledTime === "string"
+      ? normalized.scheduledTime
+      : typeof normalized.dueTime === "string"
+      ? normalized.dueTime
+      : null;
   return {
     id: String(normalized.id ?? taskId),
-    title: String(normalized.title ?? "Untitled task"),
+    title,
+    text: title,
     completed: Boolean(normalized.completed),
     priority:
       normalized.priority === "low" || normalized.priority === "high" ? normalized.priority : "medium",
-    date: typeof normalized.date === "string" ? normalized.date : (typeof normalized.dueDate === "string" ? normalized.dueDate : null),
-    dueDate: typeof normalized.dueDate === "string" ? normalized.dueDate : (typeof normalized.date === "string" ? normalized.date : null),
-    dueTime: typeof normalized.dueTime === "string" ? normalized.dueTime : null,
+    date: scheduledDate,
+    scheduledDate,
+    dueDate: scheduledDate,
+    scheduledTime,
+    dueTime: scheduledTime,
     repeatDays: Array.isArray(normalized.repeatDays) ? normalized.repeatDays : [],
+    completedDates: Array.isArray(normalized.completedDates) ? normalized.completedDates : [],
     order: typeof normalized.order === "number" ? normalized.order : undefined,
     parentId: typeof normalized.parentId === "string" ? normalized.parentId : null,
     noteId: typeof normalized.noteId === "string" ? normalized.noteId : null,
@@ -278,6 +327,9 @@ const normalizeOutgoingTask = (taskId: string, payload?: Record<string, unknown>
 export const connectTaskSync = (url: string) => {
   const normalizedUrl = url.trim();
   if (!normalizedUrl) return;
+
+  shouldReconnect = true;
+  clearReconnectTimer();
 
   if (socket && (status === "connected" || status === "connecting") && activeUrl === normalizedUrl) {
     return;
@@ -294,6 +346,7 @@ export const connectTaskSync = (url: string) => {
   socket = new WebSocket(normalizedUrl);
 
   socket.onopen = () => {
+    reconnectAttempts = 0;
     emitStatus("connected");
     // Send INIT_SYNC to match what Mobile server expects
     sendRaw({ type: "INIT_SYNC" });
@@ -309,16 +362,34 @@ export const connectTaskSync = (url: string) => {
     emitMessage(normalized);
   };
 
+  const scheduleReconnect = () => {
+    if (!shouldReconnect || !activeUrl) return;
+    clearReconnectTimer();
+    reconnectAttempts += 1;
+    const delay = reconnectDelayForAttempt(reconnectAttempts);
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = null;
+      if (!shouldReconnect || !activeUrl) return;
+      connectTaskSync(activeUrl);
+    }, delay);
+  };
+
   socket.onerror = () => {
     emitStatus("disconnected");
+    scheduleReconnect();
   };
 
   socket.onclose = () => {
+    socket = null;
     emitStatus("disconnected");
+    scheduleReconnect();
   };
 };
 
 export const disconnectTaskSync = () => {
+  shouldReconnect = false;
+  reconnectAttempts = 0;
+  clearReconnectTimer();
   if (socket) {
     socket.close();
     socket = null;
@@ -343,18 +414,37 @@ export const subscribeTaskSyncStatus = (listener: StatusListener) => {
 export const dispatchTaskSyncEvent = (event: Omit<TaskSyncEvent, "timestamp">) => {
   if (event.type === "TASK_DELETE") {
     sendRaw({
-      type: "DELETE_TASK",
+      type: "TASK_DELETE",
       payload: {
         id: event.taskId,
+        updatedAt: Date.now(),
       },
     });
     return;
   }
 
-  // Send UPSERT_TASK to mobile
+  const payload = normalizeOutgoingTask(event.taskId, event.payload);
+
+  if (event.type === "TASK_CREATE") {
+    sendRaw({ type: "TASK_CREATE", payload });
+    return;
+  }
+
+  if (event.type === "TASK_TOGGLE") {
+    sendRaw({
+      type: "TASK_TOGGLE",
+      payload: {
+        id: payload.id,
+        completed: payload.completed,
+        updatedAt: payload.updatedAt,
+      },
+    });
+    return;
+  }
+
   sendRaw({
-    type: "UPSERT_TASK",
-    payload: normalizeOutgoingTask(event.taskId, event.payload),
+    type: "TASK_UPDATE",
+    payload,
   });
 };
 
@@ -365,7 +455,9 @@ export const dispatchEntitySyncEvent = (event: {
     | "UPSERT_NOTE"
     | "DELETE_NOTE"
     | "UPSERT_QUICK_NOTE"
-    | "DELETE_QUICK_NOTE";
+    | "DELETE_QUICK_NOTE"
+    | "UPSERT_APP_META"
+    | "DELETE_APP_META";
   payload: Record<string, unknown>;
 }) => {
   sendRaw({

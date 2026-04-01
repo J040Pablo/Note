@@ -1,5 +1,6 @@
 import { getDB, runDbWrite } from "@db/database";
 import type { PinnedItem, PinnedItemType, RecentItem, RecentItemType, ID } from "@models/types";
+import { emitEntityServerEvent } from "@services/sync/entitySyncEvents";
 
 const PINNED_KEY = "pinned_items";
 const RECENT_KEY = "recent_items";
@@ -23,11 +24,36 @@ const readMeta = async <T>(key: string, fallback: T): Promise<T> => {
 };
 
 const writeMeta = async <T>(key: string, value: T): Promise<void> => {
+  const serialized = JSON.stringify(value);
   await runDbWrite(
     "INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     key,
-    JSON.stringify(value)
+    serialized
   );
+  emitEntityServerEvent({
+    type: "UPSERT_APP_META",
+    payload: { key, value: serialized, updatedAt: Date.now() },
+  });
+};
+
+export const upsertMetaKey = async (key: string, value: string): Promise<void> => {
+  await runDbWrite(
+    "INSERT INTO app_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    key,
+    value
+  );
+  emitEntityServerEvent({
+    type: "UPSERT_APP_META",
+    payload: { key, value, updatedAt: Date.now() },
+  });
+};
+
+export const deleteMetaKey = async (key: string): Promise<void> => {
+  await runDbWrite("DELETE FROM app_meta WHERE key = ?", key);
+  emitEntityServerEvent({
+    type: "DELETE_APP_META",
+    payload: { key, updatedAt: Date.now() },
+  });
 };
 
 export const getPinnedItems = async (): Promise<PinnedItem[]> => {

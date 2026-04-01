@@ -1,33 +1,26 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import {
-  Type,
-  Image as ImageIcon,
   PenTool,
   LayoutGrid,
-  Square,
   Undo,
   Redo,
-  ChevronLeft,
-  ChevronRight,
-  Grid,
-  ZoomIn,
-  ZoomOut,
-  Upload,
-  Eraser
+  Maximize2,
+  Monitor,
+  Hammer,
+  Shapes,
+  CloudUpload,
+  Type as TypeIcon,
+  LayoutTemplate
 } from "lucide-react";
-import type { 
+import { 
   CanvasNoteDocument, 
   CanvasElement,
   CanvasPage,
   ID,
   DrawingPoint,
   DrawingStroke,
-  CanvasDrawingElement
-} from "../../../utils/noteContent";
-import {
   createCanvasTextElement,
   createCanvasImageElement,
-  createCanvasDrawingElement,
   createCanvasShapeElement,
   createCanvasPage,
   makeId,
@@ -43,40 +36,60 @@ type Props = {
   onChange: (doc: CanvasNoteDocument) => void;
 };
 
-const HISTORY_LIMIT = 50;
+const HISTORY_LIMIT = 80;
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 5;
 
-const CanvasEditor: React.FC<Props> = ({ document, onChange }) => {
-  const [zoom, setZoom] = useState(1);
+const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) => {
+  // --- States ---
+  const [localDoc, setLocalDoc] = useState<CanvasNoteDocument>(initialDocument);
+  const [zoom, setZoom] = useState(0.85);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [currentPageIndex, setCurrentPageIndex] = useState(0);
-
-  // States for new features
   const [isDrawMode, setIsDrawMode] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
   const [pagesModalOpen, setPagesModalOpen] = useState(false);
+  const [currentStroke, setCurrentStroke] = useState<DrawingPoint[] | null>(null);
 
-  // History Stacks
+  // --- History ---
   const undoStackRef = useRef<CanvasNoteDocument[]>([]);
   const redoStackRef = useRef<CanvasNoteDocument[]>([]);
 
+  // --- Refs ---
+  const viewportRef = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const localDocRef = useRef(localDoc);
+  localDocRef.current = localDoc;
 
-  const pushHistory = useCallback((docState: CanvasNoteDocument) => {
-    undoStackRef.current.push(JSON.parse(JSON.stringify(docState)));
-    if (undoStackRef.current.length > HISTORY_LIMIT) {
-      undoStackRef.current.shift();
-    }
+  // --- Logic ---
+  const currentPage = useMemo(() => {
+    return localDoc.pages[localDoc.currentPageIndex] || localDoc.pages[0];
+  }, [localDoc.pages, localDoc.currentPageIndex]);
+
+  // Debounce autosave logic
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const notifyChange = useCallback((newDoc: CanvasNoteDocument) => {
+    setLocalDoc(newDoc);
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(() => {
+      onChange(newDoc);
+      debounceTimerRef.current = null;
+    }, 220);
+  }, [onChange]);
+
+  const pushUndo = useCallback(() => {
+    undoStackRef.current.push(JSON.parse(JSON.stringify(localDocRef.current)));
+    if (undoStackRef.current.length > HISTORY_LIMIT) undoStackRef.current.shift();
     redoStackRef.current = [];
   }, []);
-
-  const handleChange = useCallback((newDoc: CanvasNoteDocument) => {
-    pushHistory(document);
-    onChange(newDoc);
-  }, [document, onChange, pushHistory]);
 
   const handleUndo = () => {
     const prev = undoStackRef.current.pop();
     if (prev) {
-      redoStackRef.current.push(JSON.parse(JSON.stringify(document)));
+      redoStackRef.current.push(JSON.parse(JSON.stringify(localDocRef.current)));
+      setLocalDoc(prev);
       onChange(prev);
     }
   };
@@ -84,91 +97,142 @@ const CanvasEditor: React.FC<Props> = ({ document, onChange }) => {
   const handleRedo = () => {
     const next = redoStackRef.current.pop();
     if (next) {
-      undoStackRef.current.push(JSON.parse(JSON.stringify(document)));
+      undoStackRef.current.push(JSON.parse(JSON.stringify(localDocRef.current)));
+      setLocalDoc(next);
       onChange(next);
     }
   };
 
-  const handleWorkspacePointerDown = (e: React.PointerEvent) => {
-    // Unselect when clicking background
+  // --- Centering Logic ---
+  const centerCanvas = useCallback(() => {
+    if (!viewportRef.current) return;
+    const { width, height } = viewportRef.current.getBoundingClientRect();
+    const pageW = localDoc.pageWidth || DEFAULT_PAGE_W;
+    const pageH = localDoc.pageHeight || DEFAULT_PAGE_H;
+    
+    // Zoom to fit slightly
+    const fitZoom = Math.min((width - 100) / pageW, (height - 100) / pageH, 0.85);
+    setZoom(fitZoom);
+    
+    // Center the 5000x5000 canvas in the viewport, then offset so the page (fixed at 2500x2500 in CSS) is centered.
+    setPan({
+      x: width / 2 - 2500 * fitZoom,
+      y: height / 2 - 2500 * fitZoom
+    });
+  }, [localDoc.pageWidth, localDoc.pageHeight]);
+
+  useEffect(() => {
+    centerCanvas();
+    window.addEventListener("resize", centerCanvas);
+    return () => window.removeEventListener("resize", centerCanvas);
+  }, [centerCanvas]);
+
+  // --- Pan & Zoom Engine ---
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault(); // LOCK Browser Scroll
+
+      if (e.ctrlKey || e.metaKey) {
+        // PRO ZOOM (centered on mouse)
+        const rect = viewport.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+
+        const zoomDelta = -e.deltaY * 0.003;
+        const nextZoom = Math.min(Math.max(ZOOM_MIN, zoom + zoomDelta), ZOOM_MAX);
+        
+        if (nextZoom !== zoom) {
+          const ratio = nextZoom / zoom;
+          setPan(prev => ({
+            x: mouseX - (mouseX - prev.x) * ratio,
+            y: mouseY - (mouseY - prev.y) * ratio
+          }));
+          setZoom(nextZoom);
+        }
+      } else {
+        // Simple manual pan via wheel
+        setPan(prev => ({
+          x: prev.x - e.deltaX,
+          y: prev.y - e.deltaY
+        }));
+      }
+    };
+
+    viewport.addEventListener("wheel", onWheel, { passive: false });
+    return () => viewport.removeEventListener("wheel", onWheel);
+  }, [zoom]);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.target === viewportRef.current || e.target === workspaceRef.current) {
+      setSelectedId(null);
+      if (!isDrawMode) {
+        setIsPanning(true);
+        viewportRef.current?.setPointerCapture(e.pointerId);
+      }
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (isPanning) {
+      setPan(prev => ({
+        x: prev.x + e.movementX,
+        y: prev.y + e.movementY
+      }));
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (isPanning) {
+      setIsPanning(false);
+      viewportRef.current?.releasePointerCapture(e.pointerId);
+    }
+  };
+
+  // --- Element Interactions ---
+  const handleElementUpdate = (id: string, updates: Partial<CanvasElement>) => {
+    notifyChange({
+      ...localDoc,
+      elements: localDoc.elements.map(el => el.id === id ? { ...el, ...updates } as CanvasElement : el)
+    });
+  };
+
+  const handleElementDelete = (id: string) => {
+    pushUndo();
+    notifyChange({
+      ...localDoc,
+      elements: localDoc.elements.filter(el => el.id !== id)
+    });
     setSelectedId(null);
   };
 
-  const handleWheel = (e: React.WheelEvent) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      // Zoom
-      const zoomDelta = -e.deltaY * 0.002;
-      const newZoom = Math.min(Math.max(0.1, zoom + zoomDelta), 5);
-      setZoom(newZoom);
-    }
-    // Removed panning to keep page stationary/centered per requirements
-  };
-
-  // --- Element Handlers ---
-  const handleElementUpdate = useCallback((id: string, updates: Partial<CanvasElement>) => {
-    onChange({
-      ...document,
-      elements: document.elements.map(el => 
-        el.id === id ? { ...el, ...updates } as CanvasElement : el
-      )
-    });
-  }, [document, onChange]);
-
-  const handleElementDelete = useCallback((id: string) => {
-    handleChange({
-      ...document,
-      elements: document.elements.filter(el => el.id !== id)
-    });
-    if (selectedId === id) setSelectedId(null);
-  }, [document, selectedId, handleChange]);
-
-  const handleElementSelect = useCallback((id: string, e: React.MouseEvent | React.PointerEvent) => {
-    e.stopPropagation();
-    setSelectedId(id);
+  const handleElementDuplicate = useCallback((id: string) => {
+    const el = localDoc.elements.find(e => e.id === id);
+    if (!el) return;
     
-    // Bring element to front
-    const elements = [...document.elements];
-    const elIndex = elements.findIndex(el => el.id === id);
-    if (elIndex > -1) {
-      const el = elements[elIndex];
-      elements.splice(elIndex, 1);
-      el.zIndex = Date.now();
-      elements.push(el);
-      onChange({ ...document, elements });
-    }
-  }, [document, onChange]);
-
-  // --- Creation ---
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      const pageId = document.pages[currentPageIndex]?.id || "default";
-      const newImg = createCanvasImageElement(base64, 100, 100, pageId);
-      handleChange({
-        ...document,
-        elements: [...document.elements, newImg]
-      });
-      setSelectedId(newImg.id);
+    const newEl = {
+      ...JSON.parse(JSON.stringify(el)),
+      id: makeId(),
+      x: el.x + 20,
+      y: el.y + 20,
+      zIndex: Date.now()
     };
-    reader.readAsDataURL(file);
-    // Reset input
-    e.target.value = "";
-  };
+    
+    pushUndo();
+    notifyChange({
+      ...localDoc,
+      elements: [...localDoc.elements, newEl]
+    });
+    setSelectedId(newEl.id);
+  }, [localDoc, notifyChange, pushUndo]);
 
   const handleAddElement = (type: "text" | "image" | "shape") => {
-    setIsDrawMode(false);
-    const pageId = document.pages[currentPageIndex]?.id || "default";
-    
-    // Add in center of the page viewport
-    const centerX = 150;
-    const centerY = 150;
+    pushUndo();
+    const pageId = currentPage.id;
+    const centerX = currentPage.width / 2 - 125;
+    const centerY = currentPage.height / 2 - 30;
     
     let newEl: CanvasElement;
     if (type === "text") newEl = createCanvasTextElement("New Text", centerX, centerY, pageId);
@@ -178,17 +242,40 @@ const CanvasEditor: React.FC<Props> = ({ document, onChange }) => {
       return;
     }
 
-    handleChange({
-      ...document,
-      elements: [...document.elements, newEl]
-    });
+    const nextDoc = { ...localDoc, elements: [...localDoc.elements, newEl] };
+    notifyChange(nextDoc);
     setSelectedId(newEl.id);
   };
 
-  // --- Drawing Layer ---
-  // Native freeform drawing over the entire current page
-  const [currentStroke, setCurrentStroke] = useState<DrawingPoint[] | null>(null);
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        const maxWidth = 300;
+        const ratio = img.width / img.height;
+        const w = img.width > maxWidth ? maxWidth : img.width;
+        const h = img.width > maxWidth ? maxWidth / ratio : img.height;
 
+        const newImg = createCanvasImageElement(base64, currentPage.width / 2 - w/2, currentPage.height / 2 - h/2, currentPage.id);
+        newImg.width = w;
+        newImg.height = h;
+
+        pushUndo();
+        notifyChange({ ...localDoc, elements: [...localDoc.elements, newImg] });
+        setSelectedId(newImg.id);
+      };
+      img.src = base64;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
+
+  // --- Drawing System ---
   const handleDrawStart = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!isDrawMode) return;
     const rect = e.currentTarget.getBoundingClientRect();
@@ -211,257 +298,194 @@ const CanvasEditor: React.FC<Props> = ({ document, onChange }) => {
     e.currentTarget.releasePointerCapture(e.pointerId);
     
     if (currentStroke.length >= 2) {
-      const stroke: DrawingStroke = {
+      const newStroke: DrawingStroke = {
         id: makeId(),
-        color: "#3b82f6", // default brush color for MVP
-        size: 4,
+        color: "#1d4ed8",
+        size: 3,
         points: currentStroke
       };
 
-      const pageId = document.pages[currentPageIndex]?.id;
-      // We will create or append to a background Drawing Element that spans the page
-      const existingDrawingLayer = document.elements.find(e => e.type === "drawing" && e.pageId === pageId && e.width === (document.pageWidth || DEFAULT_PAGE_W));
+      const nextPages = [...localDoc.pages];
+      const pageIdx = localDoc.currentPageIndex;
+      nextPages[pageIdx] = {
+        ...nextPages[pageIdx],
+        drawings: [...nextPages[pageIdx].drawings, newStroke]
+      };
       
-      if (existingDrawingLayer) {
-        handleElementUpdate(existingDrawingLayer.id, {
-          strokes: [...(existingDrawingLayer as any).strokes, stroke]
-        });
-      } else {
-        const newLayer = createCanvasDrawingElement(0, 0, pageId);
-        newLayer.width = document.pageWidth || DEFAULT_PAGE_W;
-        newLayer.height = document.pageHeight || DEFAULT_PAGE_H;
-        newLayer.zIndex = 0; // Behind ordinary objects
-        newLayer.strokes = [stroke];
-        
-        handleChange({
-          ...document,
-          elements: [...document.elements, newLayer]
-        });
-      }
+      notifyChange({ ...localDoc, pages: nextPages });
     }
     setCurrentStroke(null);
   };
 
-  const handleClearDrawing = () => {
-    const pageId = document.pages[currentPageIndex]?.id;
-    const nextElements = document.elements.filter(el => !(el.type === "drawing" && el.pageId === pageId));
-    handleChange({ ...document, elements: nextElements });
-  };
-
-  // --- Page Management ---
-  const handleAddPage = () => {
-    const newPage = createCanvasPage(document.pageWidth, document.pageHeight);
-    handleChange({
-      ...document,
-      pages: [...document.pages, newPage]
+  const onDeletePage = useCallback((index: number) => {
+    const nextPages = localDoc.pages.filter((_, i) => i !== index);
+    const pageId = localDoc.pages[index].id;
+    const nextElements = localDoc.elements.filter(el => el.pageId !== pageId);
+    
+    let nextIdx = localDoc.currentPageIndex;
+    if (nextIdx >= nextPages.length) nextIdx = Math.max(0, nextPages.length - 1);
+    
+    pushUndo();
+    notifyChange({
+      ...localDoc,
+      pages: nextPages,
+      elements: nextElements,
+      currentPageIndex: nextIdx
     });
-    setCurrentPageIndex(document.pages.length);
-    setPagesModalOpen(false);
-  };
+  }, [localDoc, notifyChange, pushUndo]);
 
-  const handleDeletePage = (index: number) => {
-    const pageId = document.pages[index].id;
-    const newPages = document.pages.filter((_, i) => i !== index);
-    const newElements = document.elements.filter(el => el.pageId !== pageId);
-    handleChange({
-      ...document,
-      pages: newPages,
-      elements: newElements
+  const onMovePage = useCallback((index: number, direction: "up" | "down") => {
+    const nextPages = [...localDoc.pages];
+    const target = direction === "up" ? index - 1 : index + 1;
+    if (target < 0 || target >= nextPages.length) return;
+    
+    [nextPages[index], nextPages[target]] = [nextPages[target], nextPages[index]];
+    
+    let nextIdx = localDoc.currentPageIndex;
+    if (nextIdx === index) nextIdx = target;
+    else if (nextIdx === target) nextIdx = index;
+
+    pushUndo();
+    notifyChange({
+      ...localDoc,
+      pages: nextPages,
+      currentPageIndex: nextIdx
     });
-    if (currentPageIndex >= newPages.length) {
-      setCurrentPageIndex(Math.max(0, newPages.length - 1));
-    }
-  };
-
-  const handleMovePage = (index: number, direction: "up" | "down") => {
-    const newPages = [...document.pages];
-    const targetIdx = direction === "up" ? index - 1 : index + 1;
-    if (targetIdx >= 0 && targetIdx < newPages.length) {
-      [newPages[index], newPages[targetIdx]] = [newPages[targetIdx], newPages[index]];
-      handleChange({ ...document, pages: newPages });
-      if (currentPageIndex === index) setCurrentPageIndex(targetIdx);
-      else if (currentPageIndex === targetIdx) setCurrentPageIndex(index);
-    }
-  };
-
-
-  const pages = document.pages?.length > 0 ? document.pages : [{ id: "page-1", width: document.pageWidth || DEFAULT_PAGE_W, height: document.pageHeight || DEFAULT_PAGE_H }];
-  const currentPage = pages[currentPageIndex];
-
-  // Helper to render all existing strokes for this page
-  const pageDrawingElements = document.elements.filter(el => el.type === "drawing" && el.pageId === currentPage.id) as CanvasDrawingElement[];
+  }, [localDoc, notifyChange, pushUndo]);
 
   return (
-    <div 
-      ref={workspaceRef}
-      className={styles.workspace}
-      onPointerDown={handleWorkspacePointerDown}
-      onWheel={handleWheel}
-      // Center the stationary page content
-      style={{ display: "flex", alignItems: "center", justifyContent: "center" }} 
-    >
-      <div 
-        className={styles.canvasPanZoom}
-        style={{
-          transform: `scale(${zoom})`,
-          position: "relative",
-          width: currentPage.width,
-          height: currentPage.height
-        }}
-      >
-        <div
-          className={styles.pageContainer}
-          style={{ width: currentPage.width, height: currentPage.height }}
-          onPointerDown={handleDrawStart}
-          onPointerMove={handleDrawMove}
-          onPointerUp={handleDrawEnd}
-          onPointerCancel={handleDrawEnd}
+    <div className={styles.editorContainer}>
+      <aside className={styles.sidebar}>
+        <button className={styles.sidebarItem}><LayoutTemplate size={20} /><span>Modelos</span></button>
+        <button className={styles.sidebarItem}><Shapes size={20} /><span>Elementos</span></button>
+        <button className={styles.sidebarItem} onClick={() => handleAddElement("text")}><TypeIcon size={20} /><span>Texto</span></button>
+        <button className={styles.sidebarItem} onClick={() => fileInputRef.current?.click()}><CloudUpload size={20} /><span>Uploads</span></button>
+        <button className={`${styles.sidebarItem} ${isDrawMode ? styles.sidebarItemActive : ""}`} onClick={() => setIsDrawMode(!isDrawMode)}>
+          <PenTool size={20} /><span>Desenho</span>
+        </button>
+        <button className={styles.sidebarItem}><Hammer size={20} /><span>Apps</span></button>
+      </aside>
+
+      <div className={styles.mainContent}>
+        <header className={styles.topBar}>
+          <div className={styles.topBarLeft}>
+            <button className={styles.topBarBtn}>Arquivo</button>
+            <div className={styles.toolbarDivider} />
+            <button className={styles.toolbarBtn} onClick={handleUndo} disabled={undoStackRef.current.length === 0}><Undo size={18} /></button>
+            <button className={styles.toolbarBtn} onClick={handleRedo} disabled={redoStackRef.current.length === 0}><Redo size={18} /></button>
+          </div>
+          <div className={styles.topBarRight}>
+             <button className={styles.primaryBtn}><Maximize2 size={16} /> Preview</button>
+             <button className={styles.shareBtn}>Share</button>
+          </div>
+        </header>
+
+        <div 
+          ref={viewportRef}
+          className={styles.viewport}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          style={{ cursor: isPanning ? 'grabbing' : 'default' }}
         >
-           {/* DRAWING LAYER OVERLAY */}
-           <svg 
-             style={{ 
-               position: "absolute", inset: 0, 
-               width: "100%", height: "100%", 
-               pointerEvents: isDrawMode ? "auto" : "none", 
-               zIndex: isDrawMode ? 9998 : 0,
-               cursor: isDrawMode ? "crosshair" : "default" 
-             }}
-           >
-             {/* Render existing strokes from all drawing elements on this page */}
-             {pageDrawingElements.map(layer => (
-                <g key={layer.id}>
-                  {layer.strokes.map(stroke => (
-                    <polyline
-                      key={stroke.id}
-                      points={stroke.points.map(p => `${p.x},${p.y}`).join(" ")}
-                      fill="none" stroke={stroke.color} strokeWidth={stroke.size}
-                      strokeLinecap="round" strokeLinejoin="round"
-                    />
-                  ))}
-                </g>
-             ))}
-             
-             {/* Render current active stroke */}
-             {currentStroke && (
-               <polyline 
-                 points={currentStroke.map(p => `${p.x},${p.y}`).join(" ")}
-                 fill="none" stroke="#3b82f6" strokeWidth={4}
-                 strokeLinecap="round" strokeLinejoin="round"
-               />
-             )}
-           </svg>
-
-          {document.elements
-            .filter(el => el.pageId === currentPage.id && el.type !== "drawing")
-            .map(el => (
-            <CanvasElementNode
-              key={el.id}
-              element={el}
-              isSelected={selectedId === el.id}
-              onSelect={handleElementSelect}
-              onUpdate={handleElementUpdate}
-              onDelete={handleElementDelete}
-              zoom={zoom}
-              pageWidth={currentPage.width}
-              pageHeight={currentPage.height}
-            />
-          ))}
-
-        </div>
-      </div>
-
-      <div className={styles.toolbarContainer} onPointerDown={e => e.stopPropagation()}>
-        <div className={styles.toolbarRow}>
-          <div className={styles.toolbarTools}>
-            <button className={styles.toolbarBtn} onClick={() => handleAddElement("text")} title="Add Text">
-              <Type size={18} />
-            </button>
-            <button className={styles.toolbarBtn} onClick={() => handleAddElement("image")} title="Add Image">
-              <ImageIcon size={18} />
-            </button>
-            <div className={styles.toolbarDivider} />
-            <button className={`${styles.toolbarBtn} ${isDrawMode ? styles.toolbarBtnActive : ""}`} onClick={() => { setIsDrawMode(!isDrawMode); setSelectedId(null); }} title="Draw">
-              <PenTool size={18} />
-            </button>
-            <button className={styles.toolbarBtn} onClick={handleClearDrawing} title="Eraser / Clear Drawing">
-              <Eraser size={18} />
-            </button>
-            <button className={styles.toolbarBtn} onClick={() => handleAddElement("shape")} title="Shapes">
-              <Square size={18} />
-            </button>
-            <div className={styles.toolbarDivider} />
-            <button className={styles.toolbarBtn} onClick={() => setPagesModalOpen(true)} title="Pages (Grid View)">
-              <LayoutGrid size={18} />
-            </button>
-          </div>
-          <div className={styles.toolbarTools}>
-            <button className={styles.toolbarBtn} onClick={() => setZoom(z => Math.min(5, z + 0.1))} title="Zoom In">
-               <ZoomIn size={18} />
-            </button>
-            <button className={styles.toolbarBtn} onClick={() => setZoom(z => Math.max(0.1, z - 0.1))} title="Zoom Out">
-               <ZoomOut size={18} />
-            </button>
-            <div className={styles.toolbarDivider} />
-            <button 
-              className={styles.toolbarBtn} 
-              onClick={handleUndo} 
-              disabled={undoStackRef.current.length === 0}
+          <div 
+            ref={workspaceRef}
+            className={styles.canvas}
+            style={{ 
+                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                cursor: isPanning ? 'grabbing' : 'grab'
+            }}
+          >
+            <div
+              className={styles.pageSheet}
+              style={{ width: currentPage.width, height: currentPage.height }}
+              onPointerDown={handleDrawStart}
+              onPointerMove={handleDrawMove}
+              onPointerUp={handleDrawEnd}
             >
-              <Undo size={18} />
-            </button>
-            <button 
-              className={styles.toolbarBtn} 
-              onClick={handleRedo}
-              disabled={redoStackRef.current.length === 0}
-            >
-              <Redo size={18} />
-            </button>
+              <div className={styles.pageBackground} style={{ width: currentPage.width, height: currentPage.height }} />
+              
+              {/* Drawing Layer */}
+              <svg className={styles.drawingSvg} style={{ pointerEvents: isDrawMode ? "auto" : "none", zIndex: 110 }}>
+                {currentPage.drawings.map(stroke => (
+                  <polyline
+                    key={stroke.id}
+                    points={stroke.points.map(p => `${p.x},${p.y}`).join(" ")}
+                    fill="none" stroke={stroke.color} strokeWidth={stroke.size}
+                    strokeLinecap="round" strokeLinejoin="round"
+                  />
+                ))}
+                {currentStroke && (
+                  <polyline 
+                    points={currentStroke.map(p => `${p.x},${p.y}`).join(" ")}
+                    fill="none" stroke="#1d4ed8" strokeWidth={3}
+                    strokeLinecap="round" strokeLinejoin="round"
+                  />
+                )}
+              </svg>
+
+              {localDoc.elements
+                .filter(el => el.pageId === currentPage.id)
+                .map(el => (
+                <CanvasElementNode
+                  key={el.id}
+                  element={el}
+                  isSelected={selectedId === el.id}
+                  onSelect={(id, e) => { e.stopPropagation(); setSelectedId(id); }}
+                  onUpdate={handleElementUpdate}
+                  onDelete={handleElementDelete}
+                  onDuplicate={handleElementDuplicate}
+                  zoom={zoom}
+                />
+              ))}
+            </div>
           </div>
         </div>
-        
-        <div className={styles.toolbarSecondary}>
-          <span className={styles.zoomIndicator}>
-            {Math.round(zoom * 100)}%
-          </span>
-          <div className={styles.pagePicker}>
-            <button 
-              className={styles.toolbarBtn}
-              disabled={currentPageIndex === 0}
-              onClick={() => { setCurrentPageIndex(p => Math.max(0, p - 1)); setIsDrawMode(false); }}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <span>{currentPageIndex + 1} / {pages.length}</span>
-            <button 
-              className={styles.toolbarBtn}
-              disabled={currentPageIndex >= pages.length - 1}
-              onClick={() => { setCurrentPageIndex(p => Math.min(pages.length - 1, p + 1)); setIsDrawMode(false); }}
-            >
-              <ChevronRight size={16} />
-            </button>
+
+        <footer className={styles.bottomBar}>
+          <div className={styles.bottomLeft}>
+            <button className={styles.bottomBtn}><Monitor size={16} /> Notes</button>
           </div>
-        </div>
+          <div className={styles.bottomCenter}>
+            <div className={styles.filmstrip}>
+              {localDoc.pages.map((p, idx) => (
+                <div 
+                  key={p.id} 
+                  className={`${styles.pageThumb} ${idx === localDoc.currentPageIndex ? styles.pageThumbActive : ""}`}
+                  onClick={() => notifyChange({ ...localDoc, currentPageIndex: idx })}
+                >
+                  {idx + 1}
+                </div>
+              ))}
+              <button className={styles.addPageThumb} onClick={() => {
+                const newP = createCanvasPage();
+                notifyChange({ ...localDoc, pages: [...localDoc.pages, newP], currentPageIndex: localDoc.pages.length });
+              }}>+</button>
+            </div>
+          </div>
+          <div className={styles.bottomRight}>
+            <span className={styles.zoomText}>{Math.round(zoom * 100)}%</span>
+            <input type="range" min="0.1" max="5" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className={styles.zoomSlider} />
+            <button className={styles.gridBtn} onClick={() => setPagesModalOpen(true)}><LayoutGrid size={16} /></button>
+          </div>
+        </footer>
       </div>
 
       <PagesModal
         open={pagesModalOpen}
-        pages={pages}
-        elements={document.elements}
-        currentPageIndex={currentPageIndex}
+        pages={localDoc.pages}
+        elements={localDoc.elements}
+        currentPageIndex={localDoc.currentPageIndex}
         onClose={() => setPagesModalOpen(false)}
-        onSelectPage={(i) => { setCurrentPageIndex(i); setPagesModalOpen(false); }}
-        onAddPage={handleAddPage}
-        onDeletePage={handleDeletePage}
-        onMovePage={handleMovePage}
+        onSelectPage={(i) => { notifyChange({ ...localDoc, currentPageIndex: i }); setPagesModalOpen(false); }}
+        onAddPage={() => { 
+          const newP = createCanvasPage();
+          notifyChange({ ...localDoc, pages: [...localDoc.pages, newP], currentPageIndex: localDoc.pages.length });
+        }}
+        onDeletePage={onDeletePage}
+        onMovePage={onMovePage}
       />
-
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        style={{ display: "none" }} 
-        accept="image/*" 
-        onChange={handleImageUpload} 
-      />
+      <input type="file" ref={fileInputRef} style={{ display: "none" }} accept="image/*" onChange={handleImageUpload} />
     </div>
   );
 };

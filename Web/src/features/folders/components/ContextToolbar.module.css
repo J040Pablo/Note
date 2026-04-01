@@ -1,0 +1,117 @@
+.toolbar {
+  position: absolute;
+  height: 44px;
+  background-color: #0d0f14;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  z-index: 10000;
+  color: white;
+  white-space: nowrap;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+}
+
+.magicIcon {
+  width: 24px;
+  height: 24px;
+  background: linear-gradient(135deg, #4ade80, #3b82f6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.magicText {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.fontSelect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  border-radius: 12px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.fontSelect span {
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.sizeControl {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+}
+
+.sizeControl button {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 4px;
+}
+
+.sizeValue {
+  font-size: 13px;
+  min-width: 24px;
+  text-align: center;
+  font-family: monospace;
+}
+
+.buttonGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolBtn {
+  background: transparent;
+  border: none;
+  color: #8b92a5;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+}
+
+.toolBtn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.toolBtn.active {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
+}
