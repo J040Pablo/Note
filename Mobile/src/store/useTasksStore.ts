@@ -11,6 +11,7 @@ interface TasksActions {
   upsertTask: (task: Task) => void;
   removeTask: (taskId: ID) => void;
   createTask: (payload: Partial<Task> & { text: string }) => void;
+  reorderTasksInStore: (orderedIds: ID[]) => void;
 }
 
 export const useTasksStore = create<TasksState & TasksActions>()(
@@ -69,6 +70,15 @@ export const useTasksStore = create<TasksState & TasksActions>()(
         if (newTask.parentId && state.tasks[newTask.parentId]) {
            state.tasks[newTask.parentId].completed = false;
         }
+      }),
+
+    reorderTasksInStore: (orderedIds) =>
+      set((state) => {
+        orderedIds.forEach((id, index) => {
+          if (state.tasks[id]) {
+            state.tasks[id].orderIndex = index + 1;
+          }
+        });
       })
   }))
 );

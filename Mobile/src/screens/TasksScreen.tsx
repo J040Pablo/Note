@@ -113,6 +113,7 @@ const TasksScreen: React.FC = () => {
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
   const removeTask = useTasksStore((s) => s.removeTask);
+  const reorderTasksInStore = useTasksStore((s) => s.reorderTasksInStore);
   const togglePinned = useAppStore((s) => s.togglePinned);
   const pinnedItems = useAppStore((s) => s.pinnedItems);
 
@@ -142,6 +143,8 @@ const TasksScreen: React.FC = () => {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const taskSubmittingRef = useRef(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
+  const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestOrderRef = useRef<string[]>([]);
 
   // Enable LayoutAnimation on Android
   useEffect(() => {
@@ -212,6 +215,14 @@ const TasksScreen: React.FC = () => {
       setSortMode(savedSort);
     })();
   }, [setTasks]);
+
+  useEffect(() => {
+    return () => {
+      if (reorderTimerRef.current) {
+        clearTimeout(reorderTimerRef.current);
+      }
+    };
+  }, []);
 
   // Handle route params
   useEffect(() => {
@@ -784,13 +795,22 @@ const TasksScreen: React.FC = () => {
             </View>
           </>
         }
-        onDragEnd={async ({ data }) => {
-          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        onDragEnd={({ data }) => {
+          const orderedIds = data.map((x) => x.id);
+          reorderTasksInStore(orderedIds);
           setSortMode("custom");
-          await saveSortPreference(TASK_SORT_SCOPE, "custom");
-          await reorderTasks(data.map((x) => x.id));
-          const refreshed = await getAllTasks();
-          setTasks(refreshed);
+
+          latestOrderRef.current = orderedIds;
+          if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
+          reorderTimerRef.current = setTimeout(() => {
+            reorderTimerRef.current = null;
+            const ids = latestOrderRef.current;
+            saveSortPreference(TASK_SORT_SCOPE, "custom");
+            reorderTasks(ids).catch((error) => {
+              console.error("[tasks] reorder persist failed", error);
+              showToast("Não foi possível salvar a ordem", "error");
+            });
+          }, 250);
         }}
         ItemSeparatorComponent={() => (
           <View style={{ height: 10 }} />
@@ -804,7 +824,14 @@ const TasksScreen: React.FC = () => {
               style={[
                 styles.taskCard,
                 { backgroundColor: theme.colors.card, borderColor: taskSelected ? theme.colors.secondary : theme.colors.border },
-                isActive && { elevation: 6, shadowColor: theme.colors.textPrimary, shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }
+                isActive && {
+                  elevation: 10,
+                  shadowColor: theme.colors.textPrimary,
+                  shadowOpacity: 0.3,
+                  shadowRadius: 12,
+                  shadowOffset: { width: 0, height: 8 },
+                  transform: [{ scale: 1.03 }]
+                }
               ]}
             >
               {/* Header row — tap to expand, long-press to select/drag */}
@@ -825,8 +852,6 @@ const TasksScreen: React.FC = () => {
                     return;
                   }
                   startSelection({ kind: "task", id: root.id, label: root.text });
-                  event.stopPropagation();
-                  drag();
                 }}
                 delayLongPress={280}
               >
@@ -1048,7 +1073,10 @@ const TasksScreen: React.FC = () => {
             key: "move",
             label: "Mover",
             icon: "folder-open-outline",
-            onPress: () => showToast("Mover em breve")
+            onPress: () => {
+              setShowSelectionMenu(false);
+              showToast("Segure no ícone de mover para arrastar");
+            }
           },
           {
             key: "archive",

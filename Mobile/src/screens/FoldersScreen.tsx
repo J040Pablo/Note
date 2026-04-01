@@ -82,6 +82,7 @@ const FoldersScreen: React.FC = () => {
   const [fabOpen, setFabOpen] = useState(false);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [folderDeleting, setFolderDeleting] = useState(false);
+  const [activeDragFolderId, setActiveDragFolderId] = useState<ID | null>(null);
   const fabAnim = useRef(new Animated.Value(0)).current;
 
   // Debounce refs — ensure rapid drags only trigger one DB write (last-wins).
@@ -368,11 +369,19 @@ const FoldersScreen: React.FC = () => {
         keyExtractor={(item) => item.id}
         numColumns={viewMode === "grid" ? 2 : 1}
         columnWrapperStyle={viewMode === "grid" ? styles.gridColumn : undefined}
+        dragItemOverflow
+        animationConfig={{ damping: 22, mass: 0.35, stiffness: 190 }}
         initialNumToRender={10}
         maxToRenderPerBatch={8}
         windowSize={9}
         removeClippedSubviews
         activationDistance={12}
+        onDragBegin={(index) => {
+          const dragged = visibleFolders[index];
+          setActiveDragFolderId(dragged?.id ?? null);
+        }}
+        onRelease={() => undefined}
+        renderPlaceholder={() => <View style={styles.staticDragPlaceholder} />}
         ListFooterComponent={
           (looseNotes.length || looseQuickNotes.length) ? (
             <View style={{ marginTop: 10 }}>
@@ -495,6 +504,7 @@ const FoldersScreen: React.FC = () => {
         }
         onDragEnd={useCallback(({ data }: { data: typeof visibleFolders }) => {
           const orderedIds = data.map((x) => x.id);
+          setActiveDragFolderId(null);
 
           // 1. Optimistic UI: update orderIndex in-place — no full map replace, no flicker.
           reorderFoldersInStore(orderedIds);
@@ -535,7 +545,15 @@ const FoldersScreen: React.FC = () => {
                     borderColor: theme.colors.primary,
                     borderWidth: 1.5
                   },
-                  isActive && { opacity: 0.6, backgroundColor: theme.colors.primaryAlpha20 }
+                  (isActive || activeDragFolderId === item.id) && {
+                    opacity: 0.96,
+                    backgroundColor: theme.colors.primaryAlpha20,
+                    transform: [{ scale: 1.03 }],
+                    shadowOpacity: 0.24,
+                    shadowRadius: 10,
+                    shadowOffset: { width: 0, height: 6 },
+                    elevation: 10,
+                  }
                 ]}
               >
                 {!!item.bannerPath && <Image source={{ uri: item.bannerPath }} style={styles.banner} resizeMode="cover" />}
@@ -571,7 +589,7 @@ const FoldersScreen: React.FC = () => {
           }
 
           return (
-            <View style={[styles.gridItem, { flex: 1 }]}>
+            <View style={styles.gridItem}>
               <Pressable
                 onLongPress={() => {
                   startSelection({ kind: "folder", id: item.id, label: item.name });
@@ -598,7 +616,15 @@ const FoldersScreen: React.FC = () => {
                     borderColor: theme.colors.primary,
                     borderWidth: 1.5
                   },
-                  isActive && { opacity: 0.6, backgroundColor: theme.colors.primaryAlpha20 }
+                  (isActive || activeDragFolderId === item.id) && {
+                    opacity: 0.96,
+                    backgroundColor: theme.colors.primaryAlpha20,
+                    transform: [{ scale: 1.03 }],
+                    shadowOpacity: 0.24,
+                    shadowRadius: 10,
+                    shadowOffset: { width: 0, height: 6 },
+                    elevation: 10,
+                  }
                 ]}
               >
                 {item.bannerPath ? (
@@ -638,6 +664,8 @@ const FoldersScreen: React.FC = () => {
                     )}
                   </View>
                 </View>
+
+                {/* Drag temporariamente desativado no modo grid */}
               </Pressable>
             </View>
           );
@@ -689,7 +717,10 @@ const FoldersScreen: React.FC = () => {
             key: "move",
             label: "Mover",
             icon: "folder-open-outline",
-            onPress: () => showToast("Mover em breve")
+            onPress: () => {
+              setShowSelectionMenu(false);
+              showToast("Segure no ícone de mover para arrastar");
+            }
           },
           {
             key: "archive",
@@ -1016,13 +1047,15 @@ const styles = StyleSheet.create({
     gap: 8
   },
   gridColumn: {
-    gap: 12,
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginHorizontal: 0,
-    alignItems: "stretch"
+    paddingHorizontal: 0
   },
   gridItem: {
-    paddingHorizontal: 0,
-    alignSelf: "stretch"
+    flex: 1,
+    marginBottom: 8,
+    paddingHorizontal: 4
   },
   folderGridCard: {
     flex: 1,
@@ -1059,6 +1092,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden"
   },
+  gridDragHandle: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    zIndex: 3,
+    width: 24,
+    height: 24,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "transparent"
+  },
   gridFolderTitle: {
     fontWeight: "600",
     marginBottom: 2
@@ -1078,6 +1124,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 0
+  },
+  staticDragPlaceholder: {
+    height: 0,
+    minHeight: 0,
+    opacity: 0,
+    borderWidth: 0,
+    margin: 0,
+    padding: 0
   },
   banner: {
     width: "100%",
