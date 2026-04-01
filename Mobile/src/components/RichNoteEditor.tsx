@@ -174,6 +174,8 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
   const [doc, setDoc] = useState<RichNoteDocument>(() => parseRichNoteContent(value));
   const [selectedTextId, setSelectedTextId] = useState<string | null>(null);
   const [selection, setSelection] = useState<TextSelectionRange>({ start: 0, end: 0 });
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const [isSizePickerOpen, setIsSizePickerOpen] = useState(false);
   
   // Debounce ref to avoid excessive saves
   const debouncedSaveRef = useRef<((content: string) => void) | null>(null);
@@ -332,6 +334,51 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
     [applyStyleToSelection]
   );
 
+  const applyTextColor = useCallback(
+    (color: string) => {
+      applyStyleToSelection((prev) => ({
+        ...prev,
+        style: {
+          ...prev.style,
+          textColor: color
+        }
+      }));
+      setIsColorPickerOpen(false);
+    },
+    [applyStyleToSelection]
+  );
+
+  const applyTextSizePreset = useCallback(
+    (preset: "small" | "normal" | "large" | "h1" | "h2" | "h3") => {
+      applyFontPreset(preset);
+      setIsSizePickerOpen(false);
+    },
+    [applyFontPreset]
+  );
+
+  const toggleColorPicker = useCallback(() => {
+    setIsColorPickerOpen((prev) => {
+      const next = !prev;
+      if (next) setIsSizePickerOpen(false);
+      return next;
+    });
+  }, []);
+
+  const toggleSizePicker = useCallback(() => {
+    setIsSizePickerOpen((prev) => {
+      const next = !prev;
+      if (next) setIsColorPickerOpen(false);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!selectedBlock) {
+      setIsColorPickerOpen(false);
+      setIsSizePickerOpen(false);
+    }
+  }, [selectedBlock]);
+
   const handleSelectionChange = useCallback(
     (blockId: string, event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
       if (selectedTextId !== blockId) return;
@@ -387,149 +434,156 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
   return (
     <View style={styles.root}>
       {!!selectedBlock && (
-        <View style={[styles.toolbar, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}> 
-          <Pressable
-            onPress={() =>
-              applyStyleToSelection((prev) => ({
-                ...prev,
-                style: { ...prev.style, bold: !prev.style?.bold }
-              }))
-            }
-            style={styles.toolbarButton}
-          >
-            <Text style={{ fontWeight: "700", color: theme.colors.textPrimary }}>B</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() =>
-              applyStyleToSelection((prev) => ({
-                ...prev,
-                style: { ...prev.style, italic: !prev.style?.italic }
-              }))
-            }
-            style={styles.toolbarButton}
-          >
-            <Text style={{ fontStyle: "italic", color: theme.colors.textPrimary }}>I</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() =>
-              applyStyleToSelection((prev) => ({
-                ...prev,
-                style: { ...prev.style, underline: !prev.style?.underline }
-              }))
-            }
-            style={styles.toolbarButton}
-          >
-            <Text style={{ textDecorationLine: "underline", color: theme.colors.textPrimary }}>U</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() =>
-              applyStyleToSelection((prev) => ({
-                ...prev,
-                style: { ...prev.style, strikethrough: !prev.style?.strikethrough }
-              }))
-            }
-            style={styles.toolbarButton}
-          >
-            <Text style={{ textDecorationLine: "line-through", color: theme.colors.textPrimary }}>S</Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() =>
-              applyStyleToSelection((prev) => ({
-                ...prev,
-                style: {
-                  ...prev.style,
-                  textColor: prev.style?.textColor ? "" : "#ef4444"
-                }
-              }))
-            }
-            style={styles.toolbarButton}
-          >
-            <Ionicons name="color-palette-outline" size={16} color={theme.colors.textPrimary} />
-          </Pressable>
-
-          {["#ef4444", "#2563eb", "#16a34a", "#f59e0b", theme.colors.textPrimary].map((color) => (
+        <View style={styles.toolbarStack}>
+          <View style={[styles.toolbar, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}> 
             <Pressable
-              key={color}
+              onPress={() =>
+                applyStyleToSelection((prev) => ({
+                  ...prev,
+                  style: { ...prev.style, bold: !prev.style?.bold }
+                }))
+              }
+              style={styles.toolbarButton}
+            >
+              <Text style={{ fontWeight: "700", color: theme.colors.textPrimary }}>B</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() =>
+                applyStyleToSelection((prev) => ({
+                  ...prev,
+                  style: { ...prev.style, italic: !prev.style?.italic }
+                }))
+              }
+              style={styles.toolbarButton}
+            >
+              <Text style={{ fontStyle: "italic", color: theme.colors.textPrimary }}>I</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() =>
+                applyStyleToSelection((prev) => ({
+                  ...prev,
+                  style: { ...prev.style, underline: !prev.style?.underline }
+                }))
+              }
+              style={styles.toolbarButton}
+            >
+              <Text style={{ textDecorationLine: "underline", color: theme.colors.textPrimary }}>U</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() =>
+                applyStyleToSelection((prev) => ({
+                  ...prev,
+                  style: { ...prev.style, strikethrough: !prev.style?.strikethrough }
+                }))
+              }
+              style={styles.toolbarButton}
+            >
+              <Text style={{ textDecorationLine: "line-through", color: theme.colors.textPrimary }}>S</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={toggleColorPicker}
+              style={[
+                styles.toolbarButtonLabel,
+                styles.menuTrigger,
+                isColorPickerOpen && { backgroundColor: theme.colors.primary }
+              ]}
+            >
+              <Ionicons
+                name="color-palette-outline"
+                size={14}
+                color={isColorPickerOpen ? "#fff" : theme.colors.textPrimary}
+              />
+              <Text variant="caption" style={{ color: isColorPickerOpen ? "#fff" : theme.colors.textPrimary }}>
+                Color
+              </Text>
+            </Pressable>
+
+            <Pressable
               onPress={() =>
                 applyStyleToSelection((prev) => ({
                   ...prev,
                   style: {
                     ...prev.style,
-                    textColor: color
+                    highlightColor: prev.style?.highlightColor ? "" : "#FEF08A"
                   }
                 }))
               }
-              style={[styles.colorSwatch, { backgroundColor: color }]}
-            />
-          ))}
+              style={styles.toolbarButton}
+            >
+              <Ionicons name="brush-outline" size={16} color={theme.colors.textPrimary} />
+            </Pressable>
 
-          <Pressable
-            onPress={() =>
-              applyStyleToSelection((prev) => ({
-                ...prev,
-                style: {
-                  ...prev.style,
-                  highlightColor: prev.style?.highlightColor ? "" : "#FEF08A"
-                }
-              }))
-            }
-            style={styles.toolbarButton}
-          >
-            <Ionicons name="brush-outline" size={16} color={theme.colors.textPrimary} />
-          </Pressable>
+            <View style={styles.toolbarDivider} />
 
-          <View style={styles.toolbarDivider} />
+            <Pressable
+              onPress={toggleSizePicker}
+              style={[
+                styles.toolbarButtonLabel,
+                styles.menuTrigger,
+                isSizePickerOpen && { backgroundColor: theme.colors.primary }
+              ]}
+            >
+              <Ionicons name="text-outline" size={14} color={isSizePickerOpen ? "#fff" : theme.colors.textPrimary} />
+              <Text variant="caption" style={{ color: isSizePickerOpen ? "#fff" : theme.colors.textPrimary }}>
+                Size
+              </Text>
+            </Pressable>
 
-          <Pressable onPress={() => applyFontPreset("small")} style={styles.toolbarButtonLabel}>
-            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>Sm</Text>
-          </Pressable>
-          <Pressable onPress={() => applyFontPreset("normal")} style={styles.toolbarButtonLabel}>
-            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>N</Text>
-          </Pressable>
-          <Pressable onPress={() => applyFontPreset("large")} style={styles.toolbarButtonLabel}>
-            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>Lg</Text>
-          </Pressable>
-          <Pressable onPress={() => applyFontPreset("h1")} style={styles.toolbarButtonLabel}>
-            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H1</Text>
-          </Pressable>
-          <Pressable onPress={() => applyFontPreset("h2")} style={styles.toolbarButtonLabel}>
-            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H2</Text>
-          </Pressable>
-          <Pressable onPress={() => applyFontPreset("h3")} style={styles.toolbarButtonLabel}>
-            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H3</Text>
-          </Pressable>
+            {hasSelectedRange && (
+              <View style={styles.selectionBadge}>
+                <Text variant="caption" muted>{selection.end - selection.start} selected</Text>
+              </View>
+            )}
+          </View>
 
-          <Pressable
-            onPress={() =>
-              applyStyleToSelection((prev) => ({
-                ...prev,
-                style: { ...prev.style, fontSize: clampFontSize((prev.style?.fontSize ?? 16) - 2) }
-              }))
-            }
-            style={styles.toolbarButton}
-          >
-            <Ionicons name="remove" size={16} color={theme.colors.textPrimary} />
-          </Pressable>
+          {isColorPickerOpen && (
+            <View style={[styles.dropdownPanel, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}>
+              <View style={styles.dropdownOptionsRow}>
+                {["#ef4444", "#2563eb", "#16a34a", "#f59e0b", theme.colors.textPrimary].map((color) => (
+                  <Pressable
+                    key={color}
+                    onPress={() => applyTextColor(color)}
+                    style={[
+                      styles.colorSwatchLarge,
+                      { backgroundColor: color },
+                      selectedBlock.style?.textColor === color && { borderColor: theme.colors.primary, borderWidth: 2 }
+                    ]}
+                  />
+                ))}
+                <Pressable
+                  onPress={() => applyTextColor("")}
+                  style={[styles.dropdownChip, { borderColor: theme.colors.border }]}
+                >
+                  <Text variant="caption" style={{ color: theme.colors.textPrimary }}>Default</Text>
+                </Pressable>
+              </View>
+            </View>
+          )}
 
-          <Pressable
-            onPress={() =>
-              applyStyleToSelection((prev) => ({
-                ...prev,
-                style: { ...prev.style, fontSize: clampFontSize((prev.style?.fontSize ?? 16) + 2) }
-              }))
-            }
-            style={styles.toolbarButton}
-          >
-            <Ionicons name="add" size={16} color={theme.colors.textPrimary} />
-          </Pressable>
-
-          {hasSelectedRange && (
-            <View style={styles.selectionBadge}>
-              <Text variant="caption" muted>{selection.end - selection.start} selected</Text>
+          {isSizePickerOpen && (
+            <View style={[styles.dropdownPanel, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}>
+              <View style={styles.dropdownOptionsRow}>
+                {[
+                  { key: "small", label: "Sm" },
+                  { key: "normal", label: "N" },
+                  { key: "large", label: "Lg" },
+                  { key: "h1", label: "H1" },
+                  { key: "h2", label: "H2" },
+                  { key: "h3", label: "H3" }
+                ].map((option) => (
+                  <Pressable
+                    key={option.key}
+                    onPress={() => applyTextSizePreset(option.key as "small" | "normal" | "large" | "h1" | "h2" | "h3")}
+                    style={[styles.dropdownChip, { borderColor: theme.colors.border }]}
+                  >
+                    <Text variant="caption" style={{ color: theme.colors.textPrimary }}>{option.label}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
           )}
         </View>
@@ -682,6 +736,9 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 8
   },
+  toolbarStack: {
+    gap: 6
+  },
   toolbar: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
@@ -705,6 +762,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     borderRadius: 8,
     alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 4
+  },
+  menuTrigger: {
+    paddingHorizontal: 10,
+    minWidth: 74
+  },
+  dropdownPanel: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 8
+  },
+  dropdownOptionsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  dropdownChip: {
+    minHeight: 34,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
     justifyContent: "center"
   },
   toolbarDivider: {
@@ -720,11 +803,10 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: "rgba(255,255,255,0.06)"
   },
-  colorSwatch: {
-    width: 18,
-    height: 18,
+  colorSwatchLarge: {
+    width: 26,
+    height: 26,
     borderRadius: 999,
-    marginHorizontal: 2,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: "rgba(0,0,0,0.2)"
   },

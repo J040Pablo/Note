@@ -21,6 +21,16 @@ type EditorMessage =
   | { type: "focus"; focused: boolean }
   | { type: "paste"; html?: string; text?: string };
 
+const QUICK_COLORS = ["#ef4444", "#2563eb", "#16a34a", "#f59e0b"] as const;
+const QUICK_SIZES = [
+  { label: "Sm", px: 13 },
+  { label: "N", px: 16 },
+  { label: "Lg", px: 20 },
+  { label: "H1", px: 32 },
+  { label: "H2", px: 28 },
+  { label: "H3", px: 24 }
+] as const;
+
 const escapeHtml = (raw: string) =>
   raw
     .replace(/&/g, "&amp;")
@@ -76,6 +86,10 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
   const isEditorReadyRef = useRef(false);
   const [hasSelection, setHasSelection] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
+  const [isSizePickerOpen, setIsSizePickerOpen] = useState(false);
+  const [activeColor, setActiveColor] = useState<string | null>(null);
+  const [activeSize, setActiveSize] = useState<number | null>(null);
 
   const toolbarVisible = hasSelection || isFocused;
 
@@ -262,6 +276,47 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
     webViewRef.current?.injectJavaScript(`window.__quickEditor && ${command}; true;`);
   }, []);
 
+  const toggleColorPicker = useCallback(() => {
+    setIsColorPickerOpen((prev) => {
+      const next = !prev;
+      if (next) setIsSizePickerOpen(false);
+      return next;
+    });
+  }, []);
+
+  const toggleSizePicker = useCallback(() => {
+    setIsSizePickerOpen((prev) => {
+      const next = !prev;
+      if (next) setIsColorPickerOpen(false);
+      return next;
+    });
+  }, []);
+
+  const applyColor = useCallback(
+    (color: string) => {
+      setActiveColor(color);
+      sendCommand(`window.__quickEditor.color('${color}')`);
+      setIsColorPickerOpen(false);
+    },
+    [sendCommand]
+  );
+
+  const applySize = useCallback(
+    (px: number) => {
+      setActiveSize(px);
+      sendCommand(`window.__quickEditor.fontSize(${px})`);
+      setIsSizePickerOpen(false);
+    },
+    [sendCommand]
+  );
+
+  useEffect(() => {
+    if (!toolbarVisible) {
+      setIsColorPickerOpen(false);
+      setIsSizePickerOpen(false);
+    }
+  }, [toolbarVisible]);
+
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
       try {
@@ -323,47 +378,93 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
   return (
     <View style={styles.root}>
       {toolbarVisible && (
-        <View style={[styles.toolbar, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}> 
-          <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.bold()")}> 
-            <Text style={{ fontWeight: "700", color: theme.colors.textPrimary }}>B</Text>
-          </Pressable>
-          <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.italic()")}> 
-            <Text style={{ fontStyle: "italic", color: theme.colors.textPrimary }}>I</Text>
-          </Pressable>
-          <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.underline()")}> 
-            <Text style={{ textDecorationLine: "underline", color: theme.colors.textPrimary }}>U</Text>
-          </Pressable>
-          <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.strike()")}> 
-            <Text style={{ textDecorationLine: "line-through", color: theme.colors.textPrimary }}>S</Text>
-          </Pressable>
+        <View style={styles.toolbarStack}>
+          <View style={[styles.toolbar, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}> 
+            <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.bold()")}> 
+              <Text style={{ fontWeight: "700", color: theme.colors.textPrimary }}>B</Text>
+            </Pressable>
+            <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.italic()")}> 
+              <Text style={{ fontStyle: "italic", color: theme.colors.textPrimary }}>I</Text>
+            </Pressable>
+            <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.underline()")}> 
+              <Text style={{ textDecorationLine: "underline", color: theme.colors.textPrimary }}>U</Text>
+            </Pressable>
+            <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.strike()")}> 
+              <Text style={{ textDecorationLine: "line-through", color: theme.colors.textPrimary }}>S</Text>
+            </Pressable>
 
-          {["#ef4444", "#2563eb", "#16a34a", "#f59e0b"].map((color) => (
+            <View style={styles.divider} />
+
             <Pressable
-              key={color}
-              style={[styles.colorSwatch, { backgroundColor: color }]}
-              onPress={() => sendCommand(`window.__quickEditor.color('${color}')`)}
-            />
-          ))}
+              style={[
+                styles.menuButton,
+                { borderColor: theme.colors.border },
+                isColorPickerOpen && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+              ]}
+              onPress={toggleColorPicker}
+            >
+              <Ionicons name="color-palette-outline" size={14} color={isColorPickerOpen ? "#fff" : theme.colors.textPrimary} />
+              <Text variant="caption" style={{ color: isColorPickerOpen ? "#fff" : theme.colors.textPrimary }}>Color</Text>
+            </Pressable>
 
-          <View style={styles.divider} />
-          <Pressable style={styles.sizeButton} onPress={() => sendCommand("window.__quickEditor.fontSize(13)")}> 
-            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>Sm</Text>
-          </Pressable>
-          <Pressable style={styles.sizeButton} onPress={() => sendCommand("window.__quickEditor.fontSize(16)")}> 
-            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>N</Text>
-          </Pressable>
-          <Pressable style={styles.sizeButton} onPress={() => sendCommand("window.__quickEditor.fontSize(20)")}> 
-            <Text variant="caption" style={{ color: theme.colors.textPrimary }}>Lg</Text>
-          </Pressable>
-          <Pressable style={styles.sizeButton} onPress={() => sendCommand("window.__quickEditor.fontSize(32)")}> 
-            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H1</Text>
-          </Pressable>
-          <Pressable style={styles.sizeButton} onPress={() => sendCommand("window.__quickEditor.fontSize(28)")}> 
-            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H2</Text>
-          </Pressable>
-          <Pressable style={styles.sizeButton} onPress={() => sendCommand("window.__quickEditor.fontSize(24)")}> 
-            <Text variant="caption" style={{ color: theme.colors.textPrimary, fontWeight: "700" }}>H3</Text>
-          </Pressable>
+            <Pressable
+              style={[
+                styles.menuButton,
+                { borderColor: theme.colors.border },
+                isSizePickerOpen && { backgroundColor: theme.colors.primary, borderColor: theme.colors.primary }
+              ]}
+              onPress={toggleSizePicker}
+            >
+              <Ionicons name="text-outline" size={14} color={isSizePickerOpen ? "#fff" : theme.colors.textPrimary} />
+              <Text variant="caption" style={{ color: isSizePickerOpen ? "#fff" : theme.colors.textPrimary }}>Size</Text>
+            </Pressable>
+          </View>
+
+          {isColorPickerOpen && (
+            <View style={[styles.pickerPanel, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}> 
+              <View style={styles.pickerRow}>
+                {QUICK_COLORS.map((color) => (
+                  <Pressable
+                    key={color}
+                    style={[
+                      styles.colorSwatch,
+                      { backgroundColor: color },
+                      activeColor === color && { borderColor: theme.colors.primary, borderWidth: 2 }
+                    ]}
+                    onPress={() => applyColor(color)}
+                  />
+                ))}
+              </View>
+            </View>
+          )}
+
+          {isSizePickerOpen && (
+            <View style={[styles.pickerPanel, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}> 
+              <View style={styles.pickerRow}>
+                {QUICK_SIZES.map((option) => (
+                  <Pressable
+                    key={option.label}
+                    style={[
+                      styles.sizeButton,
+                      { borderColor: theme.colors.border },
+                      activeSize === option.px && { borderColor: theme.colors.primary }
+                    ]}
+                    onPress={() => applySize(option.px)}
+                  >
+                    <Text
+                      variant="caption"
+                      style={{
+                        color: theme.colors.textPrimary,
+                        fontWeight: option.label.startsWith("H") ? "700" : "400"
+                      }}
+                    >
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
         </View>
       )}
 
@@ -402,6 +503,10 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: 4
   },
+  toolbarStack: {
+    marginBottom: 8,
+    gap: 6
+  },
   toolButton: {
     width: 30,
     height: 30,
@@ -410,10 +515,12 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   colorSwatch: {
-    width: 16,
-    height: 16,
+    width: 22,
+    height: 22,
     borderRadius: 999,
-    marginHorizontal: 2
+    marginHorizontal: 2,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "rgba(127,127,127,0.45)"
   },
   divider: {
     width: StyleSheet.hairlineWidth,
@@ -423,11 +530,33 @@ const styles = StyleSheet.create({
   },
   sizeButton: {
     minWidth: 32,
-    height: 30,
+    height: 32,
     borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 6
+    paddingHorizontal: 8,
+    borderWidth: StyleSheet.hairlineWidth
+  },
+  menuButton: {
+    minHeight: 30,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4
+  },
+  pickerPanel: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 8
+  },
+  pickerRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    alignItems: "center"
   },
   editorCard: {
     flex: 1,

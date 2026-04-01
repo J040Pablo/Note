@@ -1340,15 +1340,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
             const dist = touchDist(touches[0], touches[1]);
             const ratio = dist / Math.max(1, pinchStateRef.current.startDist);
             const nextZoom = clamp(pinchStateRef.current.startZoom * ratio, ZOOM_MIN, ZOOM_MAX);
-            const startedAt100 = Math.abs(pinchStateRef.current.startZoom - 1) <= 0.05;
-            const isPinchingIn = ratio < 1;
-            if (!pinchStateRef.current.overviewTriggered && startedAt100 && isPinchingIn && nextZoom <= 0.8) {
-              pinchStateRef.current = { ...pinchStateRef.current, overviewTriggered: true };
-              setOverviewMode(true);
-              setZoom(1);
-              setCanvasPosition({ x: 0, y: 0 });
-              return;
-            }
             const midX = (touches[0].pageX + touches[1].pageX) / 2;
             const midY = (touches[0].pageY + touches[1].pageY) / 2;
             const nextScale = clamp(baseFitScale * nextZoom, 0.2, 4);
@@ -1949,6 +1940,19 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     clearSelection();
   }, [clearSelection, editable]);
 
+  const toggleEraserMode = useCallback(() => {
+    if (!editable) return;
+    setDrawingMode((prev) => {
+      const next = prev === "eraser" ? null : "eraser";
+      setMode(next ? "draw" : "select");
+      return next;
+    });
+    setShowShapeMenu(false);
+    setShowStylePanel(false);
+    setShowAlignMenu(false);
+    clearSelection();
+  }, [clearSelection, editable]);
+
   const renderPage = useCallback(
     (page: CanvasPage) => {
       const pageW = Math.max(240, toPositiveNumber(page.width, toPositiveNumber(doc.pageWidth, 900)));
@@ -2016,9 +2020,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 {drawingDraft?.pageId === page.id && drawingDraft.points.some((pt) => !!pt) && (
                     <Path
                       d={buildSmoothPath(drawingDraft.points)}
-                      stroke={drawingColor}
+                      stroke={drawingMode === "eraser" ? "#EF4444" : drawingColor}
                       strokeWidth={drawingSize}
-                      strokeOpacity={drawingOpacity}
+                      strokeOpacity={drawingMode === "eraser" ? 0.6 : drawingOpacity}
                       strokeLinecap="round"
                       strokeLinejoin="round"
                       fill="none"
@@ -2256,16 +2260,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           <Ionicons name="brush-outline" size={16} color={drawingMode === "brush" ? "#A78BFA" : colors.textPrimary} />
         </Pressable>
 
-        {!!drawingMode && (
-          <Pressable
-            style={[tb(), drawingMode === "eraser" && styles.activeToolBtn]}
-            onPress={() => setDrawingMode("eraser")}
-            accessibilityLabel="Eraser tool"
-            accessibilityHint="Switch to eraser mode"
-          >
-            <Ionicons name="backspace-outline" size={18} color={drawingMode === "eraser" ? "#EF4444" : colors.textPrimary} />
-          </Pressable>
-        )}
+        <Pressable
+          style={[tb(), drawingMode === "eraser" && styles.activeToolBtn]}
+          onPress={toggleEraserMode}
+          accessibilityLabel="Eraser tool"
+          accessibilityHint="Toggle eraser mode"
+        >
+          <Ionicons name="backspace-outline" size={18} color={drawingMode === "eraser" ? "#EF4444" : colors.textPrimary} />
+        </Pressable>
 
         <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
@@ -2354,10 +2356,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 }}
               >
                 <Text style={{ color: colors.textPrimary, fontSize: 11 }}>S {Math.round(drawingSmoothness * 100)}</Text>
-              </Pressable>
-
-              <Pressable style={styles.menuBtnSmall} onPress={() => setDrawingMode("eraser")}>
-                <Ionicons name="backspace-outline" size={18} color="#EF4444" />
               </Pressable>
             </View>
           </>
@@ -2859,16 +2857,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
               </Pressable>
 
               <View style={[styles.verticalDivider, { backgroundColor: colors.border }]} />
-
-              <Pressable
-                style={[styles.menuBtnSmall, showStylePanel && styles.activeBtn]}
-                onPress={() => {
-                  setShowAlignMenu(false);
-                  setShowStylePanel((v) => !v);
-                }}
-              >
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: "600" }}>aA</Text>
-              </Pressable>
 
               <Pressable
                 style={[styles.menuBtnSmall, showAlignMenu && styles.activeBtn]}

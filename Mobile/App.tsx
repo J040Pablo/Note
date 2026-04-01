@@ -1,12 +1,12 @@
 import React from "react";
 import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from "@react-navigation/native";
-import { StatusBar } from "expo-status-bar";
 import { Linking as RNLinking } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import RootNavigator from "@navigation/RootNavigator";
 import { ThemeProvider, useTheme } from "@hooks/useTheme";
 import { DatabaseProvider } from "@database/DatabaseProvider";
 import { FeedbackProvider } from "@components/FeedbackProvider";
+import { ThemeAwareStatusBar } from "@components/ThemeAwareStatusBar";
 import { useNotificationSetup } from "@hooks/useNotificationSetup";
 import { useTaskSyncServer } from "@hooks/useTaskSyncServer";
 import { addNotificationResponseListener } from "@services/notificationService";
@@ -74,7 +74,7 @@ const ThemedNavigation: React.FC = () => {
 
   return (
     <>
-      <StatusBar style={theme.mode === "dark" ? "light" : "dark"} backgroundColor={theme.colors.background} />
+      <ThemeAwareStatusBar />
       <NavigationContainer
         ref={navRef}
         linking={{

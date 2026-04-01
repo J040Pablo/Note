@@ -1183,6 +1183,62 @@ const TasksScreen: React.FC = () => {
               ]}
             />
 
+            {/* Priority Selector */}
+            <View style={styles.prioritySection}>
+              <Text muted variant="caption" style={{ marginBottom: 8 }}>Prioridade</Text>
+              <View style={styles.priorityButtonsRow}>
+                {[
+                  { label: "Baixa", value: 0 as TaskPriority },
+                  { label: "Média", value: 1 as TaskPriority },
+                  { label: "Alta", value: 2 as TaskPriority }
+                ].map((option) => {
+                  const isSelected = priority === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => setPriority(option.value)}
+                      style={[
+                        styles.priorityButton,
+                        {
+                          backgroundColor: isSelected
+                            ? option.value === 0
+                              ? theme.colors.priorityLow + "30"
+                              : option.value === 1
+                              ? theme.colors.priorityMedium + "30"
+                              : theme.colors.priorityHigh + "30"
+                            : theme.colors.background,
+                          borderColor: isSelected
+                            ? option.value === 0
+                              ? theme.colors.priorityLow
+                              : option.value === 1
+                              ? theme.colors.priorityMedium
+                              : theme.colors.priorityHigh
+                            : theme.colors.border,
+                          borderWidth: 2
+                        }
+                      ]}
+                    >
+                      <Text
+                        style={{
+                          fontWeight: isSelected ? "700" : "500",
+                          fontSize: 14,
+                          color: isSelected
+                            ? option.value === 0
+                              ? theme.colors.priorityLow
+                              : option.value === 1
+                              ? theme.colors.priorityMedium
+                              : theme.colors.priorityHigh
+                            : theme.colors.textPrimary
+                        }}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
             <View style={styles.dateTimeRow}>
               <TouchableOpacity
                 activeOpacity={0.85}
@@ -1457,7 +1513,7 @@ const TasksScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 68 + 20 }]} pointerEvents="box-none">
+      <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 76 + 20 }]} pointerEvents="box-none">
         <Animated.View
           pointerEvents={fabOpen ? "auto" : "none"}
           style={[
@@ -1467,7 +1523,7 @@ const TasksScreen: React.FC = () => {
                 {
                   translateY: fabAnim.interpolate({
                     inputRange: [0, 1],
-                    outputRange: [0, -72]
+                    outputRange: [0, -80]
                   })
                 },
                 {
@@ -1757,6 +1813,23 @@ const styles = StyleSheet.create({
     marginTop: 12,
     justifyContent: "space-between"
   },
+  prioritySection: {
+    marginTop: 14,
+    marginBottom: 12
+  },
+  priorityButtonsRow: {
+    flexDirection: "row",
+    gap: 10,
+    justifyContent: "space-between"
+  },
+  priorityButton: {
+    flex: 1,
+    paddingVertical: 11,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center"
+  },
   priorityChip: {
     flex: 1,
     marginHorizontal: 4,
@@ -1852,21 +1925,21 @@ const styles = StyleSheet.create({
   fabMenuItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 10,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minWidth: 148
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minWidth: 160
   },
   fabMenuLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600"
   },
   fabMain: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     alignItems: "center",
     justifyContent: "center",
     shadowOpacity: 0.25,
