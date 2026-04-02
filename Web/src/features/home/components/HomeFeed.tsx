@@ -13,6 +13,7 @@ import {
 import { getAllTasks, toggleTask as serviceToggleTask } from "../../../services/tasksService.web";
 import { getAllNotes, getAllQuickNotes, createQuickNote as serviceCreateQuickNote } from "../../../services/notesService.web";
 import { getFolders, type DataFolder } from "../../../services/webData";
+import { getPinnedItems, getRecentItems, savePinnedItems, saveRecentItems } from "../../../services/appMetaService.web";
 import { useAppMode } from "../../../app/mode";
 import {
   dispatchEntitySyncEvent,
@@ -199,18 +200,55 @@ const HomeFeed: React.FC = () => {
 
   React.useEffect(() => {
     if (!isMobileSync) return;
-    const unsub = subscribeSyncBridge(() => {
+    const unsub = subscribeSyncBridge((event) => {
       setTasks(loadHomeTasks());
       setNotes(loadHomeNotes());
       setQuickNotes(loadHomeQuickNotes());
       setFolders(loadHomeFolders());
+      if (event.type === "APP_META_UPSERT" || event.type === "APP_META_DELETE" || event.type === "FULL_SYNC") {
+        refreshMetaState();
+      }
     });
     return () => unsub();
-  }, [isMobileSync]);
+  }, [isMobileSync, refreshMetaState]);
 
-  const [pinnedItems, setPinnedItems] = React.useState<PinnedItem[]>([]);
+  const [pinnedItems, setPinnedItems] = React.useState<PinnedItem[]>(() => getPinnedItems().map((item) => ({ type: item.type, id: item.id })));
   const [recentItems, setRecentItems] = React.useState<RecentItem[]>([]);
   const [quickNote, setQuickNote] = React.useState("");
+
+  const resolveRecentItem = React.useCallback(
+    (item: { type: "folder" | "note"; id: string; openedAt: number }): RecentItem => {
+      if (item.type === "folder") {
+        const folder = folders.find((entry) => entry.id === item.id);
+        return {
+          id: item.id,
+          type: "folder",
+          label: folder?.name ?? item.id,
+          subtitle: folder?.description ?? undefined,
+          openedAt: item.openedAt,
+        };
+      }
+
+      const note = notes.find((entry) => entry.id === item.id);
+      return {
+        id: item.id,
+        type: "note",
+        label: note?.title ?? item.id,
+        subtitle: note ? firstLine(note.preview) : undefined,
+        openedAt: item.openedAt,
+      };
+    },
+    [folders, notes]
+  );
+
+  const refreshMetaState = React.useCallback(() => {
+    setPinnedItems(getPinnedItems().map((item) => ({ type: item.type, id: item.id })));
+    setRecentItems(getRecentItems().map(resolveRecentItem));
+  }, [resolveRecentItem]);
+
+  React.useEffect(() => {
+    refreshMetaState();
+  }, [refreshMetaState]);
 
   const todaysTasks = React.useMemo(() => tasks.slice(0, 7), [tasks]);
   const completedToday = React.useMemo(
@@ -277,40 +315,42 @@ const HomeFeed: React.FC = () => {
   const togglePin = React.useCallback((type: ItemType, id: string) => {
     setPinnedItems((prev) => {
       const exists = prev.some((item) => item.type === type && item.id === id);
-      const next = exists
-        ? prev.filter((item) => !(item.type === type && item.id === id))
-        : [{ type, id }, ...prev];
+      const nextStored = exists
+        ? getPinnedItems().filter((item) => !(item.type === type && item.id === id))
+        : [{ type: type as "folder" | "note" | "task", id, pinnedAt: Date.now() }, ...getPinnedItems().filter((item) => !(item.type === type && item.id === id))];
+      savePinnedItems(nextStored);
       if (isMobileSync) {
         dispatchEntitySyncEvent({
           type: "UPSERT_APP_META",
           payload: {
-            key: "web.pinned_items",
-            value: JSON.stringify(next),
+            key: "pinned_items",
+            value: JSON.stringify(nextStored),
             updatedAt: Date.now(),
           },
         });
       }
-      return next;
+      return nextStored.map((item) => ({ type: item.type, id: item.id }));
     });
   }, [isMobileSync]);
 
   const addRecent = React.useCallback((entry: Omit<RecentItem, "openedAt">) => {
     setRecentItems((prev) => {
-      const next = [{ ...entry, openedAt: Date.now() }, ...prev.filter((x) => !(x.type === entry.type && x.id === entry.id))];
-      const sliced = next.slice(0, 10);
+      const nextStored = [{ type: entry.type, id: entry.id, openedAt: Date.now() }, ...getRecentItems().filter((item) => !(item.type === entry.type && item.id === entry.id))].slice(0, 10);
+      saveRecentItems(nextStored);
+      const resolved = nextStored.map(resolveRecentItem);
       if (isMobileSync) {
         dispatchEntitySyncEvent({
           type: "UPSERT_APP_META",
           payload: {
-            key: "web.recent_items",
-            value: JSON.stringify(sliced),
+            key: "recent_items",
+            value: JSON.stringify(nextStored),
             updatedAt: Date.now(),
           },
         });
       }
-      return sliced;
+      return resolved;
     });
-  }, [isMobileSync]);
+  }, [isMobileSync, resolveRecentItem]);
 
   const toggleTask = React.useCallback((taskId: string) => {
     setTasks((prev) => {

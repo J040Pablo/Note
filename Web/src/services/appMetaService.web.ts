@@ -3,38 +3,91 @@
 
 import type { ID, PinnedItem, PinnedItemType, RecentItem, RecentItemType } from "../types";
 
-const PINNED_KEY = "note.web.pinned.v1";
-const RECENT_KEY = "note.web.recent.v1";
-const LIST_ORDER_PREFIX = "note.web.listorder:";
-const SORT_PREF_PREFIX = "note.web.sortpref:";
+const PINNED_KEY = "pinned_items";
+const RECENT_KEY = "recent_items";
+const LIST_ORDER_PREFIX = "list_order:";
+const SORT_PREF_PREFIX = "sort_pref:";
 
-const safeParse = <T>(value: unknown, fallback: T): T => {
-  if (typeof value !== "string") return fallback;
+const LEGACY_KEYS = {
+  pinned: "note.web.pinned.v1",
+  recent: "note.web.recent.v1",
+  listOrderPrefix: "note.web.listorder:",
+  sortPrefPrefix: "note.web.sortpref:",
+};
+
+type MetaRecord<T> = {
+  value: T;
+  updatedAt: number;
+};
+
+const parseRecord = <T>(raw: string | null, fallback: T): MetaRecord<T> => {
+  if (!raw) return { value: fallback, updatedAt: 0 };
+
   try {
-    const parsed = JSON.parse(value);
-    return parsed as T;
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && "value" in (parsed as Record<string, unknown>)) {
+      const record = parsed as { value?: T; updatedAt?: number };
+      return {
+        value: record.value ?? fallback,
+        updatedAt: typeof record.updatedAt === "number" ? record.updatedAt : 0,
+      };
+    }
+
+    return { value: parsed as T, updatedAt: 0 };
   } catch {
-    return fallback;
+    return { value: fallback, updatedAt: 0 };
   }
 };
 
-const readMeta = <T>(key: string, fallback: T): T => {
-  const raw = localStorage.getItem(key);
-  return safeParse<T>(raw, fallback);
+const readMetaRecord = <T>(key: string, fallback: T): MetaRecord<T> => {
+  return parseRecord<T>(localStorage.getItem(key), fallback);
 };
 
-const writeMeta = <T>(key: string, value: T): void => {
+const writeMetaRecord = <T>(key: string, value: T, updatedAt = Date.now()): void => {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    localStorage.setItem(key, JSON.stringify({ value, updatedAt }));
   } catch {
     // Ignore storage errors
   }
 };
 
+const readWithFallback = <T>(primaryKey: string, legacyKey: string, fallback: T): MetaRecord<T> => {
+  const primary = readMetaRecord<T>(primaryKey, fallback);
+  if (primary.updatedAt > 0 || localStorage.getItem(primaryKey)) {
+    return primary;
+  }
+
+  const legacy = readMetaRecord<T>(legacyKey, fallback);
+  if (legacy.updatedAt > 0 || localStorage.getItem(legacyKey)) {
+    writeMetaRecord(primaryKey, legacy.value, legacy.updatedAt);
+    return legacy;
+  }
+
+  return primary;
+};
+
+export const getMetaRecord = <T>(key: string, fallback: T): MetaRecord<T> => {
+  if (key === PINNED_KEY) return readWithFallback<PinnedItem[]>(PINNED_KEY, LEGACY_KEYS.pinned, []) as MetaRecord<T>;
+  if (key === RECENT_KEY) return readWithFallback<RecentItem[]>(RECENT_KEY, LEGACY_KEYS.recent, []) as MetaRecord<T>;
+  if (key.startsWith(LIST_ORDER_PREFIX)) {
+    const suffix = key.slice(LIST_ORDER_PREFIX.length);
+    return readWithFallback<ID[]>(key, `${LEGACY_KEYS.listOrderPrefix}${suffix}`, []) as MetaRecord<T>;
+  }
+  if (key.startsWith(SORT_PREF_PREFIX)) {
+    const suffix = key.slice(SORT_PREF_PREFIX.length);
+    return readWithFallback<string | null>(key, `${LEGACY_KEYS.sortPrefPrefix}${suffix}`, null) as MetaRecord<T>;
+  }
+  return readMetaRecord<T>(key, fallback);
+};
+
+export const setMetaRecord = <T>(key: string, value: T, updatedAt = Date.now()): void => {
+  writeMetaRecord(key, value, updatedAt);
+};
+
 // ─── Pinned Items ────────────────────────────────────────────────────────────
 
 export const getPinnedItems = (): PinnedItem[] => {
-  const items = readMeta<PinnedItem[]>(PINNED_KEY, []);
+  const items = getMetaRecord<PinnedItem[]>(PINNED_KEY, []).value;
   return items
     .filter(
       (x) =>
@@ -46,7 +99,9 @@ export const getPinnedItems = (): PinnedItem[] => {
 };
 
 export const savePinnedItems = (items: PinnedItem[]): void => {
-  writeMeta(PINNED_KEY, items);
+  const next = items;
+  writeMetaRecord(PINNED_KEY, next);
+  writeMetaRecord(LEGACY_KEYS.pinned, next);
 };
 
 export const togglePinnedItem = (type: PinnedItemType, id: ID): PinnedItem[] => {
@@ -70,7 +125,7 @@ export const isPinned = (type: PinnedItemType, id: ID): boolean => {
 // ─── Recent Items ────────────────────────────────────────────────────────────
 
 export const getRecentItems = (): RecentItem[] => {
-  const items = readMeta<RecentItem[]>(RECENT_KEY, []);
+  const items = getMetaRecord<RecentItem[]>(RECENT_KEY, []).value;
   return items
     .filter(
       (x) => !!x && !!x.id && (x.type === "folder" || x.type === "note")
@@ -80,7 +135,9 @@ export const getRecentItems = (): RecentItem[] => {
 };
 
 export const saveRecentItems = (items: RecentItem[]): void => {
-  writeMeta(RECENT_KEY, items.slice(0, 10));
+  const next = items.slice(0, 10);
+  writeMetaRecord(RECENT_KEY, next);
+  writeMetaRecord(LEGACY_KEYS.recent, next);
 };
 
 export const addRecentOpen = (type: RecentItemType, id: ID): RecentItem[] => {
@@ -96,12 +153,14 @@ export const addRecentOpen = (type: RecentItemType, id: ID): RecentItem[] => {
 // ─── List Order ──────────────────────────────────────────────────────────────
 
 export const getListOrder = (scope: string): ID[] => {
-  const ids = readMeta<ID[]>(`${LIST_ORDER_PREFIX}${scope}`, []);
+  const ids = getMetaRecord<ID[]>(`${LIST_ORDER_PREFIX}${scope}`, []).value;
   return ids.filter(Boolean);
 };
 
 export const saveListOrder = (scope: string, ids: ID[]): void => {
-  writeMeta(`${LIST_ORDER_PREFIX}${scope}`, ids);
+  const next = ids.filter(Boolean);
+  writeMetaRecord(`${LIST_ORDER_PREFIX}${scope}`, next);
+  writeMetaRecord(`${LEGACY_KEYS.listOrderPrefix}${scope}`, next);
 };
 
 // ─── Sort Preferences ────────────────────────────────────────────────────────
@@ -110,7 +169,7 @@ export const getSortPreference = <T extends string>(
   scope: string,
   fallback: T
 ): T => {
-  const value = readMeta<T | null>(`${SORT_PREF_PREFIX}${scope}`, null);
+  const value = getMetaRecord<T | null>(`${SORT_PREF_PREFIX}${scope}`, null).value;
   return value ?? fallback;
 };
 
@@ -118,5 +177,6 @@ export const saveSortPreference = <T extends string>(
   scope: string,
   value: T
 ): void => {
-  writeMeta(`${SORT_PREF_PREFIX}${scope}`, value);
+  writeMetaRecord(`${SORT_PREF_PREFIX}${scope}`, value);
+  writeMetaRecord(`${LEGACY_KEYS.sortPrefPrefix}${scope}`, value);
 };

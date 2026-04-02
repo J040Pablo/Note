@@ -134,15 +134,17 @@ const buildSmoothPath = (points: Array<{ x: number; y: number } | null>) => {
       return;
     }
     d += ` M ${segment[0].x} ${segment[0].y}`;
-    for (let i = 1; i < segment.length - 1; i += 1) {
-      const current = segment[i];
-      const next = segment[i + 1];
-      const midX = (current.x + next.x) / 2;
-      const midY = (current.y + next.y) / 2;
-      d += ` Q ${current.x} ${current.y}, ${midX} ${midY}`;
+    for (let i = 0; i < segment.length - 1; i += 1) {
+      const p0 = segment[i - 1] ?? segment[i];
+      const p1 = segment[i];
+      const p2 = segment[i + 1];
+      const p3 = segment[i + 2] ?? p2;
+      const c1x = p1.x + (p2.x - p0.x) / 6;
+      const c1y = p1.y + (p2.y - p0.y) / 6;
+      const c2x = p2.x - (p3.x - p1.x) / 6;
+      const c2y = p2.y - (p3.y - p1.y) / 6;
+      d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
     }
-    const last = segment[segment.length - 1];
-    d += ` L ${last.x} ${last.y}`;
     segment = [];
   };
 
@@ -567,6 +569,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const drawingSessionRef = useRef<{ active: boolean; pageId: ID | null }>({ active: false, pageId: null });
   const drawingLastPointRef = useRef<{ x: number; y: number } | null>(null);
   const drawingTouchModeRef = useRef<"draw" | "gesture" | null>(null);
+  const drawingRafRef = useRef<number | null>(null);
+  const pendingDrawingPointRef = useRef<{ pageId: ID; x: number; y: number } | null>(null);
 
   const lastSerializedRef = useRef(serializeCanvasNoteContent(parseCanvasNoteContent(value)));
   const serializeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1075,6 +1079,11 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       if (!editable) return;
       const page = pagesById.get(pageId);
       if (!page) return;
+      if (drawingRafRef.current != null) {
+        cancelAnimationFrame(drawingRafRef.current);
+        drawingRafRef.current = null;
+      }
+      pendingDrawingPointRef.current = null;
       const x = Number.isFinite(rawX) ? rawX : 0;
       const y = Number.isFinite(rawY) ? rawY : 0;
       clearSelection();
@@ -1085,7 +1094,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     [clearSelection, editable, pagesById, pushUndoSnapshot]
   );
 
-  const updateDrawing = useCallback(
+  const appendDrawingPoint = useCallback(
     (pageId: ID, rawX: number, rawY: number) => {
       if (!editable) return;
       const page = pagesById.get(pageId);
@@ -1112,11 +1121,11 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         const dx = filteredX - last.x;
         const dy = filteredY - last.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        const minPointDistance = drawingMode === "eraser" ? 0.8 : 0.2;
+        const minPointDistance = drawingMode === "eraser" ? 0.8 : 0.15;
         if (dist < minPointDistance) return prev;
 
         if (dist > MAX_STROKE_STEP) {
-          const steps = Math.min(MAX_INTERPOLATED_POINTS_PER_MOVE, Math.max(2, Math.ceil(dist / MAX_STROKE_STEP)));
+          const steps = Math.min(MAX_INTERPOLATED_POINTS_PER_MOVE, Math.max(2, Math.ceil(dist / (MAX_STROKE_STEP * 0.75))));
           const inserts = Array.from({ length: steps }, (_, i) => {
             const t = (i + 1) / steps;
             return {
@@ -1135,8 +1144,44 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     [drawingMode, drawingSmoothness, editable, pagesById]
   );
 
+  const flushPendingDrawingPoint = useCallback(() => {
+    const pending = pendingDrawingPointRef.current;
+    if (!pending) return;
+    pendingDrawingPointRef.current = null;
+    appendDrawingPoint(pending.pageId, pending.x, pending.y);
+  }, [appendDrawingPoint]);
+
+  const scheduleDrawingFlush = useCallback(() => {
+    if (drawingRafRef.current != null) return;
+    drawingRafRef.current = requestAnimationFrame(() => {
+      drawingRafRef.current = null;
+      flushPendingDrawingPoint();
+      if (pendingDrawingPointRef.current) {
+        scheduleDrawingFlush();
+      }
+    });
+  }, [flushPendingDrawingPoint]);
+
+  const updateDrawing = useCallback(
+    (pageId: ID, rawX: number, rawY: number) => {
+      if (!editable) return;
+      const page = pagesById.get(pageId);
+      if (!page) return;
+      const x = Number.isFinite(rawX) ? rawX : 0;
+      const y = Number.isFinite(rawY) ? rawY : 0;
+      pendingDrawingPointRef.current = { pageId, x, y };
+      scheduleDrawingFlush();
+    },
+    [editable, pagesById, scheduleDrawingFlush]
+  );
+
   const endDrawing = useCallback(() => {
     if (!editable) return;
+    if (drawingRafRef.current != null) {
+      cancelAnimationFrame(drawingRafRef.current);
+      drawingRafRef.current = null;
+    }
+    flushPendingDrawingPoint();
     setDrawingDraft((draft) => {
       if (!draft || draft.points.length < 1) return null;
       const segments: Array<Array<{ x: number; y: number }>> = [];
@@ -1227,8 +1272,17 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
 
       return null;
     });
+    pendingDrawingPointRef.current = null;
     drawingLastPointRef.current = null;
-  }, [drawingColor, drawingMode, drawingOpacity, drawingSize, editable]);
+  }, [drawingColor, drawingMode, drawingOpacity, drawingSize, editable, flushPendingDrawingPoint]);
+
+  useEffect(() => {
+    return () => {
+      if (drawingRafRef.current != null) {
+        cancelAnimationFrame(drawingRafRef.current);
+      }
+    };
+  }, []);
 
   const getSnappedMove = useCallback(
     (elementId: ID, rawX: number, rawY: number) => {

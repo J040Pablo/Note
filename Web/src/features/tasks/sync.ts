@@ -1,4 +1,4 @@
-export type SyncPriority = "low" | "medium" | "high";
+export * from "./syncEngine";export type SyncPriority = "low" | "medium" | "high";
 
 export type SyncFolder = {
   id: string;

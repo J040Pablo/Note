@@ -137,13 +137,19 @@ const PencilToolbarModal: React.FC<PencilToolbarModalProps> = ({
   }, [isUsingEraser, onToolToggle]);
 
   const handlePencilPress = useCallback(() => {
-    setExpanded(true);
     if (isUsingEraser) {
+      setExpanded(true);
       onToolToggle("pencil");
       return;
     }
 
-    onToolToggle(activeTool === "pencil" ? "transparentPencil" : "pencil");
+    if (activeTool === "pencil" || activeTool === "transparentPencil") {
+      setExpanded((prev) => !prev);
+      return;
+    }
+
+    setExpanded(true);
+    onToolToggle("pencil");
   }, [activeTool, isUsingEraser, onToolToggle]);
 
   const handleDeletePress = useCallback(() => {

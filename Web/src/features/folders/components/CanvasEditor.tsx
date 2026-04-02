@@ -39,6 +39,28 @@ type Props = {
 const HISTORY_LIMIT = 80;
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 5;
+const MAX_STROKE_STEP = 2.5;
+
+const buildSmoothSvgPath = (points: DrawingPoint[]): string => {
+  if (!points.length) return "";
+  if (points.length === 1) {
+    const p = points[0];
+    return `M ${p.x} ${p.y} L ${p.x + 0.1} ${p.y + 0.1}`;
+  }
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[i - 1] ?? points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] ?? p2;
+    const c1x = p1.x + (p2.x - p0.x) / 6;
+    const c1y = p1.y + (p2.y - p0.y) / 6;
+    const c2x = p2.x - (p3.x - p1.x) / 6;
+    const c2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+};
 
 const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) => {
   // --- States ---
@@ -49,7 +71,7 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
   const [isDrawMode, setIsDrawMode] = useState(false);
   const [isPanning, setIsPanning] = useState(false);
   const [pagesModalOpen, setPagesModalOpen] = useState(false);
-  const [currentStroke, setCurrentStroke] = useState<DrawingPoint[] | null>(null);
+  const [liveStrokePath, setLiveStrokePath] = useState<string | null>(null);
 
   // --- History ---
   const undoStackRef = useRef<CanvasNoteDocument[]>([]);
@@ -60,7 +82,58 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
   const workspaceRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const localDocRef = useRef(localDoc);
+  const currentStrokeRef = useRef<DrawingPoint[] | null>(null);
+  const pendingDrawPointsRef = useRef<DrawingPoint[]>([]);
+  const drawRafRef = useRef<number | null>(null);
+  const drawPointerIdRef = useRef<number | null>(null);
   localDocRef.current = localDoc;
+
+  const flushDrawFrame = useCallback(() => {
+    const stroke = currentStrokeRef.current;
+    if (!stroke || pendingDrawPointsRef.current.length === 0) return;
+
+    let last = stroke[stroke.length - 1] ?? null;
+    const pending = pendingDrawPointsRef.current;
+    pendingDrawPointsRef.current = [];
+
+    for (const point of pending) {
+      if (!last) {
+        stroke.push(point);
+        last = point;
+        continue;
+      }
+      const dx = point.x - last.x;
+      const dy = point.y - last.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 0.15) continue;
+      if (dist > MAX_STROKE_STEP) {
+        const steps = Math.max(2, Math.ceil(dist / MAX_STROKE_STEP));
+        for (let i = 1; i <= steps; i += 1) {
+          const t = i / steps;
+          stroke.push({
+            x: last.x + dx * t,
+            y: last.y + dy * t
+          });
+        }
+      } else {
+        stroke.push(point);
+      }
+      last = stroke[stroke.length - 1] ?? point;
+    }
+
+    setLiveStrokePath(buildSmoothSvgPath(stroke));
+  }, []);
+
+  const scheduleDrawFrame = useCallback(() => {
+    if (drawRafRef.current != null) return;
+    drawRafRef.current = requestAnimationFrame(() => {
+      drawRafRef.current = null;
+      flushDrawFrame();
+      if (pendingDrawPointsRef.current.length > 0) {
+        scheduleDrawFrame();
+      }
+    });
+  }, [flushDrawFrame]);
 
   // --- Logic ---
   const currentPage = useMemo(() => {
@@ -281,28 +354,44 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
-    setCurrentStroke([{ x, y }]);
+    drawPointerIdRef.current = e.pointerId;
+    currentStrokeRef.current = [{ x, y }];
+    pendingDrawPointsRef.current = [];
+    setLiveStrokePath(buildSmoothSvgPath([{ x, y }]));
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
   const handleDrawMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDrawMode || !currentStroke) return;
+    if (!isDrawMode || drawPointerIdRef.current !== e.pointerId || !currentStrokeRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / zoom;
-    const y = (e.clientY - rect.top) / zoom;
-    setCurrentStroke(prev => [...(prev || []), { x, y }]);
+    const nativeEvt = e.nativeEvent as PointerEvent;
+    const coalesced = typeof nativeEvt.getCoalescedEvents === "function" ? nativeEvt.getCoalescedEvents() : [nativeEvt];
+    for (const evt of coalesced) {
+      pendingDrawPointsRef.current.push({
+        x: (evt.clientX - rect.left) / zoom,
+        y: (evt.clientY - rect.top) / zoom
+      });
+    }
+    scheduleDrawFrame();
   };
 
   const handleDrawEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDrawMode || !currentStroke) return;
+    if (!isDrawMode || drawPointerIdRef.current !== e.pointerId || !currentStrokeRef.current) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
+    drawPointerIdRef.current = null;
+    if (drawRafRef.current != null) {
+      cancelAnimationFrame(drawRafRef.current);
+      drawRafRef.current = null;
+    }
+    flushDrawFrame();
+    const strokePoints = currentStrokeRef.current;
     
-    if (currentStroke.length >= 2) {
+    if (strokePoints && strokePoints.length >= 2) {
       const newStroke: DrawingStroke = {
         id: makeId(),
         color: "#1d4ed8",
         size: 3,
-        points: currentStroke
+        points: strokePoints
       };
 
       const nextPages = [...localDoc.pages];
@@ -314,8 +403,31 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
       
       notifyChange({ ...localDoc, pages: nextPages });
     }
-    setCurrentStroke(null);
+    currentStrokeRef.current = null;
+    pendingDrawPointsRef.current = [];
+    setLiveStrokePath(null);
   };
+
+  useEffect(() => {
+    return () => {
+      if (drawRafRef.current != null) {
+        cancelAnimationFrame(drawRafRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDrawMode) {
+      if (drawRafRef.current != null) {
+        cancelAnimationFrame(drawRafRef.current);
+        drawRafRef.current = null;
+      }
+      drawPointerIdRef.current = null;
+      currentStrokeRef.current = null;
+      pendingDrawPointsRef.current = [];
+      setLiveStrokePath(null);
+    }
+  }, [isDrawMode]);
 
   const onDeletePage = useCallback((index: number) => {
     const nextPages = localDoc.pages.filter((_, i) => i !== index);
@@ -408,16 +520,16 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
               {/* Drawing Layer */}
               <svg className={styles.drawingSvg} style={{ pointerEvents: isDrawMode ? "auto" : "none", zIndex: 110 }}>
                 {currentPage.drawings.map(stroke => (
-                  <polyline
+                  <path
                     key={stroke.id}
-                    points={stroke.points.map(p => `${p.x},${p.y}`).join(" ")}
+                    d={buildSmoothSvgPath(stroke.points)}
                     fill="none" stroke={stroke.color} strokeWidth={stroke.size}
                     strokeLinecap="round" strokeLinejoin="round"
                   />
                 ))}
-                {currentStroke && (
-                  <polyline 
-                    points={currentStroke.map(p => `${p.x},${p.y}`).join(" ")}
+                {liveStrokePath && (
+                  <path
+                    d={liveStrokePath}
                     fill="none" stroke="#1d4ed8" strokeWidth={3}
                     strokeLinecap="round" strokeLinejoin="round"
                   />

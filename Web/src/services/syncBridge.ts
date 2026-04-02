@@ -11,6 +11,7 @@ import {
   type SyncTask,
 } from "../features/tasks/sync";
 import { loadData, markSynced, saveData, type DataNote, type DataQuickNote, type DataFolder } from "./webData";
+import { getMetaRecord, setMetaRecord } from "./appMetaService.web";
 import type { TaskItem } from "../features/tasks/types";
 
 // ─── Event system ────────────────────────────────────────────────────────────
@@ -233,13 +234,26 @@ const handleEntityMessage = (message: SyncIncomingMessage) => {
       break;
     }
     case "UPSERT_APP_META": {
-      localStorage.setItem(`note.sync.meta.${message.payload.key}`, message.payload.value);
-      emit({ type: "APP_META_UPSERT", key: message.payload.key });
+      const incomingValue = (() => {
+        try {
+          return JSON.parse(message.payload.value) as unknown;
+        } catch {
+          return message.payload.value;
+        }
+      })();
+      const current = getMetaRecord(message.payload.key, null as unknown);
+      if (message.payload.updatedAt >= (current.updatedAt ?? 0)) {
+        setMetaRecord(message.payload.key, incomingValue, message.payload.updatedAt);
+        emit({ type: "APP_META_UPSERT", key: message.payload.key });
+      }
       break;
     }
     case "DELETE_APP_META": {
-      localStorage.removeItem(`note.sync.meta.${message.payload.key}`);
-      emit({ type: "APP_META_DELETE", key: message.payload.key });
+      const current = getMetaRecord(message.payload.key, null as unknown);
+      if (message.payload.updatedAt >= (current.updatedAt ?? 0)) {
+        localStorage.removeItem(message.payload.key);
+        emit({ type: "APP_META_DELETE", key: message.payload.key });
+      }
       break;
     }
     default:

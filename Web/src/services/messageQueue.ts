@@ -13,7 +13,7 @@ export interface QueuedMessage {
 }
 
 interface IMessageQueue {
-  enqueue(message: Omit<QueuedMessage, 'id' | 'timestamp' | 'retryCount'>): void;
+  enqueue(message: Omit<QueuedMessage, 'id' | 'timestamp' | 'retryCount'> & { id?: string }): void;
   dequeue(): QueuedMessage | undefined;
   peek(): QueuedMessage | undefined;
   isEmpty(): boolean;
@@ -55,9 +55,9 @@ export class MessageQueue implements IMessageQueue {
     }
   }
 
-  enqueue(message: Omit<QueuedMessage, 'id' | 'timestamp' | 'retryCount'>): void {
+  enqueue(message: Omit<QueuedMessage, 'id' | 'timestamp' | 'retryCount'> & { id?: string }): void {
     const queuedMessage: QueuedMessage = {
-      id: generateId(),
+      id: message.id ?? generateId(),
       ...message,
       timestamp: Date.now(),
       retryCount: 0,
