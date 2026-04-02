@@ -24,6 +24,7 @@ import {
   type SyncTask,
 } from "../../tasks/sync";
 import { subscribeSyncBridge } from "../../../services/syncBridge";
+import { quickRichNoteDocToText } from "../../../utils/quickRichNote";
 import styles from "./HomeFeed.module.css";
 
 type ItemType = "folder" | "note" | "task";
@@ -63,6 +64,8 @@ type FolderItem = {
   files: number;
 };
 
+const firstLine = (value: string): string => value.split(/\r?\n/)[0]?.trim() ?? "";
+
 // Mapper helpers for Sync UI
 const mapSyncTaskToUI = (task: SyncTask): TaskItem => ({
   id: task.id,
@@ -80,11 +83,11 @@ const mapNoteToUI = (note: { id: string | number; title: string; content: string
 
 const mapQuickNoteToUI = (note: { id: string | number; text: string; createdAt: number }): NoteItem => ({
   id: String(note.id),
-  title:
-    note.text.trim().length > 32
-      ? `${note.text.trim().slice(0, 32)}...`
-      : note.text.trim() || "Untitled",
-  preview: note.text,
+  title: (() => {
+    const summary = quickRichNoteDocToText(note.text) || note.text;
+    return summary.trim().length > 32 ? `${summary.trim().slice(0, 32)}...` : summary.trim() || "Untitled";
+  })(),
+  preview: quickRichNoteDocToText(note.text) || note.text,
   createdAt: note.createdAt,
 });
 
@@ -110,11 +113,11 @@ const loadHomeNotes = (): NoteItem[] => getAllNotes().map((note) => ({
 
 const loadHomeQuickNotes = (): NoteItem[] => getAllQuickNotes().map((note) => ({
   id: String(note.id),
-  title:
-    note.text.trim().length > 32
-      ? `${note.text.trim().slice(0, 32)}...`
-      : note.text.trim() || "Untitled",
-  preview: note.text,
+  title: (() => {
+    const summary = quickRichNoteDocToText(note.content ?? note.text ?? "") || note.text;
+    return summary.trim().length > 32 ? `${summary.trim().slice(0, 32)}...` : summary.trim() || "Untitled";
+  })(),
+  preview: quickRichNoteDocToText(note.content ?? note.text ?? "") || note.text,
   createdAt: note.createdAt,
 }));
 
@@ -198,20 +201,6 @@ const HomeFeed: React.FC = () => {
     return () => unsub();
   }, [isMobileSync]);
 
-  React.useEffect(() => {
-    if (!isMobileSync) return;
-    const unsub = subscribeSyncBridge((event) => {
-      setTasks(loadHomeTasks());
-      setNotes(loadHomeNotes());
-      setQuickNotes(loadHomeQuickNotes());
-      setFolders(loadHomeFolders());
-      if (event.type === "APP_META_UPSERT" || event.type === "APP_META_DELETE" || event.type === "FULL_SYNC") {
-        refreshMetaState();
-      }
-    });
-    return () => unsub();
-  }, [isMobileSync, refreshMetaState]);
-
   const [pinnedItems, setPinnedItems] = React.useState<PinnedItem[]>(() => getPinnedItems().map((item) => ({ type: item.type, id: item.id })));
   const [recentItems, setRecentItems] = React.useState<RecentItem[]>([]);
   const [quickNote, setQuickNote] = React.useState("");
@@ -234,7 +223,7 @@ const HomeFeed: React.FC = () => {
         id: item.id,
         type: "note",
         label: note?.title ?? item.id,
-        subtitle: note ? firstLine(note.preview) : undefined,
+        subtitle: note ? firstLine(note.preview) || undefined : undefined,
         openedAt: item.openedAt,
       };
     },
@@ -249,6 +238,20 @@ const HomeFeed: React.FC = () => {
   React.useEffect(() => {
     refreshMetaState();
   }, [refreshMetaState]);
+
+  React.useEffect(() => {
+    if (!isMobileSync) return;
+    const unsub = subscribeSyncBridge((event) => {
+      setTasks(loadHomeTasks());
+      setNotes(loadHomeNotes());
+      setQuickNotes(loadHomeQuickNotes());
+      setFolders(loadHomeFolders());
+      if (event.type === "APP_META_UPSERT" || event.type === "APP_META_DELETE" || event.type === "FULL_SYNC") {
+        refreshMetaState();
+      }
+    });
+    return () => unsub();
+  }, [isMobileSync, refreshMetaState]);
 
   const todaysTasks = React.useMemo(() => tasks.slice(0, 7), [tasks]);
   const completedToday = React.useMemo(

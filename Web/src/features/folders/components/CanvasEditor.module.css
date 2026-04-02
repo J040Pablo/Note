@@ -146,8 +146,8 @@
   top: 2500px;
   left: 2500px;
   transform: translate(-50%, -50%);
-  background-color: #ffffff;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 0 8px 40px rgba(0, 0, 0, 0.5);
+  background-color: #111827;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.12), 0 10px 42px rgba(0, 0, 0, 0.6);
   pointer-events: auto;
 }
 
@@ -155,7 +155,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  background-color: #ffffff;
+  background-color: #111827;
   z-index: 0;
 }
 
@@ -332,6 +332,7 @@
   border: none;
   background: transparent;
   outline: none;
+  color: #f8fafc;
 }
 
 .imageElement {

@@ -137,7 +137,17 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
 
   // --- Logic ---
   const currentPage = useMemo(() => {
-    return localDoc.pages[localDoc.currentPageIndex] || localDoc.pages[0];
+    const fallbackPage = localDoc.pages[0];
+    const rawPage = localDoc.pages[localDoc.currentPageIndex] || fallbackPage;
+    if (!rawPage) {
+      return createCanvasPage(localDoc.pageWidth || DEFAULT_PAGE_W, localDoc.pageHeight || DEFAULT_PAGE_H);
+    }
+    return {
+      ...rawPage,
+      width: rawPage.width || localDoc.pageWidth || DEFAULT_PAGE_W,
+      height: rawPage.height || localDoc.pageHeight || DEFAULT_PAGE_H,
+      drawings: Array.isArray(rawPage.drawings) ? rawPage.drawings : []
+    };
   }, [localDoc.pages, localDoc.currentPageIndex]);
 
   // Debounce autosave logic
@@ -193,6 +203,15 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
       y: height / 2 - 2500 * fitZoom
     });
   }, [localDoc.pageWidth, localDoc.pageHeight]);
+
+  useEffect(() => {
+    if (localDoc.pages.length > 0) return;
+    notifyChange({
+      ...localDoc,
+      pages: [createCanvasPage(localDoc.pageWidth || DEFAULT_PAGE_W, localDoc.pageHeight || DEFAULT_PAGE_H)],
+      currentPageIndex: 0
+    });
+  }, [localDoc, notifyChange]);
 
   useEffect(() => {
     centerCanvas();
@@ -396,9 +415,10 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
 
       const nextPages = [...localDoc.pages];
       const pageIdx = localDoc.currentPageIndex;
+      const pageDrawings = Array.isArray(nextPages[pageIdx]?.drawings) ? nextPages[pageIdx].drawings : [];
       nextPages[pageIdx] = {
         ...nextPages[pageIdx],
-        drawings: [...nextPages[pageIdx].drawings, newStroke]
+        drawings: [...pageDrawings, newStroke]
       };
       
       notifyChange({ ...localDoc, pages: nextPages });

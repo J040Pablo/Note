@@ -32,7 +32,7 @@ type ServerInstance = {
 };
 
 type SyncIncomingMessage =
-  | { type: "INIT_SYNC" }
+  | { type: "INIT_SYNC" | "REQUEST_SYNC" }
   | {
       type: "TASK_CREATE";
       payload?: Partial<SyncTask> & {
@@ -171,6 +171,17 @@ const parseIncoming = (raw: unknown): SyncIncomingMessage | null => {
   } catch {
     return null;
   }
+};
+
+const getIncomingMessageId = (message: SyncIncomingMessage): string | null => {
+  const id = (message as SyncIncomingMessage & { id?: unknown }).id;
+  if (typeof id !== "string") return null;
+  const trimmed = id.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const sendAck = (socket: SocketClient, messageId: string) => {
+  sendToClient(socket, { type: "ACK", id: messageId, payload: { id: messageId } });
 };
 
 const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Task => {
@@ -346,7 +357,7 @@ const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "T
 };
 
 const handleIncomingMessage = async (socket: SocketClient, message: SyncIncomingMessage) => {
-  if (message.type === "INIT_SYNC") {
+  if (message.type === "INIT_SYNC" || message.type === "REQUEST_SYNC") {
     await sendInitialData(socket);
     return;
   }
@@ -598,8 +609,15 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
       const incoming = parseIncoming(raw);
       if (!incoming) return;
 
+      const incomingId = getIncomingMessageId(incoming);
+      console.log("[SYNC][MOBILE] RECEIVED:", incoming.type, incomingId ?? "-");
+
       try {
         await handleIncomingMessage(socket, incoming);
+        if (incomingId) {
+          sendAck(socket, incomingId);
+          console.log("[SYNC][MOBILE] ACK SENT:", incomingId);
+        }
       } catch (error) {
         console.warn("[sync] failed handling message", error);
       }

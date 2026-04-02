@@ -302,6 +302,7 @@ const HomeScreen: React.FC = () => {
   );
 
   const handleClearSelection = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     clearSelection();
     setShowSelectionMenu(false);
   }, [clearSelection]);
@@ -469,24 +470,39 @@ const HomeScreen: React.FC = () => {
       .filter(Boolean)
       .join("\n\n");
 
-    if (!body.trim()) return;
-    await Share.share({
-      title: items.length === 1 ? items[0].label : `${items.length} itens selecionados`,
-      message: body
-    });
-  }, [notesMap, quickNotesMap, selectedItems, tasksMap]);
+    if (!body.trim()) {
+      handleClearSelection();
+      return;
+    }
+
+    try {
+      await Share.share({
+        title: items.length === 1 ? items[0].label : `${items.length} itens selecionados`,
+        message: body
+      });
+    } finally {
+      handleClearSelection();
+    }
+  }, [handleClearSelection, notesMap, quickNotesMap, selectedItems, tasksMap]);
 
   const handlePinSelected = useCallback(async () => {
     const items = selectedItems;
     const pinnable = items.filter((item): item is SelectedItem & { kind: "folder" | "note" | "task" } => item.kind !== "quick");
-    if (!pinnable.length) return;
-    for (const item of pinnable) {
-      const type = item.kind as PinnedItemType;
-      const next = togglePinned(type, item.id);
-      await savePinnedItems(next);
+    if (!pinnable.length) {
+      handleClearSelection();
+      return;
     }
-    showToast("Pins atualizados");
-  }, [selectedItems, showToast, togglePinned]);
+    try {
+      for (const item of pinnable) {
+        const type = item.kind as PinnedItemType;
+        const next = togglePinned(type, item.id);
+        await savePinnedItems(next);
+      }
+      showToast("Pins atualizados");
+    } finally {
+      handleClearSelection();
+    }
+  }, [handleClearSelection, selectedItems, showToast, togglePinned]);
 
   const handleDeleteSelected = useCallback(() => {
     const items = selectedItems;
@@ -1178,25 +1194,37 @@ const HomeScreen: React.FC = () => {
             key: "duplicate",
             label: "Duplicar / Copiar",
             icon: "copy-outline",
-            onPress: () => showToast("Duplicacao em breve")
+            onPress: () => {
+              showToast("Duplicacao em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "move",
             label: "Mover",
             icon: "folder-open-outline",
-            onPress: () => showToast("Mover em breve")
+            onPress: () => {
+              showToast("Mover em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "archive",
             label: "Arquivar / Desarquivar",
             icon: "archive-outline",
-            onPress: () => showToast("Arquivo em breve")
+            onPress: () => {
+              showToast("Arquivo em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "tag",
             label: "Tag / Label",
             icon: "pricetag-outline",
-            onPress: () => showToast("Tags em breve")
+            onPress: () => {
+              showToast("Tags em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "edit",

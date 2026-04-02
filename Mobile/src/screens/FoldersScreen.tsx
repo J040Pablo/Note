@@ -156,23 +156,30 @@ const FoldersScreen: React.FC = () => {
   });
 
   const handleClearSelection = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     clearSelection();
     setShowSelectionMenu(false);
   }, [clearSelection]);
 
   const handlePinSelected = useCallback(async () => {
-    for (const item of selectedItems) {
-      if (item.kind === "quick") continue;
-      const type = item.kind === "folder" ? "folder" : "note";
-      const next = togglePinned(type, item.id);
-      await savePinnedItems(next);
+    const items = selectedItems;
+    try {
+      for (const item of items) {
+        if (item.kind === "quick") continue;
+        const type = item.kind === "folder" ? "folder" : "note";
+        const next = togglePinned(type, item.id);
+        await savePinnedItems(next);
+      }
+      showToast("Pins atualizados");
+    } finally {
+      handleClearSelection();
     }
-    showToast("Pins atualizados");
-  }, [selectedItems, showToast, togglePinned]);
+  }, [handleClearSelection, selectedItems, showToast, togglePinned]);
 
   const handleEditSelected = useCallback(() => {
     if (selectedItems.length !== 1) return;
     const item = selectedItems[0];
+    handleClearSelection();
     if (item.kind === "folder") {
       const folder = folders[item.id];
       if (!folder) return;
@@ -192,14 +199,15 @@ const FoldersScreen: React.FC = () => {
     withLock(() => {
       navigation.getParent()?.getParent()?.navigate("QuickNote", { quickNoteId: quick.id, folderId: null });
     });
-  }, [folders, navigation, notesMap, quickNotesMap, selectedItems, withLock]);
+  }, [folders, handleClearSelection, navigation, notesMap, quickNotesMap, selectedItems, withLock]);
 
   const handleShareSelected = useCallback(async () => {
-    if (!selectedItems.length) return;
+    const items = selectedItems;
+    if (!items.length) return;
 
     // If a single folder is selected, export full subtree as ZIP and share it.
-    if (selectedItems.length === 1 && selectedItems[0].kind === "folder") {
-      const selectedFolder = selectedItems[0];
+    if (items.length === 1 && items[0].kind === "folder") {
+      const selectedFolder = items[0];
       try {
         await exportFolderPackageAndShare(selectedFolder.id, {
           onProgress: (event) => {
@@ -212,23 +220,29 @@ const FoldersScreen: React.FC = () => {
       } catch (error) {
         console.error("[folder-package] share failed", error);
         showToast("Nao foi possivel compartilhar a pasta", "error");
+      } finally {
+        handleClearSelection();
       }
       return;
     }
 
     // For non-folder/mixed selections, keep the current text share behavior.
-    const message = selectedItems
+    const message = items
       .map((item) => {
         if (item.kind === "folder") return `Pasta: ${item.label}`;
         if (item.kind === "note") return `Nota: ${item.label}`;
         return `Quick Note: ${item.label}`;
       })
       .join("\n");
-    await Share.share({
-      title: selectedItems.length === 1 ? selectedItems[0].label : `${selectedItems.length} itens`,
-      message
-    });
-  }, [selectedItems, showToast]);
+    try {
+      await Share.share({
+        title: items.length === 1 ? items[0].label : `${items.length} itens`,
+        message
+      });
+    } finally {
+      handleClearSelection();
+    }
+  }, [handleClearSelection, selectedItems, showToast]);
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedItems.length) return;
@@ -711,28 +725,37 @@ const FoldersScreen: React.FC = () => {
             key: "duplicate",
             label: "Duplicar / Copiar",
             icon: "copy-outline",
-            onPress: () => showToast("Duplicação em breve")
+            onPress: () => {
+              showToast("Duplicação em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "move",
             label: "Mover",
             icon: "folder-open-outline",
             onPress: () => {
-              setShowSelectionMenu(false);
               showToast("Segure no ícone de mover para arrastar");
+              handleClearSelection();
             }
           },
           {
             key: "archive",
             label: "Arquivar / Desarquivar",
             icon: "archive-outline",
-            onPress: () => showToast("Arquivo em breve")
+            onPress: () => {
+              showToast("Arquivo em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "tag",
             label: "Tag / Label",
             icon: "pricetag-outline",
-            onPress: () => showToast("Tags em breve")
+            onPress: () => {
+              showToast("Tags em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "edit",
@@ -804,6 +827,7 @@ const FoldersScreen: React.FC = () => {
         confirmLabel="Save"
         onCancel={() => {
           if (folderSubmitting) return;
+          handleClearSelection();
           setEditingFolder(null);
         }}
         submitting={folderSubmitting}
@@ -821,6 +845,7 @@ const FoldersScreen: React.FC = () => {
               bannerPath: payload.bannerPath
             });
             upsertFolder(updated);
+            handleClearSelection();
             setEditingFolder(null);
             showToast("Folder saved ✓");
           } catch (error) {

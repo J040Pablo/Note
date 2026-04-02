@@ -4,6 +4,7 @@ import {
   ArrowUp,
   Code2,
   FileImage,
+  ImageOff,
   Pen,
   Plus,
   Trash2,
@@ -32,6 +33,17 @@ import styles from "./BlockEditor.module.css";
 type BlockEditorProps = {
   blocks: NoteBlock[];
   onChange: (blocks: NoteBlock[]) => void;
+};
+
+const isBrowserRenderableImageUri = (uri: string): boolean => {
+  const value = uri.trim();
+  if (!value) return false;
+  if (value.startsWith("data:image/")) return true;
+  if (value.startsWith("blob:")) return true;
+  if (value.startsWith("http://") || value.startsWith("https://")) return true;
+  if (value.startsWith("/") || value.startsWith("./") || value.startsWith("../")) return true;
+  if (value.startsWith("file://")) return false;
+  return !/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value);
 };
 
 // ─── Text Block ─────────────────────────────────────────────────────────────
@@ -148,6 +160,12 @@ const ImageBlockEditor: React.FC<{
   onChange: (block: NoteImageBlock) => void;
 }> = ({ block, onChange }) => {
   const fileRef = React.useRef<HTMLInputElement>(null);
+  const [imageLoadFailed, setImageLoadFailed] = React.useState(false);
+  const canRenderImage = isBrowserRenderableImageUri(block.uri ?? "");
+
+  React.useEffect(() => {
+    setImageLoadFailed(false);
+  }, [block.uri]);
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -165,12 +183,26 @@ const ImageBlockEditor: React.FC<{
     <div className={styles.imageBlockWrap}>
       {block.uri ? (
         <>
-          <img
-            src={block.uri}
-            alt={block.caption || "Note image"}
-            className={styles.imageBlockPreview}
-            onClick={() => fileRef.current?.click()}
-          />
+          {canRenderImage && !imageLoadFailed ? (
+            <img
+              src={block.uri}
+              alt={block.caption || "Note image"}
+              className={styles.imageBlockPreview}
+              onError={() => setImageLoadFailed(true)}
+              onClick={() => fileRef.current?.click()}
+            />
+          ) : (
+            <div
+              className={styles.imageBlockUpload}
+              onClick={() => fileRef.current?.click()}
+              style={{ minHeight: 180 }}
+            >
+              <span>
+                <ImageOff size={18} style={{ marginRight: 6, verticalAlign: "middle" }} />
+                Image unavailable in web (mobile local file)
+              </span>
+            </div>
+          )}
           <input
             className={styles.imageBlockCaption}
             value={block.caption ?? ""}

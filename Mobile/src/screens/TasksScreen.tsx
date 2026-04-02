@@ -379,31 +379,43 @@ const TasksScreen: React.FC = () => {
   );
 
   const handleClearSelection = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     clearSelection();
     setShowSelectionMenu(false);
   }, [clearSelection]);
 
   const handlePinSelected = useCallback(async () => {
-    for (const item of selectedItems) {
-      togglePinned("task", item.id);
+    const items = selectedItems;
+    try {
+      for (const item of items) {
+        togglePinned("task", item.id);
+      }
+      showToast("Pins atualizados");
+    } finally {
+      handleClearSelection();
     }
-    showToast("Pins atualizados");
-  }, [selectedItems, showToast, togglePinned]);
+  }, [handleClearSelection, selectedItems, showToast, togglePinned]);
 
   const handleEditSelected = useCallback(() => {
     if (selectedItems.length !== 1) return;
     const task = tasksMap[selectedItems[0].id];
     if (!task) return;
+    handleClearSelection();
     openEditModal(task);
-  }, [selectedItems, tasksMap]);
+  }, [handleClearSelection, selectedItems, tasksMap]);
 
   const handleShareSelected = useCallback(async () => {
-    if (!selectedItems.length) return;
-    await Share.share({
-      title: selectedItems.length === 1 ? selectedItems[0].label : `${selectedItems.length} tarefas`,
-      message: selectedItems.map((item) => `Tarefa: ${item.label}`).join("\n")
-    });
-  }, [selectedItems]);
+    const items = selectedItems;
+    if (!items.length) return;
+    try {
+      await Share.share({
+        title: items.length === 1 ? items[0].label : `${items.length} tarefas`,
+        message: items.map((item) => `Tarefa: ${item.label}`).join("\n")
+      });
+    } finally {
+      handleClearSelection();
+    }
+  }, [handleClearSelection, selectedItems]);
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedItems.length) return;
@@ -1067,28 +1079,37 @@ const TasksScreen: React.FC = () => {
             key: "duplicate",
             label: "Duplicar / Copiar",
             icon: "copy-outline",
-            onPress: () => showToast("Duplicação em breve")
+            onPress: () => {
+              showToast("Duplicação em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "move",
             label: "Mover",
             icon: "folder-open-outline",
             onPress: () => {
-              setShowSelectionMenu(false);
               showToast("Segure no ícone de mover para arrastar");
+              handleClearSelection();
             }
           },
           {
             key: "archive",
             label: "Arquivar / Desarquivar",
             icon: "archive-outline",
-            onPress: () => showToast("Arquivo em breve")
+            onPress: () => {
+              showToast("Arquivo em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "tag",
             label: "Tag / Label",
             icon: "pricetag-outline",
-            onPress: () => showToast("Tags em breve")
+            onPress: () => {
+              showToast("Tags em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "edit",
@@ -1142,7 +1163,15 @@ const TasksScreen: React.FC = () => {
         }}
       />
 
-      <Modal transparent visible={showModal} animationType="fade" onRequestClose={() => setShowModal(false)}>
+      <Modal
+        transparent
+        visible={showModal}
+        animationType="fade"
+        onRequestClose={() => {
+          handleClearSelection();
+          setShowModal(false);
+        }}
+      >
         <KeyboardAvoidingView
           style={styles.modalKeyboardAvoid}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -1376,6 +1405,7 @@ const TasksScreen: React.FC = () => {
                 disabled={taskSubmitting}
                 onPress={() => {
                   if (taskSubmitting) return;
+                  handleClearSelection();
                   setShowModal(false);
                 }}
                 style={[styles.secondaryButton, taskSubmitting && styles.disabledButton]}
@@ -1476,6 +1506,7 @@ const TasksScreen: React.FC = () => {
                         upsertTask(createdSub);
                       }
                     }
+                    handleClearSelection();
                     setShowModal(false);
                     showToast("Task salva ✓");
                   } catch (error) {

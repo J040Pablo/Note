@@ -1,0 +1,149 @@
+.quickNoteShell {
+  display: grid;
+  gap: 14px;
+}
+
+.richPreview {
+  border: 1px solid #1f2937;
+  border-radius: 16px;
+  background: #0b1220;
+  color: #e2e8f0;
+  padding: 18px 16px;
+  min-height: 320px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.richPreview[contenteditable="true"] {
+  outline: none;
+}
+
+.richPreview[contenteditable="true"]:empty::before {
+  content: attr(data-placeholder);
+  color: #64748b;
+}
+
+.richPreview :global(.quick-rich-block) + :global(.quick-rich-block) {
+  margin-top: 14px;
+}
+
+.richPreview :global(p) {
+  margin: 0;
+  line-height: 1.75;
+  color: #e2e8f0;
+  word-break: break-word;
+}
+
+.richPreview :global(p + p),
+.richPreview :global(h1 + p),
+.richPreview :global(h2 + p),
+.richPreview :global(h3 + p),
+.richPreview :global(blockquote + p),
+.richPreview :global(ul + p),
+.richPreview :global(ol + p) {
+  margin-top: 12px;
+}
+
+.richPreview :global(h1),
+.richPreview :global(h2),
+.richPreview :global(h3),
+.richPreview :global(h4) {
+  margin: 0;
+  color: #f8fafc;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.richPreview :global(h1) {
+  font-size: 1.9rem;
+}
+
+.richPreview :global(h2) {
+  font-size: 1.5rem;
+}
+
+.richPreview :global(h3) {
+  font-size: 1.25rem;
+}
+
+.richPreview :global(blockquote) {
+  margin: 0;
+  padding: 10px 14px;
+  border-left: 3px solid #3b82f6;
+  background: rgba(59, 130, 246, 0.08);
+  border-radius: 0 10px 10px 0;
+  color: #cbd5e1;
+}
+
+.richPreview :global(ul),
+.richPreview :global(ol) {
+  margin: 0;
+  padding-left: 22px;
+  color: #e2e8f0;
+}
+
+.richPreview :global(li) {
+  margin: 6px 0;
+  line-height: 1.65;
+}
+
+.richPreview :global(code) {
+  padding: 0.15rem 0.35rem;
+  border-radius: 0.4rem;
+  background: rgba(148, 163, 184, 0.12);
+  color: #f8fafc;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+.richPreview :global(pre) {
+  margin: 0;
+  padding: 14px;
+  border-radius: 12px;
+  background: #111827;
+  color: #e5e7eb;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.richPreview :global(a) {
+  color: #60a5fa;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.richPreview :global(hr) {
+  border: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  margin: 16px 0;
+}
+
+.sourceToggle {
+  justify-self: start;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  height: 36px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.sourceEditor {
+  width: 100%;
+  min-height: 220px;
+  resize: vertical;
+  border-radius: 12px;
+  border: 1px solid #243142;
+  background: #0b1220;
+  color: #e2e8f0;
+  padding: 12px;
+  font: inherit;
+  outline: none;
+}
+
+.hint {
+  color: #94a3b8;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}

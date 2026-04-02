@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { Trash2, GripHorizontal, Copy, Layers } from "lucide-react";
+import { Trash2, Copy, ImageOff } from "lucide-react";
 import type {
   CanvasElement,
   CanvasTextElement,
@@ -21,6 +21,17 @@ type Props = {
 
 type ResizeHandleStyle = "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w";
 
+const isBrowserRenderableImageUri = (uri: string): boolean => {
+  const value = uri.trim();
+  if (!value) return false;
+  if (value.startsWith("data:image/")) return true;
+  if (value.startsWith("blob:")) return true;
+  if (value.startsWith("http://") || value.startsWith("https://")) return true;
+  if (value.startsWith("/") || value.startsWith("./") || value.startsWith("../")) return true;
+  if (value.startsWith("file://")) return false;
+  return !/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value);
+};
+
 const CanvasElementNode: React.FC<Props> = ({ 
   element, 
   isSelected, 
@@ -33,8 +44,16 @@ const CanvasElementNode: React.FC<Props> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<ResizeHandleStyle | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [imageLoadFailed, setImageLoadFailed] = useState(false);
   const nodeRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const imageUri = element.type === "image" ? element.uri : "";
+  const canRenderImageUri = element.type === "image" ? isBrowserRenderableImageUri(imageUri) : true;
+
+  useEffect(() => {
+    setImageLoadFailed(false);
+  }, [imageUri]);
 
   // Exit edit mode on deselect
   useEffect(() => {
@@ -132,7 +151,7 @@ const CanvasElementNode: React.FC<Props> = ({
             fontSize: element.style?.fontSize ? `${element.style.fontSize}px` : "18px",
             fontWeight: element.style?.bold ? "bold" : "normal",
             fontStyle: element.style?.italic ? "italic" : "normal",
-            color: element.style?.textColor || "#1a1d27",
+            color: element.style?.textColor || "#f8fafc",
             textAlign: element.style?.textAlign || "left",
             width: "100%",
             height: "100%",
@@ -147,11 +166,39 @@ const CanvasElementNode: React.FC<Props> = ({
     }
 
     if (element.type === "image") {
+      if (!canRenderImageUri || imageLoadFailed) {
+        return (
+          <div
+            style={{
+              width: "100%",
+              height: "100%",
+              border: "1px dashed #64748b",
+              background: "#0f172a",
+              color: "#cbd5e1",
+              display: "grid",
+              placeItems: "center",
+              textAlign: "center",
+              padding: "10px",
+              fontSize: "12px",
+              lineHeight: 1.35,
+              borderRadius: "6px"
+            }}
+          >
+            <div>
+              <ImageOff size={16} style={{ marginBottom: 6 }} />
+              <div>Image unavailable in web</div>
+              <div style={{ opacity: 0.7 }}>Local mobile file cannot be opened by browser.</div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <img 
-          src={element.uri} 
+          src={imageUri}
           className={styles.imageElement} 
           alt="" 
+          onError={() => setImageLoadFailed(true)}
           style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }} 
         />
       );

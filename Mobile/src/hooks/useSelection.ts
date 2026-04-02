@@ -79,6 +79,7 @@ export const useSelection = <T>(visibleItems: T[], options: UseSelectionOptions<
     selectedMap,
     selectionCount,
     selectionMode,
+    isSelectionMode: selectionMode,
     isSelected,
     toggleSelection,
     startSelection,

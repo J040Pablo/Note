@@ -220,22 +220,29 @@ const FolderDetailScreen: React.FC = () => {
   });
 
   const handleClearSelection = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     clearSelection();
     setShowSelectionMenu(false);
   }, [clearSelection]);
 
   const handlePinSelected = useCallback(async () => {
-    for (const item of selectedItems) {
-      if (item.kind === "quick") continue;
-      const next = togglePinned(item.kind, item.id);
-      await savePinnedItems(next);
+    const items = selectedItems;
+    try {
+      for (const item of items) {
+        if (item.kind === "quick") continue;
+        const next = togglePinned(item.kind, item.id);
+        await savePinnedItems(next);
+      }
+      showToast("Pins atualizados");
+    } finally {
+      handleClearSelection();
     }
-    showToast("Pins atualizados");
-  }, [selectedItems, showToast, togglePinned]);
+  }, [handleClearSelection, selectedItems, showToast, togglePinned]);
 
   const handleEditSelected = useCallback(() => {
     if (selectedItems.length !== 1) return;
     const item = selectedItems[0];
+    handleClearSelection();
     if (item.kind === "folder") {
       const folder = folders[item.id];
       if (folder) setEditingFolder(folder);
@@ -249,15 +256,20 @@ const FolderDetailScreen: React.FC = () => {
     withLock(() => {
       navigation.navigate("QuickNote", { quickNoteId: item.id, folderId: folderId ?? null });
     });
-  }, [folderId, folders, navigation, notes, selectedItems, withLock]);
+  }, [folderId, folders, handleClearSelection, navigation, notes, selectedItems, withLock]);
 
   const handleShareSelected = useCallback(async () => {
-    if (!selectedItems.length) return;
-    await Share.share({
-      title: selectedItems.length === 1 ? selectedItems[0].label : `${selectedItems.length} itens`,
-      message: selectedItems.map((item) => `${item.kind.toUpperCase()}: ${item.label}`).join("\n")
-    });
-  }, [selectedItems]);
+    const items = selectedItems;
+    if (!items.length) return;
+    try {
+      await Share.share({
+        title: items.length === 1 ? items[0].label : `${items.length} itens`,
+        message: items.map((item) => `${item.kind.toUpperCase()}: ${item.label}`).join("\n")
+      });
+    } finally {
+      handleClearSelection();
+    }
+  }, [handleClearSelection, selectedItems]);
 
   const handleDeleteSelected = useCallback(() => {
     if (!selectedItems.length) return;
@@ -825,25 +837,37 @@ const FolderDetailScreen: React.FC = () => {
             key: "duplicate",
             label: "Duplicar / Copiar",
             icon: "copy-outline",
-            onPress: () => showToast("Duplicação em breve")
+            onPress: () => {
+              showToast("Duplicação em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "move",
             label: "Mover",
             icon: "folder-open-outline",
-            onPress: () => showToast("Mover em breve")
+            onPress: () => {
+              showToast("Mover em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "archive",
             label: "Arquivar / Desarquivar",
             icon: "archive-outline",
-            onPress: () => showToast("Arquivo em breve")
+            onPress: () => {
+              showToast("Arquivo em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "tag",
             label: "Tag / Label",
             icon: "pricetag-outline",
-            onPress: () => showToast("Tags em breve")
+            onPress: () => {
+              showToast("Tags em breve");
+              handleClearSelection();
+            }
           },
           {
             key: "edit",
@@ -1239,6 +1263,7 @@ const FolderDetailScreen: React.FC = () => {
         confirmLabel="Save"
         onCancel={() => {
           if (folderSubmitting) return;
+          handleClearSelection();
           setEditingFolder(null);
         }}
         submitting={folderSubmitting}
@@ -1256,6 +1281,7 @@ const FolderDetailScreen: React.FC = () => {
               bannerPath: payload.bannerPath
             });
             upsertFolder(updated);
+            handleClearSelection();
             setEditingFolder(null);
             showToast("Folder saved ✓");
           } catch (error) {
@@ -1273,6 +1299,7 @@ const FolderDetailScreen: React.FC = () => {
         submitting={noteSubmitting}
         onCancel={() => {
           if (noteSubmitting) return;
+          handleClearSelection();
           setEditingNote(null);
         }}
         onConfirm={async (title) => {
@@ -1285,6 +1312,7 @@ const FolderDetailScreen: React.FC = () => {
               content: editingNote.content
             });
             upsertNote(updated);
+            handleClearSelection();
             setEditingNote(null);
             showToast("Note saved ✓");
           } catch (error) {

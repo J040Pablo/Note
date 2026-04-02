@@ -13,6 +13,8 @@ import {
 } from "../../tasks/sync";
 import { useAppMode } from "../../../app/mode";
 import type { DataQuickNote } from "../../../services/webData";
+import QuickRichNoteEditor from "../components/QuickRichNoteEditor";
+import { parseQuickRichNoteDocument, serializeQuickRichNoteHtml } from "../../../utils/quickRichNote";
 import styles from "./NoteEditorPage.module.css"; // Reuse Note styles for layout
 
 const QuickNoteEditorPage: React.FC = () => {
@@ -27,10 +29,18 @@ const QuickNoteEditorPage: React.FC = () => {
   );
   
   const [title, setTitle] = React.useState(note?.title ?? "");
-  const [content, setContent] = React.useState(note?.content ?? "");
+  const [content, setContent] = React.useState(() => {
+    const current = note?.content ?? "";
+    const parsed = parseQuickRichNoteDocument(current);
+    return parsed.blocks.map((block) => block.html).join("");
+  });
   const [saving, setSaving] = React.useState(false);
   const [lastSavedTitle, setLastSavedTitle] = React.useState(note?.title ?? "");
-  const [lastSavedContent, setLastSavedContent] = React.useState(note?.content ?? "");
+  const [lastSavedContent, setLastSavedContent] = React.useState(() => {
+    const current = note?.content ?? "";
+    const parsed = parseQuickRichNoteDocument(current);
+    return parsed.blocks.map((block) => block.html).join("");
+  });
 
   const saveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = React.useRef(false);
@@ -70,6 +80,7 @@ const QuickNoteEditorPage: React.FC = () => {
       }
 
       const normalizedTitle = title.trim() || "Quick Note";
+      const serializedContent = serializeQuickRichNoteHtml(content);
 
       if (!note && !title.trim() && !content.trim()) return;
       if (!hasPendingChanges && note) return;
@@ -82,13 +93,13 @@ const QuickNoteEditorPage: React.FC = () => {
         if (note) {
           const updated = updateQuickNote(note.id, {
             title: normalizedTitle,
-            content,
+            content: serializedContent,
             text: content,
           });
           if (updated) {
             setNote(updated);
             setLastSavedTitle(updated.title);
-            setLastSavedContent(updated.content);
+            setLastSavedContent(content);
 
             if (isMobileSync) {
               dispatchEntitySyncEvent({
@@ -101,13 +112,13 @@ const QuickNoteEditorPage: React.FC = () => {
           creatingRef.current = true;
           const created = createQuickNote({
             title: normalizedTitle,
-            content,
+            content: serializedContent,
             text: content,
             folderId,
           });
           setNote(created);
           setLastSavedTitle(created.title);
-          setLastSavedContent(created.content);
+          setLastSavedContent(content);
 
           if (isMobileSync) {
             dispatchEntitySyncEvent({
@@ -154,17 +165,19 @@ const QuickNoteEditorPage: React.FC = () => {
         setNote((prev) => {
           if (!prev) return prev;
           if (incoming.updatedAt <= (prev.updatedAt ?? 0)) return prev;
+          const incomingContent = parseQuickRichNoteDocument(incoming.content ?? incoming.text ?? "");
+          const nextContent = incomingContent.blocks.map((block) => block.html).join("");
           const updated: DataQuickNote = {
             ...prev,
             title: incoming.title ?? "Quick Note",
-            content: incoming.content ?? incoming.text ?? "",
-            text: incoming.text ?? incoming.content ?? "",
+            content: serializeQuickRichNoteHtml(nextContent),
+            text: nextContent,
             updatedAt: incoming.updatedAt,
           };
           setTitle(updated.title);
-          setContent(updated.content);
+          setContent(nextContent);
           setLastSavedTitle(updated.title);
-          setLastSavedContent(updated.content);
+          setLastSavedContent(nextContent);
           return updated;
         });
       }
@@ -242,23 +255,11 @@ const QuickNoteEditorPage: React.FC = () => {
         </div>
       )}
 
-      <div className={styles.editorBody} style={{ padding: "0 10px" }}>
-        <textarea
-          style={{
-            width: "100%",
-            minHeight: "400px",
-            background: "transparent",
-            border: "none",
-            color: "#e2e8f0",
-            fontSize: "1.05rem",
-            lineHeight: "1.6",
-            resize: "vertical",
-            outline: "none",
-            fontFamily: "inherit",
-          }}
+      <div className={styles.editorBody} style={{ padding: "0 10px", overflowY: "auto" }}>
+        <QuickRichNoteEditor
           value={content}
-          onChange={(e) => setContent(e.target.value)}
-          placeholder="Start typing your quick note..."
+          onChange={(nextValue) => setContent(nextValue)}
+          editable
         />
       </div>
     </div>
