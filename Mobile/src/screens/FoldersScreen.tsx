@@ -7,6 +7,8 @@ import { Text } from "@components/Text";
 import { FolderIcon } from "@components/FolderIcon";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
+import { SelectionIndicator } from "@components/SelectionIndicator";
+import { FloatingButton } from "@components/FloatingButton";
 import { useTheme } from "@hooks/useTheme";
 import { useAppStore } from "@store/useAppStore";
 import { createFolder, deleteFolder, getFoldersByParent, reorderFolders, updateFolder } from "@services/foldersService";
@@ -47,7 +49,9 @@ const FOLDER_SORT_SCOPE = "folders.root.sort";
 const FLOATING_TAB_BAR_HEIGHT = 68;
 const FLOATING_TAB_BAR_MARGIN = 8;
 const FLOATING_TAB_BAR_MIN_BOTTOM = 16;
-const LIST_BOTTOM_EXTRA = 72;
+const LIST_BOTTOM_EXTRA = 140;
+const TOP_PADDING_DEFAULT = 24;
+const TOP_PADDING_WITH_SELECTION = 80;
 
 const FoldersScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -123,20 +127,15 @@ const FoldersScreen: React.FC = () => {
   );
 
   const looseQuickNotes = useMemo(
-    () => Object.values(quickNotesMap).filter((q) => q.folderId == null),
+    () => Object.values(quickNotesMap).filter((n) => n.folderId == null),
     [quickNotesMap]
-  );
-
-  const listBottomPadding = useMemo(
-    () => Math.max(insets.bottom + FLOATING_TAB_BAR_MARGIN, FLOATING_TAB_BAR_MIN_BOTTOM) + FLOATING_TAB_BAR_HEIGHT + LIST_BOTTOM_EXTRA,
-    [insets.bottom]
   );
 
   const selectableItems = useMemo<SelectedItem[]>(
     () => [
       ...visibleFolders.map((folder) => ({ kind: "folder" as const, id: folder.id, label: folder.name })),
       ...looseNotes.map((note) => ({ kind: "note" as const, id: note.id, label: note.title })),
-      ...looseQuickNotes.map((q) => ({ kind: "quick" as const, id: q.id, label: q.title }))
+      ...looseQuickNotes.map((quick) => ({ kind: "quick" as const, id: quick.id, label: quick.title }))
     ],
     [visibleFolders, looseNotes, looseQuickNotes]
   );
@@ -154,6 +153,16 @@ const FoldersScreen: React.FC = () => {
     getKey: (item) => `${item.kind}:${item.id}`,
     onSelectionStart: () => showToast("Modo de seleção ativado")
   });
+
+  const topContentPadding = selectionMode ? TOP_PADDING_WITH_SELECTION : TOP_PADDING_DEFAULT;
+
+  const listBottomPadding = useMemo(
+    () =>
+      Math.max(insets.bottom + FLOATING_TAB_BAR_MARGIN, FLOATING_TAB_BAR_MIN_BOTTOM) +
+      FLOATING_TAB_BAR_HEIGHT +
+      LIST_BOTTOM_EXTRA,
+    [insets.bottom]
+  );
 
   const handleClearSelection = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -313,12 +322,47 @@ const FoldersScreen: React.FC = () => {
   return (
     <Screen>
       <View style={styles.headerRow}>
-        {selectionMode ? (
-          <View style={[styles.selectionBar, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
+        <>
+          <View>
+            <Text variant="title">Folders</Text>
+            <Text muted>Root folders</Text>
+          </View>
+          <View style={styles.headerActions}>
+            <View style={[styles.viewToggleWrap, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
+              <Pressable
+                onPress={() => setViewMode("list")}
+                style={[
+                  styles.viewToggleBtn,
+                  viewMode === "list" && { backgroundColor: theme.colors.primaryAlpha20 }
+                ]}
+              >
+                <Ionicons name="list-outline" size={16} color={viewMode === "list" ? theme.colors.primary : theme.colors.textSecondary} />
+              </Pressable>
+              <Pressable
+                onPress={() => setViewMode("grid")}
+                style={[
+                  styles.viewToggleBtn,
+                  viewMode === "grid" && { backgroundColor: theme.colors.primaryAlpha20 }
+                ]}
+              >
+                <Ionicons name="grid-outline" size={16} color={viewMode === "grid" ? theme.colors.primary : theme.colors.textSecondary} />
+              </Pressable>
+            </View>
+            <Pressable
+              onPress={() => setShowSortMenu(true)}
+              style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+            >
+              <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
+            </Pressable>
+          </View>
+        </>
+
+        {selectionMode && (
+          <View style={[styles.selectionBar, styles.selectionBarOverlay, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
             <Pressable onPress={handleClearSelection} style={styles.selectionTopAction} hitSlop={8}>
               <Ionicons name="close" size={20} color={theme.colors.textPrimary} />
             </Pressable>
-            <Text style={[styles.selectionCount, { color: theme.colors.textPrimary }]}>
+            <Text style={[styles.selectionCount, { color: theme.colors.textPrimary }]}> 
               {selectionCount}
             </Text>
             <View style={styles.selectionActions}>
@@ -338,41 +382,6 @@ const FoldersScreen: React.FC = () => {
               </Pressable>
             </View>
           </View>
-        ) : (
-          <>
-            <View>
-              <Text variant="title">Folders</Text>
-              <Text muted>Root folders</Text>
-            </View>
-            <View style={styles.headerActions}>
-              <View style={[styles.viewToggleWrap, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
-                <Pressable
-                  onPress={() => setViewMode("list")}
-                  style={[
-                    styles.viewToggleBtn,
-                    viewMode === "list" && { backgroundColor: theme.colors.primaryAlpha20 }
-                  ]}
-                >
-                  <Ionicons name="list-outline" size={16} color={viewMode === "list" ? theme.colors.primary : theme.colors.textSecondary} />
-                </Pressable>
-                <Pressable
-                  onPress={() => setViewMode("grid")}
-                  style={[
-                    styles.viewToggleBtn,
-                    viewMode === "grid" && { backgroundColor: theme.colors.primaryAlpha20 }
-                  ]}
-                >
-                  <Ionicons name="grid-outline" size={16} color={viewMode === "grid" ? theme.colors.primary : theme.colors.textSecondary} />
-                </Pressable>
-              </View>
-              <Pressable
-                onPress={() => setShowSortMenu(true)}
-                style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-              >
-                <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
-              </Pressable>
-            </View>
-          </>
         )}
       </View>
 
@@ -420,11 +429,11 @@ const FoldersScreen: React.FC = () => {
                       borderColor: theme.colors.border,
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
-                      marginBottom: 6
+                      marginBottom: 6,
+                      borderWidth: 2
                     },
                     isSelected({ kind: "note", id: note.id, label: note.title }) && {
-                      borderColor: theme.colors.primary,
-                      borderWidth: 1.5
+                      borderColor: theme.colors.primary
                     }
                   ]}
                 >
@@ -453,6 +462,7 @@ const FoldersScreen: React.FC = () => {
                       )}
                     </View>
                   </View>
+                  <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, label: note.title })} />
                 </Pressable>
               ))}
               {looseQuickNotes.map((quick) => (
@@ -478,11 +488,11 @@ const FoldersScreen: React.FC = () => {
                       borderColor: theme.colors.border,
                       backgroundColor: theme.colors.card,
                       shadowColor: theme.colors.textPrimary,
-                      marginBottom: 6
+                      marginBottom: 6,
+                      borderWidth: 2
                     },
                     isSelected({ kind: "quick", id: quick.id, label: quick.title }) && {
-                      borderColor: theme.colors.primary,
-                      borderWidth: 1.5
+                      borderColor: theme.colors.primary
                     }
                   ]}
                 >
@@ -511,6 +521,7 @@ const FoldersScreen: React.FC = () => {
                       )}
                     </View>
                   </View>
+                  <SelectionIndicator visible={isSelected({ kind: "quick", id: quick.id, label: quick.title })} />
                 </Pressable>
               ))}
             </View>
@@ -554,10 +565,9 @@ const FoldersScreen: React.FC = () => {
                 }}
                 style={[
                   styles.folderCard,
-                  { borderColor: theme.colors.border, backgroundColor: theme.colors.card, shadowColor: theme.colors.textPrimary },
+                  { borderColor: theme.colors.border, borderWidth: 2, backgroundColor: theme.colors.card, shadowColor: theme.colors.textPrimary },
                   isSelected({ kind: "folder", id: item.id, label: item.name }) && {
-                    borderColor: theme.colors.primary,
-                    borderWidth: 1.5
+                    borderColor: theme.colors.primary
                   },
                   (isActive || activeDragFolderId === item.id) && {
                     opacity: 0.96,
@@ -598,6 +608,7 @@ const FoldersScreen: React.FC = () => {
                     <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
                   </Pressable>
                 </View>
+                <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, label: item.name })} />
               </Pressable>
             );
           }
@@ -623,12 +634,12 @@ const FoldersScreen: React.FC = () => {
                   styles.folderGridCard,
                   {
                     borderColor: theme.colors.border,
+                    borderWidth: 2,
                     backgroundColor: theme.colors.card,
                     shadowColor: theme.colors.textPrimary
                   },
                   isSelected({ kind: "folder", id: item.id, label: item.name }) && {
-                    borderColor: theme.colors.primary,
-                    borderWidth: 1.5
+                    borderColor: theme.colors.primary
                   },
                   (isActive || activeDragFolderId === item.id) && {
                     opacity: 0.96,
@@ -678,6 +689,7 @@ const FoldersScreen: React.FC = () => {
                     )}
                   </View>
                 </View>
+                <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, label: item.name })} />
 
                 {/* Drag temporariamente desativado no modo grid */}
               </Pressable>
@@ -919,6 +931,17 @@ const FoldersScreen: React.FC = () => {
             }
           },
           {
+            key: "file",
+            label: "Add File",
+            icon: "attach-outline" as const,
+            onPress: () => {
+              closeFab();
+              withLock(() => {
+                navigation.getParent()?.getParent()?.navigate("ImportFolderPackage", { mode: "file", folderId: null });
+              });
+            }
+          },
+          {
             key: "import-package",
             label: "Import Package",
             icon: "download-outline" as const,
@@ -970,31 +993,20 @@ const FoldersScreen: React.FC = () => {
           </Animated.View>
         ))}
 
-        <Pressable
-          onPress={toggleFab}
-          style={[
-            styles.fabMain,
-            {
-              backgroundColor: theme.colors.primary,
-              shadowColor: theme.colors.textPrimary
-            }
-          ]}
+        <Animated.View
+          style={{
+            transform: [
+              {
+                rotate: fabAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ["0deg", "45deg"]
+                })
+              }
+            ]
+          }}
         >
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  rotate: fabAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0deg", "45deg"]
-                  })
-                }
-              ]
-            }}
-          >
-            <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
-          </Animated.View>
-        </Pressable>
+          <FloatingButton onPress={toggleFab} icon="add" />
+        </Animated.View>
       </View>
 
     </Screen>
@@ -1003,6 +1015,7 @@ const FoldersScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   headerRow: {
+    position: "relative",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1010,12 +1023,20 @@ const styles = StyleSheet.create({
   },
   selectionBar: {
     width: "100%",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center"
+  },
+  selectionBarOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    elevation: 1000
   },
   selectionTopAction: {
     width: 30,

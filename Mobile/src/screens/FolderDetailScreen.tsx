@@ -25,6 +25,8 @@ import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
 import { NoteEditModal } from "@components/NoteEditModal";
 import { FileDetailsModal } from "@components/FileDetailsModal";
+import { SelectionIndicator } from "@components/SelectionIndicator";
+import { FloatingButton } from "@components/FloatingButton";
 import FolderExplorerMenu from "@components/FolderExplorerMenu";
 import { useTheme } from "@hooks/useTheme";
 import type { CompositeNavigationProp, RouteProp } from "@react-navigation/native";
@@ -72,6 +74,8 @@ type Nav = CompositeNavigationProp<
 type FileSortMode = "custom" | "recent" | "name_asc" | "name_desc" | "size_asc" | "size_desc";
 
 const fileSortScopeForFolder = (folderId: string | null | undefined) => `files.sort.${folderId ?? "root"}`;
+const TOP_PADDING_DEFAULT = 24;
+const TOP_PADDING_WITH_SELECTION = 80;
 
 const FolderDetailScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -218,6 +222,8 @@ const FolderDetailScreen: React.FC = () => {
     getKey: (item) => `${item.kind}:${item.id}`,
     onSelectionStart: () => showToast("Modo de seleção ativado")
   });
+
+  const topContentPadding = selectionMode ? TOP_PADDING_WITH_SELECTION : TOP_PADDING_DEFAULT;
 
   const handleClearSelection = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -424,28 +430,36 @@ const FolderDetailScreen: React.FC = () => {
   );
 
   return (
-    <Screen edges={["top", "right", "left"]} style={styles.screenRoot}>
+    <Screen edges={["top", "right", "left"]}>
       <View style={styles.headerRow}>
         <Pressable
-          onPress={selectionMode ? handleClearSelection : handleBackPress}
+          onPress={handleBackPress}
           style={[styles.backButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
           hitSlop={8}
         >
-          <Ionicons name={selectionMode ? "close" : "arrow-back"} size={16} color={theme.colors.textPrimary} />
+          <Ionicons name="arrow-back" size={16} color={theme.colors.textPrimary} />
         </Pressable>
         <View style={{ flex: 1 }}>
-          {selectionMode ? (
-            <>
-              <Text variant="title">{selectionCount}</Text>
-            </>
-          ) : (
-            <>
-              <Text variant="title">{currentFolder?.name ?? "Home"}</Text>
-              <Text muted>Subfolders, notes and files</Text>
-            </>
-          )}
+          <>
+            <Text variant="title">{currentFolder?.name ?? "Home"}</Text>
+            <Text muted>Subfolders, notes and files</Text>
+          </>
         </View>
-        {selectionMode ? (
+        <Pressable
+          onPress={() => setShowExplorerMenu(true)}
+          style={[styles.menuButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+          hitSlop={8}
+        >
+          <Ionicons name="menu-outline" size={18} color={theme.colors.textPrimary} />
+        </Pressable>
+      </View>
+
+      {selectionMode && (
+        <View style={[styles.selectionBarOverlay, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
+          <Pressable onPress={handleClearSelection} style={styles.headerIconBtn} hitSlop={8}>
+            <Ionicons name="close" size={18} color={theme.colors.textPrimary} />
+          </Pressable>
+          <Text style={styles.selectionCountText}>{selectionCount}</Text>
           <View style={styles.selectionActions}>
             <Pressable onPress={handleShareSelected} style={styles.headerIconBtn} hitSlop={8}>
               <Ionicons name="share-social-outline" size={18} color={theme.colors.textPrimary} />
@@ -462,16 +476,8 @@ const FolderDetailScreen: React.FC = () => {
               <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.textPrimary} />
             </Pressable>
           </View>
-        ) : (
-          <Pressable
-            onPress={() => setShowExplorerMenu(true)}
-            style={[styles.menuButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-            hitSlop={8}
-          >
-            <Ionicons name="menu-outline" size={18} color={theme.colors.textPrimary} />
-          </Pressable>
-        )}
-      </View>
+        </View>
+      )}
 
       <View style={[styles.section, { borderColor: theme.colors.border }]}>
         <View style={styles.sectionHeaderRow}>
@@ -529,7 +535,7 @@ const FolderDetailScreen: React.FC = () => {
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
                       opacity: pressed ? 0.96 : 1,
-                      borderWidth: isSelected({ kind: "folder", id: folder.id, label: folder.name }) ? 1.5 : StyleSheet.hairlineWidth,
+                      borderWidth: 2,
                       borderColor: isSelected({ kind: "folder", id: folder.id, label: folder.name }) ? theme.colors.primary : theme.colors.border
                     }
                   ]}
@@ -567,6 +573,7 @@ const FolderDetailScreen: React.FC = () => {
                       )}
                     </View>
                   </View>
+                  <SelectionIndicator visible={isSelected({ kind: "folder", id: folder.id, label: folder.name })} />
                 </Pressable>
               ))}
 
@@ -585,7 +592,7 @@ const FolderDetailScreen: React.FC = () => {
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
                       opacity: pressed ? 0.96 : 1,
-                      borderWidth: isSelected({ kind: "note", id: note.id, label: note.title }) ? 1.5 : StyleSheet.hairlineWidth,
+                      borderWidth: 2,
                       borderColor: isSelected({ kind: "note", id: note.id, label: note.title }) ? theme.colors.primary : theme.colors.border
                     }
                   ]}
@@ -613,6 +620,7 @@ const FolderDetailScreen: React.FC = () => {
                       )}
                     </View>
                   </View>
+                  <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, label: note.title })} />
                 </Pressable>
               ))}
 
@@ -631,7 +639,7 @@ const FolderDetailScreen: React.FC = () => {
                       shadowColor: theme.colors.textPrimary,
                       transform: [{ scale: pressed ? 0.992 : 1 }],
                       opacity: pressed ? 0.96 : 1,
-                      borderWidth: isSelected({ kind: "quick", id: quickNote.id, label: quickNote.title }) ? 1.5 : StyleSheet.hairlineWidth,
+                      borderWidth: 2,
                       borderColor: isSelected({ kind: "quick", id: quickNote.id, label: quickNote.title }) ? theme.colors.primary : theme.colors.border
                     }
                   ]}
@@ -658,6 +666,7 @@ const FolderDetailScreen: React.FC = () => {
                       )}
                     </View>
                   </View>
+                  <SelectionIndicator visible={isSelected({ kind: "quick", id: quickNote.id, label: quickNote.title })} />
                 </Pressable>
               ))}
 
@@ -932,6 +941,17 @@ const FolderDetailScreen: React.FC = () => {
             }
           },
           {
+            key: "import",
+            label: "Import Package",
+            icon: "download-outline" as const,
+            onPress: () => {
+              closeFab();
+              withLock(() => {
+                navigation.navigate("ImportFolderPackage", { folderId: folderId ?? null });
+              });
+            }
+          },
+          {
             key: "file",
             label: "Add File",
             icon: "attach-outline" as const,
@@ -981,31 +1001,20 @@ const FolderDetailScreen: React.FC = () => {
           </Animated.View>
         ))}
 
-        <Pressable
-          onPress={toggleFab}
-          style={[
-            styles.fabMain,
-            {
-              backgroundColor: theme.colors.primary,
-              shadowColor: theme.colors.textPrimary
-            }
-          ]}
+        <Animated.View
+          style={{
+            transform: [
+              {
+                rotate: fabAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ["0deg", "45deg"]
+                })
+              }
+            ]
+          }}
         >
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  rotate: fabAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0deg", "45deg"]
-                  })
-                }
-              ]
-            }}
-          >
-            <Ionicons name="add" size={24} color={theme.colors.onPrimary} />
-          </Animated.View>
-        </Pressable>
+          <FloatingButton onPress={toggleFab} icon="add" />
+        </Animated.View>
       </View>
 
       <FolderNameModal
@@ -1575,6 +1584,25 @@ const styles = StyleSheet.create({
     zIndex: 4,
     elevation: 4
   },
+  selectionBarOverlay: {
+    position: "absolute",
+    top: 2,
+    left: 0,
+    right: 0,
+    height: 56,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    zIndex: 1000,
+    elevation: 8
+  },
+  selectionCountText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "700"
+  },
   selectionActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -1651,7 +1679,7 @@ const styles = StyleSheet.create({
     minHeight: 200
   },
   sectionListContentContainer: {
-    paddingBottom: 120
+    paddingBottom: 200
   },
   gridContainer: {
     flexDirection: "row",

@@ -8,6 +8,7 @@ import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
 import { ContextActionMenu } from "@components/ContextActionMenu";
 import { DeleteConfirmModal } from "@components/DeleteConfirmModal";
+import { SelectionIndicator } from "@components/SelectionIndicator";
 import { useTheme } from "@hooks/useTheme";
 import { useTasksStore } from "@store/useTasksStore";
 import { useAppStore } from "@store/useAppStore";
@@ -37,6 +38,7 @@ import type { TabsParamList } from "@navigation/RootNavigator";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { useSelection } from "@hooks/useSelection";
+import { FloatingButton } from "@components/FloatingButton";
 
 type TasksRoute = RouteProp<TabsParamList, "Tasks">;
 type TasksNav = BottomTabNavigationProp<TabsParamList, "Tasks">;
@@ -102,6 +104,8 @@ const toTimeKey = (date: Date): string => {
 
 type TaskSortMode = "custom" | "recent" | "name_asc" | "name_desc";
 const TASK_SORT_SCOPE = "tasks.sort";
+const TOP_PADDING_DEFAULT = 24;
+const TOP_PADDING_WITH_SELECTION = 80;
 
 const TasksScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -361,6 +365,20 @@ const TasksScreen: React.FC = () => {
     setShowModal(true);
   };
 
+  const selectableTaskItems = useMemo(() => {
+    const map: Record<string, { kind: "task"; id: string; label: string }> = {};
+
+    enrichedTasks.forEach((task) => {
+      map[task.id] = { kind: "task", id: task.id, label: task.text };
+    });
+
+    expiredTasks.forEach((task) => {
+      map[task.id] = { kind: "task", id: task.id, label: task.text };
+    });
+
+    return Object.values(map);
+  }, [enrichedTasks, expiredTasks]);
+
   const {
     selectedItems,
     selectionCount,
@@ -371,12 +389,14 @@ const TasksScreen: React.FC = () => {
     clearSelection,
     selectAllVisible
   } = useSelection(
-    enrichedTasks.map((task) => ({ kind: "task" as const, id: task.id, label: task.text })),
+    selectableTaskItems,
     {
       getKey: (item) => `${item.kind}:${item.id}`,
       onSelectionStart: () => showToast("Modo de seleção ativado")
     }
   );
+
+  const topContentPadding = selectionMode ? TOP_PADDING_WITH_SELECTION : TOP_PADDING_DEFAULT;
 
   const handleClearSelection = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -479,17 +499,32 @@ const TasksScreen: React.FC = () => {
         windowSize={9}
         removeClippedSubviews={false}
         style={styles.taskList}
-        contentContainerStyle={styles.screenScrollContent}
+        contentContainerStyle={[styles.screenScrollContent, { paddingTop: 24 }]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <>
             <View style={styles.headerRow}>
-              {selectionMode ? (
-                <View style={[styles.selectionBar, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
+              <>
+                <View>
+                  <Text variant="title">Tasks</Text>
+                  <Text muted>Daily productivity</Text>
+                </View>
+                <View style={styles.headerActions}>
+                  <Pressable
+                    onPress={() => setShowSortMenu(true)}
+                    style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+                  >
+                    <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
+                  </Pressable>
+                </View>
+              </>
+
+              {selectionMode && (
+                <View style={[styles.selectionBar, styles.selectionBarOverlay, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
                   <Pressable onPress={handleClearSelection} style={styles.selectionTopAction} hitSlop={8}>
                     <Ionicons name="close" size={20} color={theme.colors.textPrimary} />
                   </Pressable>
-                  <Text style={[styles.selectionCount, { color: theme.colors.textPrimary }]}>
+                  <Text style={[styles.selectionCount, { color: theme.colors.textPrimary }]}> 
                     {selectionCount}
                   </Text>
                   <View style={styles.selectionActions}>
@@ -509,21 +544,6 @@ const TasksScreen: React.FC = () => {
                     </Pressable>
                   </View>
                 </View>
-              ) : (
-                <>
-                  <View>
-                    <Text variant="title">Tasks</Text>
-                    <Text muted>Daily productivity</Text>
-                  </View>
-                  <View style={styles.headerActions}>
-                    <Pressable
-                      onPress={() => setShowSortMenu(true)}
-                      style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-                    >
-                      <Ionicons name="funnel-outline" size={16} color={theme.colors.textPrimary} />
-                    </Pressable>
-                  </View>
-                </>
               )}
             </View>
 
@@ -634,8 +654,8 @@ const TasksScreen: React.FC = () => {
                           styles.taskCard,
                           {
                             backgroundColor: theme.colors.card,
-                            borderColor: theme.colors.danger + "40",
-                            borderWidth: 1.5,
+                            borderColor: taskSelected ? theme.colors.primary : theme.colors.danger + "40",
+                            borderWidth: 2,
                           }
                         ]}
                       >
@@ -795,6 +815,8 @@ const TasksScreen: React.FC = () => {
                             })}
                           </View>
                         )}
+
+                        <SelectionIndicator visible={taskSelected} />
                       </View>
                     );
                   })}
@@ -835,7 +857,7 @@ const TasksScreen: React.FC = () => {
             <View
               style={[
                 styles.taskCard,
-                { backgroundColor: theme.colors.card, borderColor: taskSelected ? theme.colors.secondary : theme.colors.border },
+                { backgroundColor: theme.colors.card, borderColor: taskSelected ? theme.colors.primary : theme.colors.border },
                 isActive && {
                   elevation: 10,
                   shadowColor: theme.colors.textPrimary,
@@ -1025,6 +1047,8 @@ const TasksScreen: React.FC = () => {
                   })}
                 </View>
               )}
+
+              <SelectionIndicator visible={taskSelected} />
             </View>
           );
         }}
@@ -1544,7 +1568,7 @@ const TasksScreen: React.FC = () => {
 
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
-      <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 76 + 20 }]} pointerEvents="box-none">
+      <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 68 + 20 }]} pointerEvents="box-none">
         <Animated.View
           pointerEvents={fabOpen ? "auto" : "none"}
           style={[
@@ -1586,31 +1610,20 @@ const TasksScreen: React.FC = () => {
           </Pressable>
         </Animated.View>
 
-        <Pressable
-          onPress={toggleFab}
-          style={[
-            styles.fabMain,
-            {
-              backgroundColor: theme.colors.primary,
-              shadowColor: theme.colors.textPrimary
-            }
-          ]}
+        <Animated.View
+          style={{
+            transform: [
+              {
+                rotate: fabAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ["0deg", "45deg"]
+                })
+              }
+            ]
+          }}
         >
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  rotate: fabAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0deg", "45deg"]
-                  })
-                }
-              ]
-            }}
-          >
-            <Ionicons name="add" size={32} color={theme.colors.onPrimary} />
-          </Animated.View>
-        </Pressable>
+          <FloatingButton onPress={toggleFab} icon="add" />
+        </Animated.View>
       </View>
     </Screen>
   );
@@ -1624,9 +1637,11 @@ const styles = StyleSheet.create({
     flex: 1
   },
   screenScrollContent: {
-    paddingBottom: 120
+    paddingBottom: 200
   },
   headerRow: {
+    position: "relative",
+    minHeight: 56,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -1634,12 +1649,20 @@ const styles = StyleSheet.create({
   },
   selectionBar: {
     width: "100%",
-    borderWidth: StyleSheet.hairlineWidth,
+    height: 56,
+    borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 8,
-    paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center"
+  },
+  selectionBarOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 1000,
+    elevation: 1000
   },
   selectionTopAction: {
     width: 30,
@@ -1959,9 +1982,9 @@ const styles = StyleSheet.create({
     gap: 10,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 999,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    minWidth: 160
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    minWidth: 170
   },
   fabMenuLabel: {
     fontSize: 14,

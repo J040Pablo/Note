@@ -3,6 +3,7 @@ import { View, StyleSheet, Pressable, Image, ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@components/Text";
 import { FolderIcon } from "@components/FolderIcon";
+import { SelectionIndicator } from "@components/SelectionIndicator";
 import { useTheme } from "@hooks/useTheme";
 import type { Folder } from "@models/types";
 
@@ -13,6 +14,7 @@ interface FolderCardProps {
   style?: ViewStyle;
   isLoading?: boolean;
   variant?: "default" | "compact";
+  selected?: boolean;
 }
 
 const CARD_HEIGHT = 130;
@@ -24,7 +26,8 @@ const FolderCard = memo(({
   onLongPress,
   style,
   isLoading = false,
-  variant = "default"
+  variant = "default",
+  selected = false
 }: FolderCardProps) => {
   const { theme } = useTheme();
 
@@ -40,7 +43,8 @@ const FolderCard = memo(({
         {
           height: variant === "compact" ? undefined : CARD_HEIGHT,
           backgroundColor: theme.colors.card,
-          borderColor: theme.colors.border,
+          borderColor: selected ? theme.colors.primary : theme.colors.border,
+          borderWidth: 2,
           opacity: isLoading ? 0.6 : 1
         }
       ]}
@@ -132,6 +136,8 @@ const FolderCard = memo(({
           ]}
         />
       )}
+
+      <SelectionIndicator visible={selected} />
     </Pressable>
   );
 }) as React.MemoExoticComponent<React.FC<FolderCardProps>>;

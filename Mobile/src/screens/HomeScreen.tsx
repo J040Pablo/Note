@@ -24,6 +24,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { FolderIcon } from "@components/FolderIcon";
 import FolderCard from "@components/FolderCard";
 import { ContextActionMenu } from "@components/ContextActionMenu";
+import { SelectionIndicator } from "@components/SelectionIndicator";
+import { FloatingButton } from "@components/FloatingButton";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
 import { deleteNote, deleteQuickNote } from "@services/notesService";
@@ -35,6 +37,9 @@ type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
 type SelectableKind = "folder" | "note" | "quick" | "task";
 type SelectedItem = { kind: SelectableKind; id: ID; label: string };
 type SelectionKey = `${SelectableKind}:${ID}`;
+
+const TOP_PADDING_DEFAULT = 24;
+const TOP_PADDING_WITH_SELECTION = 80;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -295,6 +300,8 @@ const HomeScreen: React.FC = () => {
     getKey: (item) => getSelectionKey(item.kind, item.id),
     onSelectionStart: () => showToast("Modo de selecao ativado")
   });
+
+  const topContentPadding = selectionMode ? TOP_PADDING_WITH_SELECTION : TOP_PADDING_DEFAULT;
 
   const isSelected = useCallback(
     (kind: SelectableKind, id: ID) => isSelectedItem({ kind, id, label: "" }),
@@ -613,60 +620,64 @@ const HomeScreen: React.FC = () => {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       edges={["top", "left", "right"]}
     >
-      <View style={hsStyles.header}>
-        {selectionMode ? (
-          <View style={[hsStyles.selectionBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <Pressable onPress={handleClearSelection} style={hsStyles.selectionTopAction} hitSlop={8}>
-              <Ionicons name="close" size={20} color={theme.colors.textPrimary} />
-            </Pressable>
-            <Text style={[hsStyles.selectionCount, { color: theme.colors.textPrimary }]}>
-              {selectionCount}
-            </Text>
-            <View style={hsStyles.selectionActions}>
-              <Pressable onPress={handleShareSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
-                <Ionicons name="share-social-outline" size={18} color={theme.colors.textPrimary} />
-              </Pressable>
-              <Pressable onPress={handleDeleteSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
-                <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
-              </Pressable>
-              {canEditSingle && (
-                <Pressable onPress={handleEditSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
-                  <Ionicons name="pencil-outline" size={18} color={theme.colors.textPrimary} />
+      <View style={[hsStyles.header, { paddingTop: 24 }]}>
+        <>
+          {!selectionMode && (
+            <View style={hsStyles.headerTopRow}>
+              <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <Pressable
+                  onPress={() => setOpenScanner(true)}
+                  style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Abrir QR Code"
+                >
+                  <Ionicons name="qr-code-outline" size={20} color={theme.colors.textPrimary} />
                 </Pressable>
-              )}
-              <Pressable onPress={() => setShowSelectionMenu(true)} style={hsStyles.selectionActionBtn} hitSlop={8}>
-                <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.textPrimary} />
-              </Pressable>
+                <Pressable
+                  onPress={() => navigation.navigate("Notifications" as never)}
+                  style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+                >
+                  <Ionicons name="notifications-outline" size={20} color={theme.colors.textPrimary} />
+                </Pressable>
+              </View>
             </View>
-          </View>
-        ) : (
-          <View style={hsStyles.headerTopRow}>
-            <Text style={[hsStyles.headerTitle, { color: theme.colors.textPrimary }]}>Home</Text>
-            <View style={{ flexDirection: "row", gap: 12 }}>
-              <Pressable
-                onPress={() => setOpenScanner(true)}
-                style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-                accessibilityRole="button"
-                accessibilityLabel="Abrir QR Code"
-              >
-                <Ionicons name="qr-code-outline" size={20} color={theme.colors.textPrimary} />
+          )}
+
+          {selectionMode && (
+            <View style={[hsStyles.selectionBar, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
+              <Pressable onPress={handleClearSelection} style={hsStyles.selectionTopAction} hitSlop={8}>
+                <Ionicons name="close" size={20} color={theme.colors.textPrimary} />
               </Pressable>
-              <Pressable
-                onPress={() => navigation.navigate("Notifications" as never)}
-                style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
-              >
-                <Ionicons name="notifications-outline" size={20} color={theme.colors.textPrimary} />
-              </Pressable>
+              <Text style={[hsStyles.selectionCount, { color: theme.colors.textPrimary }]}>
+                {selectionCount}
+              </Text>
+              <View style={hsStyles.selectionActions}>
+                <Pressable onPress={handleShareSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
+                  <Ionicons name="share-social-outline" size={18} color={theme.colors.textPrimary} />
+                </Pressable>
+                <Pressable onPress={handleDeleteSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
+                  <Ionicons name="trash-outline" size={18} color={theme.colors.danger} />
+                </Pressable>
+                {canEditSingle && (
+                  <Pressable onPress={handleEditSelected} style={hsStyles.selectionActionBtn} hitSlop={8}>
+                    <Ionicons name="pencil-outline" size={18} color={theme.colors.textPrimary} />
+                  </Pressable>
+                )}
+                <Pressable onPress={() => setShowSelectionMenu(true)} style={hsStyles.selectionActionBtn} hitSlop={8}>
+                  <Ionicons name="ellipsis-vertical" size={18} color={theme.colors.textPrimary} />
+                </Pressable>
+              </View>
             </View>
-          </View>
-        )}
+          )}
+        </>
       </View>
 
       <FlatList
         style={{ flex: 1, backgroundColor: theme.colors.background }}
         data={sectionData}
         keyExtractor={(item) => item}
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 120, backgroundColor: theme.colors.background }}
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 200, backgroundColor: theme.colors.background }}
         keyboardShouldPersistTaps="handled"
         renderItem={({ item }) => {
           if (item === "pinned") {
@@ -709,7 +720,7 @@ const HomeScreen: React.FC = () => {
                         delayLongPress={260}
                         style={{
                           width: 160,
-                          borderWidth: selected ? 1.5 : StyleSheet.hairlineWidth,
+                          borderWidth: 2,
                           borderRadius: 16,
                           overflow: "hidden",
                           backgroundColor: theme.colors.card,
@@ -788,11 +799,7 @@ const HomeScreen: React.FC = () => {
                           </>
                         )}
 
-                        {selected && (
-                          <View style={hsStyles.selectedBadge}>
-                            <Ionicons name="checkmark-circle" size={16} color={theme.colors.primary} />
-                          </View>
-                        )}
+                        <SelectionIndicator visible={selected} />
                       </Pressable>
                     );
                   }}
@@ -1013,6 +1020,7 @@ const HomeScreen: React.FC = () => {
                         <FolderCard 
                             folder={folder} 
                             variant="compact"
+                            selected={isSelected("folder", folder.id)}
                             onPress={() => {
                               if (selectionMode) {
                                 toggleSelection({ kind: "folder", id: folder.id, label: folder.name });
@@ -1054,67 +1062,70 @@ const HomeScreen: React.FC = () => {
                     data={limitedRecent}
                     keyExtractor={(x) => `${x.type}-${x.id}`}
                     contentContainerStyle={{ paddingLeft: 0, paddingRight: 0, gap: 12 }}
-                    renderItem={({ item: act }) => (
-                      <Pressable
-                        android_ripple={{ color: theme.colors.primaryAlpha20 }}
-                        onPress={() => {
-                          if (selectionMode) {
-                            toggleSelection({ kind: act.type as any, id: act.id, label: act.label });
-                            return;
-                          }
-                          act.type === "folder" ? handleOpenFolder(act.id) : handleOpenNote(act.id);
-                        }}
-                        onLongPress={() => {
-                          if (selectionMode) {
-                            toggleSelection({ kind: act.type as any, id: act.id, label: act.label });
-                            return;
-                          }
-                          startSelection({ kind: act.type as any, id: act.id, label: act.label });
-                        }}
-                        style={[
-                          {
-                            width: 160,
-                            borderWidth: StyleSheet.hairlineWidth,
-                            borderRadius: 16,
-                            overflow: 'hidden',
-                            backgroundColor: theme.colors.card,
-                            borderColor: isSelected(act.type as any, act.id) ? theme.colors.primary : theme.colors.border
-                          },
-                          isSelected(act.type as any, act.id) && { borderWidth: 1.5 }
-                        ]}
-                      >
-                        {act.type === "folder" ? (
-                          <View>
-                             {act.bannerPath ? (
-                                <Image source={{ uri: act.bannerPath }} style={{ width: '100%', height: 64 }} resizeMode="cover" />
-                             ) : (
-                                <View style={{ width: '100%', height: 64, backgroundColor: theme.colors.primaryAlpha20 }} />
-                             )}
-                             <View style={{ position: 'absolute', top: 48, left: 12, width: 32, height: 32, borderRadius: 8, backgroundColor: theme.colors.card, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
-                                {act.photoPath ? (
-                                  <Image source={{ uri: act.photoPath }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="cover" />
-                                ) : (
-                                  <FolderIcon color={act.color} fallbackColor={theme.colors.primary} size={18} />
-                                )}
-                             </View>
-                             <View style={{ padding: 12, paddingTop: 20 }}>
-                                <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", marginBottom: 2, color: theme.colors.textPrimary }}>{act.label}</Text>
-                                {!!act.subtitle && <Text numberOfLines={1} variant="caption" muted>{act.subtitle}</Text>}
-                             </View>
-                          </View>
-                        ) : (
-                          <>
-                             <View style={{ width: '100%', height: 80, backgroundColor: theme.colors.primaryAlpha20, alignItems: 'center', justifyContent: 'center' }}>
-                                <Ionicons name="document-text" size={32} color={theme.colors.primary} />
-                             </View>
-                             <View style={{ padding: 12 }}>
-                                <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", marginBottom: 2, color: theme.colors.textPrimary }}>{act.label}</Text>
-                                {!!act.subtitle && <Text numberOfLines={1} variant="caption" muted>{act.subtitle}</Text>}
-                             </View>
-                          </>
-                        )}
-                      </Pressable>
-                    )}
+                    renderItem={({ item: act }) => {
+                      const selected = isSelected(act.type as any, act.id);
+                      return (
+                        <Pressable
+                          android_ripple={{ color: theme.colors.primaryAlpha20 }}
+                          onPress={() => {
+                            if (selectionMode) {
+                              toggleSelection({ kind: act.type as any, id: act.id, label: act.label });
+                              return;
+                            }
+                            act.type === "folder" ? handleOpenFolder(act.id) : handleOpenNote(act.id);
+                          }}
+                          onLongPress={() => {
+                            if (selectionMode) {
+                              toggleSelection({ kind: act.type as any, id: act.id, label: act.label });
+                              return;
+                            }
+                            startSelection({ kind: act.type as any, id: act.id, label: act.label });
+                          }}
+                          style={[
+                            {
+                              width: 160,
+                              borderWidth: 2,
+                              borderRadius: 16,
+                              overflow: 'hidden',
+                              backgroundColor: theme.colors.card,
+                              borderColor: selected ? theme.colors.primary : theme.colors.border
+                            }
+                          ]}
+                        >
+                          {act.type === "folder" ? (
+                            <View>
+                               {act.bannerPath ? (
+                                  <Image source={{ uri: act.bannerPath }} style={{ width: '100%', height: 64 }} resizeMode="cover" />
+                               ) : (
+                                  <View style={{ width: '100%', height: 64, backgroundColor: theme.colors.primaryAlpha20 }} />
+                               )}
+                               <View style={{ position: 'absolute', top: 48, left: 12, width: 32, height: 32, borderRadius: 8, backgroundColor: theme.colors.card, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
+                                  {act.photoPath ? (
+                                    <Image source={{ uri: act.photoPath }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="cover" />
+                                  ) : (
+                                    <FolderIcon color={act.color} fallbackColor={theme.colors.primary} size={18} />
+                                  )}
+                               </View>
+                               <View style={{ padding: 12, paddingTop: 20 }}>
+                                  <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", marginBottom: 2, color: theme.colors.textPrimary }}>{act.label}</Text>
+                                  {!!act.subtitle && <Text numberOfLines={1} variant="caption" muted>{act.subtitle}</Text>}
+                               </View>
+                            </View>
+                          ) : (
+                            <>
+                               <View style={{ width: '100%', height: 80, backgroundColor: theme.colors.primaryAlpha20, alignItems: 'center', justifyContent: 'center' }}>
+                                  <Ionicons name="document-text" size={32} color={theme.colors.primary} />
+                               </View>
+                               <View style={{ padding: 12 }}>
+                                  <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", marginBottom: 2, color: theme.colors.textPrimary }}>{act.label}</Text>
+                                  {!!act.subtitle && <Text numberOfLines={1} variant="caption" muted>{act.subtitle}</Text>}
+                               </View>
+                            </>
+                          )}
+                          <SelectionIndicator visible={selected} />
+                        </Pressable>
+                      );
+                    }}
                   />
               </View>
             );
@@ -1323,6 +1334,7 @@ const HomeScreen: React.FC = () => {
             ]}
           >
             <Pressable
+              hitSlop={8}
               onPress={item.onPress}
               style={[
                 hsStyles.fabMenuItem,
@@ -1340,33 +1352,20 @@ const HomeScreen: React.FC = () => {
           </Animated.View>
         ))}
 
-        <Pressable
-          onPress={toggleFab}
-          hitSlop={20}
-          style={({ pressed }) => [
-            hsStyles.fabMain,
-            {
-              backgroundColor: theme.colors.primary,
-              shadowColor: theme.colors.textPrimary,
-              transform: [{ scale: pressed ? 0.96 : 1 }]
-            }
-          ]}
+        <Animated.View
+          style={{
+            transform: [
+              {
+                rotate: fabAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: ["0deg", "45deg"]
+                })
+              }
+            ]
+          }}
         >
-          <Animated.View
-            style={{
-              transform: [
-                {
-                  rotate: fabAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ["0deg", "45deg"]
-                  })
-                }
-              ]
-            }}
-          >
-            <Ionicons name="add" size={32} color={theme.colors.onPrimary} />
-          </Animated.View>
-        </Pressable>
+          <FloatingButton onPress={toggleFab} icon="add" />
+        </Animated.View>
       </View>
 
       <FolderNameModal
@@ -1414,22 +1413,34 @@ const hsStyles = StyleSheet.create({
     paddingBottom: spacing.lg * 5
   },
   header: {
+    position: "relative",
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
-    paddingHorizontal: spacing.md
+    paddingHorizontal: 0,
+    minHeight: 100
   },
   headerTopRow: {
+    paddingHorizontal: spacing.md,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between"
   },
   selectionBar: {
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 8,
     paddingVertical: 8,
     flexDirection: "row",
     alignItems: "center"
+  },
+  selectionBarOverlay: {
+    position: "absolute",
+    top: spacing.md,
+    left: 0,
+    right: 0,
+    width: "100%",
+    zIndex: 1000,
+    elevation: 1000
   },
   selectionTopAction: {
     width: 30,
@@ -1604,9 +1615,9 @@ const hsStyles = StyleSheet.create({
     gap: 8,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 9,
-    minWidth: 160
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minWidth: 170
   },
   fabMenuLabel: {
     fontSize: 13,

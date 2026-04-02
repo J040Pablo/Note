@@ -363,7 +363,7 @@ const SettingsScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   content: {
-    paddingBottom: 32
+    paddingBottom: 200
   },
   subtitle: {
     marginTop: 4,
