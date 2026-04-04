@@ -257,7 +257,16 @@ const HomeScreen: React.FC = () => {
       .map((item) => {
         if (item.type === "folder") {
           const folder = foldersMap[item.id];
-          return folder ? { ...item, label: folder.name, color: folder.color, photoPath: folder.photoPath, bannerPath: folder.bannerPath } : null;
+          return folder
+            ? {
+                ...item,
+                label: folder.name,
+                subtitle: folder.description ?? "Pasta",
+                color: folder.color,
+                photoPath: folder.photoPath,
+                bannerPath: folder.bannerPath
+              }
+            : null;
         }
         const note = notesMap[item.id];
         return note ? { ...item, label: note.title, subtitle: firstLine(note.content) } : null;
@@ -734,21 +743,25 @@ const HomeScreen: React.FC = () => {
                             ) : (
                               <View style={{ width: "100%", height: 64, backgroundColor: theme.colors.primaryAlpha20 }} />
                             )}
-                            <View style={{ position: "absolute", top: 48, left: 12, width: 32, height: 32, borderRadius: 8, backgroundColor: theme.colors.card, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
-                              {pin.photoPath ? (
-                                <Image source={{ uri: pin.photoPath }} style={{ width: "100%", height: "100%", borderRadius: 8 }} resizeMode="cover" />
-                              ) : (
-                                <FolderIcon color={pin.color} fallbackColor={theme.colors.primary} size={18} />
-                              )}
-                            </View>
-                            <View style={{ padding: 12, paddingTop: 20 }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                                <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "600", color: theme.colors.textPrimary }}>{pin.label}</Text>
-                                <Pressable onPress={() => handleTogglePin(pin.type, pin.id)} hitSlop={10}>
-                                  <Ionicons name="pin" size={13} color={theme.colors.primary} />
-                                </Pressable>
+                            <View style={{ padding: 12 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: theme.colors.card, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
+                                  {pin.photoPath ? (
+                                    <Image source={{ uri: pin.photoPath }} style={{ width: "100%", height: "100%", borderRadius: 8 }} resizeMode="cover" />
+                                  ) : (
+                                    <FolderIcon color={pin.color} fallbackColor={theme.colors.primary} size={18} />
+                                  )}
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                                    <Text numberOfLines={1} style={{ flex: 1, fontSize: 14, fontWeight: "600", color: theme.colors.textPrimary }}>{pin.label}</Text>
+                                    <Pressable onPress={() => handleTogglePin(pin.type, pin.id)} hitSlop={10}>
+                                      <Ionicons name="pin" size={13} color={theme.colors.primary} />
+                                    </Pressable>
+                                  </View>
+                                  {!!pin.subtitle && <Text numberOfLines={1} variant="caption" muted>{pin.subtitle}</Text>}
+                                </View>
                               </View>
-                              {!!pin.subtitle && <Text numberOfLines={1} variant="caption" muted>{pin.subtitle}</Text>}
                             </View>
                           </View>
                         ) : isTask ? (
@@ -1099,16 +1112,20 @@ const HomeScreen: React.FC = () => {
                                ) : (
                                   <View style={{ width: '100%', height: 64, backgroundColor: theme.colors.primaryAlpha20 }} />
                                )}
-                               <View style={{ position: 'absolute', top: 48, left: 12, width: 32, height: 32, borderRadius: 8, backgroundColor: theme.colors.card, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
-                                  {act.photoPath ? (
-                                    <Image source={{ uri: act.photoPath }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="cover" />
-                                  ) : (
-                                    <FolderIcon color={act.color} fallbackColor={theme.colors.primary} size={18} />
-                                  )}
-                               </View>
-                               <View style={{ padding: 12, paddingTop: 20 }}>
-                                  <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", marginBottom: 2, color: theme.colors.textPrimary }}>{act.label}</Text>
-                                  {!!act.subtitle && <Text numberOfLines={1} variant="caption" muted>{act.subtitle}</Text>}
+                               <View style={{ padding: 12 }}>
+                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: theme.colors.card, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 }}>
+                                      {act.photoPath ? (
+                                        <Image source={{ uri: act.photoPath }} style={{ width: '100%', height: '100%', borderRadius: 8 }} resizeMode="cover" />
+                                      ) : (
+                                        <FolderIcon color={act.color} fallbackColor={theme.colors.primary} size={18} />
+                                      )}
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                      <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: "600", marginBottom: 2, color: theme.colors.textPrimary }}>{act.label}</Text>
+                                      {!!act.subtitle && <Text numberOfLines={1} variant="caption" muted>{act.subtitle}</Text>}
+                                    </View>
+                                  </View>
                                </View>
                             </View>
                           ) : (

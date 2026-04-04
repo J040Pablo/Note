@@ -23,7 +23,20 @@ export interface ProfileSectionItem {
   title: string;
   subtitle?: string;
   imageUri?: string;
+  bannerUri?: string;
+  avatarUri?: string;
   refId?: string;
+  sourceType?: "folder" | "files" | "notes";
+}
+
+export interface ProfileSelectableItem {
+  refId: string;
+  sourceType: "folder" | "files" | "notes";
+  title: string;
+  subtitle?: string;
+  imageUri?: string;
+  bannerUri?: string;
+  avatarUri?: string;
 }
 
 export interface ProfileSection {
@@ -90,6 +103,33 @@ const DEFAULT_STATE = (): ProfileState => {
   };
 };
 
+const toLegacyRef = (type: ProfileSectionType, id: string): string => `${type}:${id}`;
+
+const normalizeSectionItemIds = (ids: string[], fallbackType: ProfileSectionType): string[] => {
+  const unique = new Set<string>();
+  ids
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .forEach((raw) => {
+      if (raw.includes(":")) {
+        const [kind, itemId] = raw.split(":");
+        const type = kind === "folder" || kind === "files" || kind === "notes" ? kind : fallbackType;
+        if (itemId) unique.add(`${type}:${itemId}`);
+        return;
+      }
+      unique.add(toLegacyRef(fallbackType, raw));
+    });
+  return Array.from(unique);
+};
+
+const parseRef = (refId: string): { type: ProfileSectionType; id: string } | null => {
+  if (!refId.includes(":")) return null;
+  const [kind, itemId] = refId.split(":");
+  if (!itemId) return null;
+  if (kind !== "folder" && kind !== "files" && kind !== "notes") return null;
+  return { type: kind, id: itemId };
+};
+
 const parseProfileState = (raw: string | null): ProfileState => {
   if (!raw) return DEFAULT_STATE();
   try {
@@ -120,7 +160,9 @@ const parseProfileState = (raw: string | null): ProfileState => {
           })
           .map((section) => ({
             ...section,
-            itemIds: Array.isArray(section.itemIds) ? section.itemIds.map(String) : []
+            itemIds: Array.isArray(section.itemIds)
+              ? normalizeSectionItemIds(section.itemIds.map(String), section.type)
+              : []
           }))
       : fallback.sections;
 
@@ -147,6 +189,35 @@ const parseProfileState = (raw: string | null): ProfileState => {
   } catch {
     return DEFAULT_STATE();
   }
+};
+
+const sanitizeSectionRefs = async (sections: ProfileSection[]): Promise<{ sections: ProfileSection[]; changed: boolean }> => {
+  const [folders, files, notes] = await Promise.all([getAllFolders(), getAllFiles(), getAllNotes()]);
+
+  const folderIds = new Set(folders.map((item) => item.id));
+  const fileIds = new Set(files.map((item) => item.id));
+  const noteIds = new Set(notes.map((item) => item.id));
+
+  let changed = false;
+
+  const nextSections = sections.map((section) => {
+    const normalized = normalizeSectionItemIds(section.itemIds ?? [], section.type);
+    const valid = normalized.filter((refId) => {
+      const parsed = parseRef(refId);
+      if (!parsed) return false;
+      if (parsed.type === "folder") return folderIds.has(parsed.id);
+      if (parsed.type === "files") return fileIds.has(parsed.id);
+      return noteIds.has(parsed.id);
+    });
+
+    if (valid.length !== section.itemIds.length || valid.some((value, idx) => value !== section.itemIds[idx])) {
+      changed = true;
+      return { ...section, itemIds: valid };
+    }
+    return section;
+  });
+
+  return { sections: nextSections, changed };
 };
 
 const writeProfileState = async (state: ProfileState): Promise<void> => {
@@ -192,9 +263,15 @@ export const getProfileState = async (): Promise<ProfileState> => {
   const taskContrib = await buildTaskContributions();
   const mergedContributions = mergeContributions(current.contributions, taskContrib);
 
-  if (JSON.stringify(mergedContributions) !== JSON.stringify(current.contributions)) {
+  const sanitizedSections = await sanitizeSectionRefs(current.sections);
+
+  if (
+    JSON.stringify(mergedContributions) !== JSON.stringify(current.contributions) ||
+    sanitizedSections.changed
+  ) {
     const nextState: ProfileState = {
       ...current,
+      sections: sanitizedSections.sections,
       contributions: mergedContributions,
       meta: {
         ...current.meta,
@@ -210,8 +287,15 @@ export const getProfileState = async (): Promise<ProfileState> => {
 };
 
 export const saveProfileState = async (state: ProfileState): Promise<ProfileState> => {
+  const normalizedSections = state.sections.map((section) => ({
+    ...section,
+    itemIds: normalizeSectionItemIds(section.itemIds ?? [], section.type)
+  }));
+  const sanitized = await sanitizeSectionRefs(normalizedSections);
+
   const nextState: ProfileState = {
     ...state,
+    sections: sanitized.sections,
     version: 1,
     meta: {
       ...state.meta,
@@ -239,54 +323,54 @@ export const buildSectionItems = async (
   section: ProfileSection,
   limit = 10
 ): Promise<ProfileSectionItem[]> => {
-  if (section.type === "folder") {
-    const folders = (await getAllFolders()).filter((folder) => folder.parentId == null);
-    const orderedIds = section.itemIds.length > 0 ? section.itemIds : folders.map((folder) => folder.id);
-    const byId = new Map(folders.map((folder) => [folder.id, folder]));
+  const selectableItems = await getProfileSelectableItems();
+  const byRefId = new Map(selectableItems.map((item) => [item.refId, item]));
 
-    return orderedIds
-      .map((id) => byId.get(id))
-      .filter((folder): folder is NonNullable<typeof folder> => !!folder)
-      .slice(0, limit)
-      .map((folder) => ({
-        id: folder.id,
-        title: folder.name,
-        subtitle: folder.description || "Pasta",
-        imageUri: folder.photoPath ?? folder.bannerPath ?? undefined,
-        refId: folder.id
-      }));
-  }
-
-  if (section.type === "files") {
-    const files = await getAllFiles();
-    const orderedIds = section.itemIds.length > 0 ? section.itemIds : files.map((file) => file.id);
-    const byId = new Map(files.map((file) => [file.id, file]));
-
-    return orderedIds
-      .map((id) => byId.get(id))
-      .filter((file): file is NonNullable<typeof file> => !!file)
-      .slice(0, limit)
-      .map((file) => ({
-        id: file.id,
-        title: file.name,
-        subtitle: file.type.toUpperCase(),
-        imageUri: file.thumbnailPath ?? file.bannerPath ?? (file.type === "image" ? file.path : undefined),
-        refId: file.id
-      }));
-  }
-
-  const notes = await getAllNotes();
-  const orderedIds = section.itemIds.length > 0 ? section.itemIds : notes.map((note) => note.id);
-  const byId = new Map(notes.map((note) => [note.id, note]));
-
-  return orderedIds
-    .map((id) => byId.get(id))
-    .filter((note): note is NonNullable<typeof note> => !!note)
+  return normalizeSectionItemIds(section.itemIds ?? [], section.type)
+    .map((refId) => byRefId.get(refId))
+    .filter((item): item is ProfileSelectableItem => !!item)
     .slice(0, limit)
-    .map((note) => ({
-      id: note.id,
-      title: note.title,
-      subtitle: (note.content || "").slice(0, 56),
-      refId: note.id
+    .map((item) => ({
+      id: item.refId,
+      title: item.title,
+      subtitle: item.subtitle,
+      imageUri: item.imageUri,
+      bannerUri: item.bannerUri,
+      avatarUri: item.avatarUri,
+      refId: item.refId,
+      sourceType: item.sourceType
     }));
+};
+
+export const getProfileSelectableItems = async (): Promise<ProfileSelectableItem[]> => {
+  const [folders, files, notes] = await Promise.all([getAllFolders(), getAllFiles(), getAllNotes()]);
+
+  const folderItems: ProfileSelectableItem[] = folders
+    .filter((folder) => folder.parentId == null)
+    .map((folder) => ({
+      refId: `folder:${folder.id}`,
+      sourceType: "folder",
+      title: folder.name,
+      subtitle: folder.description || "Pasta",
+      imageUri: folder.photoPath ?? folder.bannerPath ?? undefined,
+      bannerUri: folder.bannerPath ?? undefined,
+      avatarUri: folder.photoPath ?? undefined
+    }));
+
+  const fileItems: ProfileSelectableItem[] = files.map((file) => ({
+    refId: `files:${file.id}`,
+    sourceType: "files",
+    title: file.name,
+    subtitle: file.type.toUpperCase(),
+    imageUri: file.thumbnailPath ?? file.bannerPath ?? (file.type === "image" ? file.path : undefined)
+  }));
+
+  const noteItems: ProfileSelectableItem[] = notes.map((note) => ({
+    refId: `notes:${note.id}`,
+    sourceType: "notes",
+    title: note.title,
+    subtitle: (note.content || "").slice(0, 56)
+  }));
+
+  return [...folderItems, ...fileItems, ...noteItems];
 };

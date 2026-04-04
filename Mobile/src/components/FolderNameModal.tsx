@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Modal, View, StyleSheet, TextInput, Pressable, Image, ScrollView, ActivityIndicator } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { Text } from "./Text";
 import { FOLDER_COLOR_OPTIONS, getFolderColorHex } from "@utils/folderColors";
@@ -107,7 +108,7 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
             />
 
             <Text style={{ marginTop: spacing.md, marginBottom: spacing.xs }}>Folder photo (optional)</Text>
-            <View style={styles.mediaRow}>
+            <View style={styles.rowGap}>
               <Pressable
                 disabled={submitting}
                 onPress={async () => {
@@ -115,9 +116,10 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
                   const picked = await pickAndStoreImage("folder-photo");
                   if (picked) setPhotoPath(picked);
                 }}
-                style={[styles.mediaButton, { borderColor: theme.colors.border }]}
+                style={[styles.pickButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}
               >
-                <Text>Upload photo</Text>
+                <Ionicons name="person-circle-outline" size={16} color={theme.colors.textPrimary} />
+                <Text>Alterar foto</Text>
               </Pressable>
               {!!photoPath && (
                 <Pressable disabled={submitting} onPress={() => setPhotoPath(null)} style={styles.secondaryButtonInline}>
@@ -128,7 +130,7 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
             {!!photoPath && <Image source={{ uri: photoPath }} style={styles.photoPreview} resizeMode="cover" />}
 
             <Text style={{ marginTop: spacing.md, marginBottom: spacing.xs }}>Folder banner (optional)</Text>
-            <View style={styles.mediaRow}>
+            <View style={styles.rowGap}>
               <Pressable
                 disabled={submitting}
                 onPress={async () => {
@@ -136,9 +138,10 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
                   const picked = await pickAndStoreImage("folder-banner");
                   if (picked) setBannerPath(picked);
                 }}
-                style={[styles.mediaButton, { borderColor: theme.colors.border }]}
+                style={[styles.pickButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}
               >
-                <Text>Upload banner</Text>
+                <Ionicons name="image-outline" size={16} color={theme.colors.textPrimary} />
+                <Text>Alterar banner</Text>
               </Pressable>
               {!!bannerPath && (
                 <Pressable disabled={submitting} onPress={() => setBannerPath(null)} style={styles.secondaryButtonInline}>
@@ -255,16 +258,17 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
     gap: spacing.sm
   },
-  mediaRow: {
-    flexDirection: "row",
-    alignItems: "center",
+  rowGap: {
     gap: spacing.sm
   },
-  mediaButton: {
+  pickButton: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8
   },
   secondaryButtonInline: {
     paddingHorizontal: spacing.xs,
