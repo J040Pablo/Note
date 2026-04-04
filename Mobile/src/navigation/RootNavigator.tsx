@@ -15,6 +15,7 @@ import SaveSharedFileScreen from "@screens/SaveSharedFileScreen";
 import ImportFolderPackageScreen from "@screens/ImportFolderPackageScreen";
 import TasksScreen from "@screens/TasksScreen";
 import SettingsScreen from "@screens/SettingsScreen";
+import ProfileScreen from "@screens/ProfileScreen";
 import NotificationsScreen from "@screens/NotificationsScreen";
 import { useTheme } from "@hooks/useTheme";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -22,6 +23,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 export type RootStackParamList = {
   Tabs: NavigatorScreenParams<TabsParamList> | undefined;
+  Settings: undefined;
   NoteEditor: { noteId?: string; folderId?: string | null };
   QuickNote: { quickNoteId?: string; folderId?: string | null };
   PdfViewer: { path: string; name: string };
@@ -41,7 +43,7 @@ export type TabsParamList = {
   Search: undefined;
   Folders: NavigatorScreenParams<FoldersStackParamList> | undefined;
   Tasks: { focusTaskId?: string; dateKey?: string; openCreate?: boolean } | undefined;
-  Settings: undefined;
+  Profile: undefined;
 };
 
 const RootStack = createNativeStackNavigator<RootStackParamList>();
@@ -127,7 +129,7 @@ const TabsNavigator = () => {
           if (route.name === "Search") iconName = "search";
           if (route.name === "Folders") iconName = "folder";
           if (route.name === "Tasks") iconName = "checkmark-done";
-          if (route.name === "Settings") iconName = "settings";
+          if (route.name === "Profile") iconName = "person";
           
           return (
             <Ionicons 
@@ -143,7 +145,7 @@ const TabsNavigator = () => {
       <Tab.Screen name="Search" component={SearchScreen} />
       <Tab.Screen name="Folders" component={FoldersStackNavigator} />
       <Tab.Screen name="Tasks" component={TasksScreen} />
-      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
 };
@@ -170,6 +172,15 @@ const RootNavigator = () => {
         name="Tabs"
         component={TabsNavigator}
         options={{ headerShown: false }}
+      />
+      <RootStack.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          headerShown: true,
+          title: "Settings",
+          animation: "slide_from_right"
+        }}
       />
       <RootStack.Screen
         name="NoteEditor"
