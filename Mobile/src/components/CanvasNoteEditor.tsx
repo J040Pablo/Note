@@ -536,6 +536,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const [showRenamePageModal, setShowRenamePageModal] = useState(false);
   const [renamePageDraft, setRenamePageDraft] = useState("");
   const [alignmentGuides, setAlignmentGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+  const [isElementDragging, setIsElementDragging] = useState(false);
   const [showPencilModal, setShowPencilModal] = useState(false);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
@@ -759,8 +760,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     if (pendingFocusTextId === id) setPendingFocusTextId(null);
   }, [pendingFocusTextId]);
 
+  const clearAlignmentGuides = useCallback(() => {
+    setAlignmentGuides((prev) => (prev.x === null && prev.y === null ? prev : { x: null, y: null }));
+  }, []);
+
   const clearSelection = useCallback(() => {
     setSelectedId(null);
+    setIsElementDragging(false);
+    clearAlignmentGuides();
     setTextInteractionMode("move");
     // Keep drawing mode active; otherwise drawing touch layer is disabled mid-stroke.
     setMode(drawingMode ? "draw" : "select");
@@ -768,7 +775,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     setShowStylePanel(false);
     setShowAlignMenu(false);
     Keyboard.dismiss();
-  }, [drawingMode]);
+  }, [clearAlignmentGuides, drawingMode]);
+
+  useEffect(() => {
+    if (selectedId) return;
+    setIsElementDragging(false);
+    clearAlignmentGuides();
+  }, [clearAlignmentGuides, selectedId]);
 
   useEffect(() => {
     if (!pendingFocusTextId) return;
@@ -857,9 +870,11 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     setShowStylePanel(false);
     setShowAlignMenu(false);
     setSelectedId(null);
+    setIsElementDragging(false);
+    clearAlignmentGuides();
     setPendingFocusTextId(null);
     elementInteractionRef.current = null;
-  }, [editable]);
+  }, [clearAlignmentGuides, editable]);
 
   const getDefaultTargetPageId = useCallback((): ID | null => {
     if (selectedPageId) return selectedPageId;
@@ -943,6 +958,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       if (!editable || drawingMode || textInteractionMode === "edit") return;
       pushUndoSnapshot();
       setSelectedId(el.id);
+      setIsElementDragging(mode === "move");
+      if (mode !== "move") clearAlignmentGuides();
       setTextInteractionMode("move");
       bringToFront(el.id);
       elementInteractionRef.current = {
@@ -957,7 +974,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         startPageY: evt.nativeEvent.pageY
       };
     },
-    [bringToFront, drawingMode, editable, pushUndoSnapshot, textInteractionMode]
+    [bringToFront, clearAlignmentGuides, drawingMode, editable, pushUndoSnapshot, textInteractionMode]
   );
 
   const handleElementMovePressIn = useCallback(
@@ -1477,13 +1494,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 ? getSnappedMove(interaction.elementId, interaction.startElX + dxEl, interaction.startElY + dyEl)
                 : null;
             if (interaction.mode === "move") {
+              setIsElementDragging(true);
               setAlignmentGuides((prevGuides) => {
                 const nextGuides = { x: snapped?.guideX ?? null, y: snapped?.guideY ?? null };
                 if (prevGuides.x === nextGuides.x && prevGuides.y === nextGuides.y) return prevGuides;
                 return nextGuides;
               });
             } else {
-              setAlignmentGuides((prevGuides) => (prevGuides.x === null && prevGuides.y === null ? prevGuides : { x: null, y: null }));
+              clearAlignmentGuides();
             }
 
             const nextEls = prev.elements.map((cur) => {
@@ -1581,7 +1599,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
           canvasPanStateRef.current = null;
-          setAlignmentGuides({ x: null, y: null });
+          setIsElementDragging(false);
+          clearAlignmentGuides();
         },
 
         onPanResponderTerminate: () => {
@@ -1600,7 +1619,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           elementInteractionRef.current = null;
           pinchStateRef.current = null;
           canvasPanStateRef.current = null;
-          setAlignmentGuides({ x: null, y: null });
+          setIsElementDragging(false);
+          clearAlignmentGuides();
         }
       }),
     [
@@ -1614,6 +1634,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       pageSwipeX,
       pagesById,
       drawingSmoothness,
+      clearAlignmentGuides,
       getSnappedMove,
       selectedTextElement,
       textInteractionMode,
@@ -2315,6 +2336,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     [doc.pageHeight, doc.pageWidth, drawingsByPage, sortedElements]
   );
 
+  const shouldShowAlignmentGuides = (isElementDragging || !!selectedId) && (alignmentGuides.x !== null || alignmentGuides.y !== null);
+
   return (
     <View
       ref={rootRef}
@@ -2501,7 +2524,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
               </View>
             ) : null}
 
-            {alignmentGuides.x !== null && (
+            {shouldShowAlignmentGuides && alignmentGuides.x !== null && (
               <View
                 pointerEvents="none"
                 style={[
@@ -2514,7 +2537,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
               />
             )}
 
-            {alignmentGuides.y !== null && (
+            {shouldShowAlignmentGuides && alignmentGuides.y !== null && (
               <View
                 pointerEvents="none"
                 style={[
