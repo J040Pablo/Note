@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable, Image, LayoutAnimation, Animated, Share, Alert } from "react-native";
+import { View, StyleSheet, Pressable, Image, LayoutAnimation, Animated, Share, Alert, useWindowDimensions, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFeedback } from "@components/FeedbackProvider";
 import { Screen } from "@components/Layout";
@@ -27,12 +27,12 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { FoldersStackParamList } from "@navigation/RootNavigator";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { FolderNameModal } from "@components/FolderNameModal";
-import type { Folder, Note, QuickNote, ID } from "@models/types";
+import type { Folder, ID } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
+import { DraggableGrid } from "react-native-draggable-grid";
 import { useSelection } from "@hooks/useSelection";
 import { exportFolderPackageAndShare } from "@services/folderPackageService";
-
 const firstLine = (text: string): string => {
   if (!text) return "";
   return text.split("\n")[0].slice(0, 90);
@@ -40,6 +40,7 @@ const firstLine = (text: string): string => {
 
 type SelectableKind = "folder" | "note" | "quick";
 type SelectedItem = { kind: SelectableKind; id: ID; label: string };
+type GridFolderItem = Folder & { key: string; disabledDrag?: boolean };
 
 type Nav = NativeStackNavigationProp<FoldersStackParamList, "FoldersRoot">;
 type FolderSortMode = "custom" | "recent" | "name_asc" | "name_desc";
@@ -52,11 +53,17 @@ const FLOATING_TAB_BAR_MIN_BOTTOM = 16;
 const LIST_BOTTOM_EXTRA = 140;
 const TOP_PADDING_DEFAULT = 24;
 const TOP_PADDING_WITH_SELECTION = 80;
+const GRID_COLUMNS = 2;
+const GRID_PADDING = 12;
+const GRID_GAP = 20;
+const GRID_ITEM_HEIGHT = 178;
+const GRID_CELL_HEIGHT = GRID_ITEM_HEIGHT + GRID_GAP;
 
 const FoldersScreen: React.FC = () => {
   const { theme } = useTheme();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
   const folders = useAppStore((s) => s.folders);
@@ -87,9 +94,10 @@ const FoldersScreen: React.FC = () => {
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [folderDeleting, setFolderDeleting] = useState(false);
   const [activeDragFolderId, setActiveDragFolderId] = useState<ID | null>(null);
+  const [gridFoldersData, setGridFoldersData] = useState<GridFolderItem[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
 
-  // Debounce refs — ensure rapid drags only trigger one DB write (last-wins).
   const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestOrderRef = useRef<string[]>([]);
 
@@ -110,16 +118,20 @@ const FoldersScreen: React.FC = () => {
     })();
   }, [setFolders, setPinnedItems, setNotes, setQuickNotes]);
 
-  const rootFolders = Object.values(folders)
-    .filter((f) => f.parentId == null)
-    .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+  const rootFolders = useMemo(
+    () =>
+      Object.values(folders)
+        .filter((f) => f.parentId == null)
+        .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
+    [folders]
+  );
 
-  const visibleFolders = (() => {
+  const visibleFolders = useMemo(() => {
     if (sortMode === "name_asc") return [...rootFolders].sort((a, b) => a.name.localeCompare(b.name));
     if (sortMode === "name_desc") return [...rootFolders].sort((a, b) => b.name.localeCompare(a.name));
     if (sortMode === "recent") return [...rootFolders].sort((a, b) => b.createdAt - a.createdAt);
     return [...rootFolders].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
-  })();
+  }, [rootFolders, sortMode]);
 
   const looseNotes = useMemo(
     () => Object.values(notesMap).filter((n) => n.folderId == null),
@@ -162,6 +174,91 @@ const FoldersScreen: React.FC = () => {
       FLOATING_TAB_BAR_HEIGHT +
       LIST_BOTTOM_EXTRA,
     [insets.bottom]
+  );
+
+  const gridItemWidth = useMemo(() => {
+    return (width - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
+  }, [width]);
+
+  const canDragReorder = sortMode === "custom" && selectionMode;
+
+  const tryStartDrag = useCallback(
+    (drag: () => void) => {
+      if (selectionMode) {
+        showToast("Desative a seleção para reordenar");
+        return;
+      }
+      if (sortMode !== "custom") {
+        showToast("Use ordenação: Custom order para reordenar");
+        return;
+      }
+      drag();
+    },
+    [selectionMode, showToast, sortMode]
+  );
+
+  const persistFolderOrder = useCallback(
+    (ordered: string[] | Array<{ id: string }>) => {
+      const orderedIds = typeof ordered[0] === "string"
+        ? (ordered as string[])
+        : (ordered as Array<{ id: string }>).map((item) => item.id);
+
+      setActiveDragFolderId(null);
+
+      reorderFoldersInStore(orderedIds);
+      setSortMode("custom");
+
+      latestOrderRef.current = orderedIds;
+      if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
+      reorderTimerRef.current = setTimeout(() => {
+        reorderTimerRef.current = null;
+        const ids = latestOrderRef.current;
+        saveSortPreference(FOLDER_SORT_SCOPE, "custom");
+        reorderFolders(null, ids);
+      }, 300);
+    },
+    [reorderFoldersInStore]
+  );
+
+  useEffect(() => {
+    if (!canDragReorder) {
+      setActiveDragFolderId(null);
+    }
+  }, [canDragReorder]);
+
+  useEffect(() => {
+    if (viewMode !== "grid") return;
+    setGridFoldersData(
+      visibleFolders.map((folder) => ({
+        ...folder,
+        key: folder.id
+      }))
+    );
+  }, [viewMode, visibleFolders]);
+
+  useEffect(() => {
+    return () => {
+      if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
+    };
+  }, []);
+
+  const handleListDragEnd = useCallback(
+    ({ data }: { data: Folder[] }) => {
+      persistFolderOrder(data.map((x) => x.id));
+    },
+    [persistFolderOrder]
+  );
+
+  const handleGridReorder = useCallback(
+    (data: GridFolderItem[]) => {
+      const normalized = data.map((folder) => ({
+        ...folder,
+        key: folder.id
+      }));
+      setGridFoldersData(normalized);
+      persistFolderOrder(normalized);
+    },
+    [canDragReorder, persistFolderOrder]
   );
 
   const handleClearSelection = useCallback(() => {
@@ -319,6 +416,127 @@ const FoldersScreen: React.FC = () => {
     }
   }, [closeFab, fabOpen, openFab]);
 
+  const looseNotesSection = (looseNotes.length || looseQuickNotes.length) ? (
+    <View style={{ marginTop: 10 }}>
+      <Text variant="subtitle">Loose notes</Text>
+      {looseNotes.map((note) => (
+        <Pressable
+          key={`note-${note.id}`}
+          onLongPress={() => startSelection({ kind: "note", id: note.id, label: note.title })}
+          delayLongPress={260}
+          onPress={() => {
+            if (selectionMode) {
+              toggleSelection({ kind: "note", id: note.id, label: note.title });
+              return;
+            }
+            withLock(() => {
+              navigation.getParent()?.getParent()?.navigate("NoteEditor", { noteId: note.id, folderId: null });
+            });
+          }}
+          style={[
+            styles.folderCard,
+            {
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.card,
+              shadowColor: theme.colors.textPrimary,
+              marginBottom: 6,
+              borderWidth: 2
+            },
+            isSelected({ kind: "note", id: note.id, label: note.title }) && {
+              borderColor: theme.colors.primary
+            }
+          ]}
+        >
+          <View style={styles.folderBody}>
+            <View
+              style={[
+                styles.avatar,
+                {
+                  borderRadius: 11,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: theme.colors.surfaceElevated
+                }
+              ]}
+            >
+              <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.folderTitle} numberOfLines={1}>
+                {note.title}
+              </Text>
+              {!!firstLine(note.content) && (
+                <Text muted variant="caption" numberOfLines={1}>
+                  {firstLine(note.content)}
+                </Text>
+              )}
+            </View>
+          </View>
+          <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, label: note.title })} />
+        </Pressable>
+      ))}
+      {looseQuickNotes.map((quick) => (
+        <Pressable
+          key={`quick-${quick.id}`}
+          onLongPress={() => startSelection({ kind: "quick", id: quick.id, label: quick.title })}
+          delayLongPress={260}
+          onPress={() => {
+            if (selectionMode) {
+              toggleSelection({ kind: "quick", id: quick.id, label: quick.title });
+              return;
+            }
+            withLock(() => {
+              navigation.getParent()?.getParent()?.navigate("QuickNote", {
+                quickNoteId: quick.id,
+                folderId: null
+              });
+            });
+          }}
+          style={[
+            styles.folderCard,
+            {
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.card,
+              shadowColor: theme.colors.textPrimary,
+              marginBottom: 6,
+              borderWidth: 2
+            },
+            isSelected({ kind: "quick", id: quick.id, label: quick.title }) && {
+              borderColor: theme.colors.primary
+            }
+          ]}
+        >
+          <View style={styles.folderBody}>
+            <View
+              style={[
+                styles.avatar,
+                {
+                  borderRadius: 11,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  backgroundColor: theme.colors.surfaceElevated
+                }
+              ]}
+            >
+              <Ionicons name="flash-outline" size={18} color={theme.colors.textSecondary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.folderTitle} numberOfLines={1}>
+                {quick.title}
+              </Text>
+              {!!firstLine(quick.content) && (
+                <Text muted variant="caption" numberOfLines={1}>
+                  {firstLine(quick.content)}
+                </Text>
+              )}
+            </View>
+          </View>
+          <SelectionIndicator visible={isSelected({ kind: "quick", id: quick.id, label: quick.title })} />
+        </Pressable>
+      ))}
+    </View>
+  ) : null;
+
   return (
     <Screen>
       <View style={styles.headerRow}>
@@ -385,323 +603,223 @@ const FoldersScreen: React.FC = () => {
         )}
       </View>
 
-      <DraggableFlatList
-        key={viewMode}
-        contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
-        data={visibleFolders}
-        keyExtractor={(item) => item.id}
-        numColumns={viewMode === "grid" ? 2 : 1}
-        columnWrapperStyle={viewMode === "grid" ? styles.gridColumn : undefined}
-        dragItemOverflow
-        animationConfig={{ damping: 22, mass: 0.35, stiffness: 190 }}
-        initialNumToRender={10}
-        maxToRenderPerBatch={8}
-        windowSize={9}
-        removeClippedSubviews
-        activationDistance={12}
-        onDragBegin={(index) => {
-          const dragged = visibleFolders[index];
-          setActiveDragFolderId(dragged?.id ?? null);
-        }}
-        onRelease={() => undefined}
-        renderPlaceholder={() => <View style={styles.staticDragPlaceholder} />}
-        ListFooterComponent={
-          (looseNotes.length || looseQuickNotes.length) ? (
-            <View style={{ marginTop: 10 }}>
-              <Text variant="subtitle">Loose notes</Text>
-              {looseNotes.map((note) => (
-                <Pressable
-                  key={`note-${note.id}`}
-                  onLongPress={() => startSelection({ kind: "note", id: note.id, label: note.title })}
-                  delayLongPress={260}
-                  onPress={() => {
-                    if (selectionMode) {
-                      toggleSelection({ kind: "note", id: note.id, label: note.title });
-                      return;
-                    }
-                    withLock(() => {
-                      navigation.getParent()?.getParent()?.navigate("NoteEditor", { noteId: note.id, folderId: null });
-                    });
-                  }}
-                  style={[
-                    styles.folderCard,
-                    {
-                      borderColor: theme.colors.border,
-                      backgroundColor: theme.colors.card,
-                      shadowColor: theme.colors.textPrimary,
-                      marginBottom: 6,
-                      borderWidth: 2
-                    },
-                    isSelected({ kind: "note", id: note.id, label: note.title }) && {
-                      borderColor: theme.colors.primary
-                    }
-                  ]}
-                >
-                  <View style={styles.folderBody}>
-                    <View
-                      style={[
-                        styles.avatar,
-                        {
-                          borderRadius: 11,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: theme.colors.surfaceElevated
-                        }
-                      ]}
-                    >
-                      <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.folderTitle} numberOfLines={1}>
-                        {note.title}
-                      </Text>
-                      {!!firstLine(note.content) && (
-                        <Text muted variant="caption" numberOfLines={1}>
-                          {firstLine(note.content)}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, label: note.title })} />
-                </Pressable>
-              ))}
-              {looseQuickNotes.map((quick) => (
-                <Pressable
-                  key={`quick-${quick.id}`}
-                  onLongPress={() => startSelection({ kind: "quick", id: quick.id, label: quick.title })}
-                  delayLongPress={260}
-                  onPress={() => {
-                    if (selectionMode) {
-                      toggleSelection({ kind: "quick", id: quick.id, label: quick.title });
-                      return;
-                    }
-                    withLock(() => {
-                      navigation.getParent()?.getParent()?.navigate("QuickNote", {
-                        quickNoteId: quick.id,
-                        folderId: null
-                      });
-                    });
-                  }}
-                  style={[
-                    styles.folderCard,
-                    {
-                      borderColor: theme.colors.border,
-                      backgroundColor: theme.colors.card,
-                      shadowColor: theme.colors.textPrimary,
-                      marginBottom: 6,
-                      borderWidth: 2
-                    },
-                    isSelected({ kind: "quick", id: quick.id, label: quick.title }) && {
-                      borderColor: theme.colors.primary
-                    }
-                  ]}
-                >
-                  <View style={styles.folderBody}>
-                    <View
-                      style={[
-                        styles.avatar,
-                        {
-                          borderRadius: 11,
-                          alignItems: "center",
-                          justifyContent: "center",
-                          backgroundColor: theme.colors.surfaceElevated
-                        }
-                      ]}
-                    >
-                      <Ionicons name="flash-outline" size={18} color={theme.colors.textSecondary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.folderTitle} numberOfLines={1}>
-                        {quick.title}
-                      </Text>
-                      {!!firstLine(quick.content) && (
-                        <Text muted variant="caption" numberOfLines={1}>
-                          {firstLine(quick.content)}
-                        </Text>
-                      )}
-                    </View>
-                  </View>
-                  <SelectionIndicator visible={isSelected({ kind: "quick", id: quick.id, label: quick.title })} />
-                </Pressable>
-              ))}
-            </View>
-          ) : null
-        }
-        onDragEnd={useCallback(({ data }: { data: typeof visibleFolders }) => {
-          const orderedIds = data.map((x) => x.id);
-          setActiveDragFolderId(null);
-
-          // 1. Optimistic UI: update orderIndex in-place — no full map replace, no flicker.
-          reorderFoldersInStore(orderedIds);
-          setSortMode("custom");
-
-          // 2. Debounced persist: last-wins so rapid drags never race.
-          latestOrderRef.current = orderedIds;
-          if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
-          reorderTimerRef.current = setTimeout(() => {
-            reorderTimerRef.current = null;
-            const ids = latestOrderRef.current;
-            saveSortPreference(FOLDER_SORT_SCOPE, "custom");
-            reorderFolders(null, ids);
-          }, 300);
-        }, [reorderFoldersInStore])}
-        renderItem={({ item, drag, isActive }: RenderItemParams<Folder>) => {
-          if (viewMode === "list") {
-            return (
-              <Pressable
-                onLongPress={() => {
+      {viewMode === "grid" ? (
+        <ScrollView
+          scrollEnabled={!isDragging}
+          contentContainerStyle={{ paddingTop: 8, paddingHorizontal: GRID_PADDING, paddingBottom: 120 }}
+          showsVerticalScrollIndicator={false}
+        >
+          {gridFoldersData.length ? (
+            <DraggableGrid<GridFolderItem>
+              disabled={!canDragReorder}
+              numColumns={GRID_COLUMNS}
+              itemHeight={GRID_CELL_HEIGHT}
+              style={styles.gridSurface}
+              data={gridFoldersData}
+              delayLongPress={250}
+              onDragStart={(item) => {
+                setActiveDragFolderId(item.id);
+                setIsDragging(true);
+              }}
+              onDragItemActive={(item) => {
+                setActiveDragFolderId(item.id);
+              }}
+              onDragRelease={(data) => {
+                setIsDragging(false);
+                handleGridReorder(data);
+              }}
+              onItemPress={(item) => {
+                if (selectionMode) {
+                  toggleSelection({ kind: "folder", id: item.id, label: item.name });
+                  return;
+                }
+                withLock(() => {
+                  navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id], from: "folders" });
+                  addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
+                });
+              }}
+              onItemLongPress={(item) => {
+                if (!selectionMode) {
                   startSelection({ kind: "folder", id: item.id, label: item.name });
-                }}
-                delayLongPress={260}
-                onPress={() => {
-                  if (selectionMode) {
-                    toggleSelection({ kind: "folder", id: item.id, label: item.name });
-                    return;
-                  }
-                  withLock(() => {
-                    navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id], from: "folders" });
-                    addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
-                  });
-                }}
-                style={[
-                  styles.folderCard,
-                  { borderColor: theme.colors.border, borderWidth: 2, backgroundColor: theme.colors.card, shadowColor: theme.colors.textPrimary },
-                  isSelected({ kind: "folder", id: item.id, label: item.name }) && {
-                    borderColor: theme.colors.primary
-                  },
-                  (isActive || activeDragFolderId === item.id) && {
-                    opacity: 0.96,
-                    backgroundColor: theme.colors.primaryAlpha20,
-                    transform: [{ scale: 1.03 }],
-                    shadowOpacity: 0.24,
-                    shadowRadius: 10,
-                    shadowOffset: { width: 0, height: 6 },
-                    elevation: 10,
-                  }
-                ]}
-              >
-                {!!item.bannerPath && <Image source={{ uri: item.bannerPath }} style={styles.banner} resizeMode="cover" />}
-                <View style={styles.folderBody}>
-                  {item.photoPath ? (
-                    <Image source={{ uri: item.photoPath }} style={styles.avatar} resizeMode="cover" />
-                  ) : (
-                    <FolderIcon color={item.color} fallbackColor={theme.colors.primary} size={20} />
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.folderTitle}>{item.name}</Text>
-                    {!!item.description && (
-                      <Text muted variant="caption" numberOfLines={2}>
-                        {item.description}
-                      </Text>
-                    )}
-                  </View>
-                  <Pressable
-                    onPressIn={(event) => event.stopPropagation()}
-                    onLongPress={(event) => {
-                      event.stopPropagation();
-                      drag();
-                    }}
-                    delayLongPress={220}
-                    hitSlop={8}
-                    style={styles.dragHandle}
+                  return;
+                }
+                toggleSelection({ kind: "folder", id: item.id, label: item.name });
+              }}
+              renderItem={(item: GridFolderItem, index: number) => (
+                <View
+                  style={[
+                    styles.gridItem,
+                    {
+                      width: gridItemWidth,
+                      height: GRID_CELL_HEIGHT,
+                      marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
+                    }
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.folderGridCard,
+                      {
+                        flex: 0,
+                        minHeight: GRID_ITEM_HEIGHT,
+                        height: GRID_ITEM_HEIGHT,
+                        marginHorizontal: 0
+                      },
+                      {
+                        borderColor: theme.colors.border,
+                        borderWidth: 2,
+                        backgroundColor: theme.colors.card,
+                        shadowColor: theme.colors.textPrimary
+                      },
+                      isSelected({ kind: "folder", id: item.id, label: item.name }) && {
+                        borderColor: theme.colors.primary
+                      },
+                      activeDragFolderId === item.id && {
+                        opacity: 0.96,
+                        backgroundColor: theme.colors.primaryAlpha20,
+                        transform: [{ scale: 1.03 }],
+                        shadowOpacity: 0.24,
+                        shadowRadius: 10,
+                        shadowOffset: { width: 0, height: 6 },
+                        elevation: 10,
+                      },
+                      selectionMode && {
+                        transform: [{ scale: 0.98 }]
+                      }
+                    ]}
                   >
-                    <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
-                  </Pressable>
-                </View>
-                <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, label: item.name })} />
-              </Pressable>
-            );
-          }
-
-          return (
-            <View style={styles.gridItem}>
-              <Pressable
-                onLongPress={() => {
-                  startSelection({ kind: "folder", id: item.id, label: item.name });
-                }}
-                delayLongPress={260}
-                onPress={() => {
-                  if (selectionMode) {
-                    toggleSelection({ kind: "folder", id: item.id, label: item.name });
-                    return;
-                  }
-                  withLock(() => {
-                    navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id], from: "folders" });
-                    addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
-                  });
-                }}
-                style={[
-                  styles.folderGridCard,
-                  {
-                    borderColor: theme.colors.border,
-                    borderWidth: 2,
-                    backgroundColor: theme.colors.card,
-                    shadowColor: theme.colors.textPrimary
-                  },
-                  isSelected({ kind: "folder", id: item.id, label: item.name }) && {
-                    borderColor: theme.colors.primary
-                  },
-                  (isActive || activeDragFolderId === item.id) && {
-                    opacity: 0.96,
-                    backgroundColor: theme.colors.primaryAlpha20,
-                    transform: [{ scale: 1.03 }],
-                    shadowOpacity: 0.24,
-                    shadowRadius: 10,
-                    shadowOffset: { width: 0, height: 6 },
-                    elevation: 10,
-                  }
-                ]}
-              >
-                {item.bannerPath ? (
-                  <Image
-                    source={{ uri: item.bannerPath }}
-                    style={styles.gridBanner}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View style={[styles.gridBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
-                )}
-                <View style={styles.gridFolderBody}>
-                  {item.photoPath ? (
-                    <Image
-                      source={{ uri: item.photoPath }}
-                      style={styles.gridAvatar}
-                      resizeMode="cover"
-                    />
-                  ) : (
-                      <View style={[styles.gridAvatarPlaceholder, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                      <FolderIcon
-                        color={item.color}
-                        fallbackColor={theme.colors.primary}
-                        size={18}
-                          plain
-                      />
-                    </View>
-                  )}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.gridFolderTitle} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    {!!item.description && (
-                      <Text muted variant="caption" numberOfLines={2} style={styles.gridDescription}>
-                        {item.description}
-                      </Text>
+                    {item.bannerPath ? (
+                      <Image source={{ uri: item.bannerPath }} style={styles.gridBanner} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.gridBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
                     )}
+                    <View style={styles.gridFolderBody}>
+                      {item.photoPath ? (
+                        <Image source={{ uri: item.photoPath }} style={styles.gridAvatar} resizeMode="cover" />
+                      ) : (
+                        <View style={[styles.gridAvatarPlaceholder, { backgroundColor: theme.colors.surfaceElevated }]}> 
+                          <FolderIcon color={item.color} fallbackColor={theme.colors.primary} size={18} plain />
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.gridFolderTitle} numberOfLines={1}>
+                          {item.name}
+                        </Text>
+                        {!!item.description && (
+                          <Text muted variant="caption" numberOfLines={2} style={styles.gridDescription}>
+                            {item.description}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
+                    <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, label: item.name })} />
                   </View>
                 </View>
-                <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, label: item.name })} />
+              )}
+            />
+          ) : (
+            <Text muted style={styles.emptyText}>
+              No folders here yet.
+            </Text>
+          )}
 
-                {/* Drag temporariamente desativado no modo grid */}
-              </Pressable>
-            </View>
-          );
-        }}
-        ListEmptyComponent={
-          <Text muted style={styles.emptyText}>
-            No folders here yet.
-          </Text>
-        }
-      />
+          {/* LOOSE NOTES - renderizado dentro do ScrollView */}
+          <View style={{ marginTop: 16 }}>{looseNotesSection}</View>
+        </ScrollView>
+      ) : (
+        <DraggableFlatList
+          key={viewMode}
+          contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
+          data={visibleFolders}
+          keyExtractor={(item) => item.id}
+          numColumns={1}
+          dragItemOverflow
+          animationConfig={{ damping: 22, mass: 0.35, stiffness: 190 }}
+          initialNumToRender={10}
+          maxToRenderPerBatch={8}
+          windowSize={9}
+          removeClippedSubviews
+          activationDistance={12}
+          onDragBegin={(index) => {
+            const dragged = visibleFolders[index];
+            setActiveDragFolderId(dragged?.id ?? null);
+          }}
+          onRelease={() => undefined}
+          renderPlaceholder={() => <View style={styles.staticDragPlaceholder} />}
+          ListFooterComponent={looseNotesSection}
+          onDragEnd={handleListDragEnd}
+          renderItem={({ item, drag, isActive }: RenderItemParams<Folder>) => (
+            <Pressable
+              onLongPress={() => {
+                startSelection({ kind: "folder", id: item.id, label: item.name });
+              }}
+              delayLongPress={260}
+              onPress={() => {
+                if (selectionMode) {
+                  toggleSelection({ kind: "folder", id: item.id, label: item.name });
+                  return;
+                }
+                withLock(() => {
+                  navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id], from: "folders" });
+                  addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
+                });
+              }}
+              style={[
+                styles.folderCard,
+                { borderColor: theme.colors.border, borderWidth: 2, backgroundColor: theme.colors.card, shadowColor: theme.colors.textPrimary },
+                isSelected({ kind: "folder", id: item.id, label: item.name }) && {
+                  borderColor: theme.colors.primary
+                },
+                (isActive || activeDragFolderId === item.id) && {
+                  opacity: 0.96,
+                  backgroundColor: theme.colors.primaryAlpha20,
+                  transform: [{ scale: 1.03 }],
+                  shadowOpacity: 0.24,
+                  shadowRadius: 10,
+                  shadowOffset: { width: 0, height: 6 },
+                  elevation: 10,
+                }
+              ]}
+            >
+              {!!item.bannerPath && <Image source={{ uri: item.bannerPath }} style={styles.banner} resizeMode="cover" />}
+              <View style={styles.folderBody}>
+                {item.photoPath ? (
+                  <Image source={{ uri: item.photoPath }} style={styles.avatar} resizeMode="cover" />
+                ) : (
+                  <FolderIcon color={item.color} fallbackColor={theme.colors.primary} size={20} />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.folderTitle}>{item.name}</Text>
+                  {!!item.description && (
+                    <Text muted variant="caption" numberOfLines={2}>
+                      {item.description}
+                    </Text>
+                  )}
+                </View>
+                <Pressable
+                  onPressIn={(event) => event.stopPropagation()}
+                  onLongPress={(event) => {
+                    event.stopPropagation();
+                    tryStartDrag(drag);
+                  }}
+                  delayLongPress={220}
+                  hitSlop={8}
+                  style={[styles.dragHandle, !canDragReorder && { opacity: 0.45 }]}
+                >
+                  <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
+                </Pressable>
+              </View>
+              <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, label: item.name })} />
+            </Pressable>
+          )}
+          ListEmptyComponent={
+            <Text muted style={styles.emptyText}>
+              No folders here yet.
+            </Text>
+          }
+        />
+      )}
 
       <ContextActionMenu
         visible={showSortMenu}
@@ -1092,16 +1210,11 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     gap: 8
   },
-  gridColumn: {
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginHorizontal: 0,
-    paddingHorizontal: 0
+  gridSurface: {
+    width: "100%"
   },
   gridItem: {
-    flex: 1,
-    marginBottom: 8,
-    paddingHorizontal: 4
+    justifyContent: "flex-start"
   },
   folderGridCard: {
     flex: 1,
@@ -1137,19 +1250,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden"
-  },
-  gridDragHandle: {
-    position: "absolute",
-    bottom: 8,
-    right: 8,
-    zIndex: 3,
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "transparent"
   },
   gridFolderTitle: {
     fontWeight: "600",

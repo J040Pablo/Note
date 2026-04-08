@@ -71,9 +71,10 @@ const MAX_STROKE_CONNECT_DISTANCE = 240;
 const MAX_INTERPOLATED_POINTS_PER_MOVE = 64;
 const DRAW_TOUCH_PAD = 1000;
 const SNAP_THRESHOLD = 8;
+const DOUBLE_TAP_MS = 280;
 const makeLocalId = (): ID => `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
 
-type InteractionMode = "move" | "resize";
+type InteractionMode = "move" | "resize" | "rotate";
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 type DrawingToolMode = "pencil" | "transparentPencil" | "eraser" | null;
 type EditorInteractionMode = "draw" | "select" | "text";
@@ -95,6 +96,7 @@ interface ElementInteraction {
   startElY: number;
   startElW: number;
   startElH: number;
+  startElRotation: number;
   startPageX: number;
   startPageY: number;
 }
@@ -242,6 +244,7 @@ interface ElementProps {
   selected: boolean;
   editable: boolean;
   isTextEditing: boolean;
+  isDragging: boolean;
   primaryColor: string;
   surfaceElevated: string;
   defaultTextColor: string;
@@ -250,7 +253,9 @@ interface ElementProps {
   onTextFocused: (id: string) => void;
   onSelect: (id: string) => void;
   onEnterTextEdit: (id: string) => void;
+  onSetTextMoveMode: (id: string) => void;
   onMovePressIn: (el: CanvasElement, evt: GestureResponderEvent) => void;
+  onRotatePressIn: (el: CanvasElement, evt: GestureResponderEvent) => void;
   onResizePressIn: (el: CanvasElement, handle: ResizeHandle, evt: GestureResponderEvent) => void;
   onChangeText: (id: string, text: string) => void;
   onTextSizeChange: (id: string, h: number) => void;
@@ -262,6 +267,7 @@ const CanvasElementView = memo(
     selected,
     editable,
     isTextEditing,
+    isDragging,
     primaryColor,
     surfaceElevated,
     defaultTextColor,
@@ -270,11 +276,15 @@ const CanvasElementView = memo(
     onTextFocused,
     onSelect,
     onEnterTextEdit,
+    onSetTextMoveMode,
     onMovePressIn,
+    onRotatePressIn,
     onResizePressIn,
     onChangeText,
     onTextSizeChange
   }: ElementProps) => {
+    const lastTapRef = useRef(0);
+
     const handlePress = useCallback(() => {
       if (!editable) return;
       if (element.type !== "text") {
@@ -282,30 +292,33 @@ const CanvasElementView = memo(
         return;
       }
 
-      // Tap on text should always enter edit mode.
-      onEnterTextEdit(element.id);
-    }, [editable, element.id, element.type, onEnterTextEdit, onSelect]);
+      if (isTextEditing) return;
+
+      const now = Date.now();
+      const isDoubleTap = selected && now - lastTapRef.current <= DOUBLE_TAP_MS;
+      lastTapRef.current = now;
+
+      if (isDoubleTap) {
+        onEnterTextEdit(element.id);
+        return;
+      }
+
+      onSetTextMoveMode(element.id);
+    }, [editable, element.id, element.type, isTextEditing, onEnterTextEdit, onSelect, onSetTextMoveMode, selected]);
 
     const handlePressIn = useCallback(
       (evt: GestureResponderEvent) => {
         if (!editable) return;
-        // For text, dragging is handled by long-press to avoid intercepting tap/edit.
-        if (element.type === "text") return;
+        if (element.type === "text") {
+          if (isTextEditing) return;
+          onMovePressIn(element, evt);
+          return;
+        }
         onMovePressIn(element, evt);
       },
       [editable, element, isTextEditing, onMovePressIn]
     );
 
-    const handleTextLongPress = useCallback(
-      (evt: GestureResponderEvent) => {
-        if (!editable) return;
-        if (element.type !== "text") return;
-        if (isTextEditing) return;
-        onSelect(element.id);
-        onMovePressIn(element, evt);
-      },
-      [editable, element, isTextEditing, onMovePressIn, onSelect]
-    );
     const handleText = useCallback(
       (t: string) => {
         if (!editable) return;
@@ -319,7 +332,7 @@ const CanvasElementView = memo(
     if (element.type === "text") {
       const color = element.style?.textColor ?? defaultTextColor;
       const isCodeBlock = element.style?.fontFamily === "monospace";
-      const canEditText = selected && editable && isTextEditing;
+      const canEditText = selected && editable && isTextEditing && !isDragging;
       const codeEditColor = "#E5E7EB";
       const codeEditBackground = "#111827";
       const textDecorationLine = element.style?.underline
@@ -366,6 +379,10 @@ const CanvasElementView = memo(
               if (!editable) return;
               handlePress();
               onTextFocused(element.id);
+            }}
+            onBlur={() => {
+              if (!editable) return;
+              onSetTextMoveMode(element.id);
             }}
             onPressIn={canEditText ? undefined : handlePressIn}
             onChangeText={handleText}
@@ -435,14 +452,34 @@ const CanvasElementView = memo(
         <Pressable
           onPress={handlePress}
           onPressIn={handlePressIn}
-          onLongPress={element.type === "text" && !isTextEditing ? handleTextLongPress : undefined}
-          delayLongPress={180}
           style={StyleSheet.absoluteFillObject}
         >
           {inner}
         </Pressable>
 
-        {selected && editable && (
+        {selected && editable && element.type === "text" && (
+          <View pointerEvents="box-none" style={styles.textActionButtonsWrap}>
+            <View style={styles.textActionButtonsRow}>
+              <Pressable
+                onPress={() => onSetTextMoveMode(element.id)}
+                hitSlop={8}
+                style={[styles.textActionButton, !isTextEditing && styles.textActionButtonActive]}
+              >
+                <Ionicons name="move" size={18} color={isTextEditing ? "#E5E7EB" : "#111827"} />
+              </Pressable>
+
+              <Pressable
+                onPressIn={(evt) => onRotatePressIn(element, evt)}
+                hitSlop={8}
+                style={styles.textActionButton}
+              >
+                <Ionicons name="sync" size={18} color="#111827" />
+              </Pressable>
+            </View>
+          </View>
+        )}
+
+        {selected && editable && element.type !== "text" && (
           <>
             {/* Corners */}
             {(["nw", "ne", "sw", "se"] as const).map((h) => (
@@ -891,6 +928,18 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     setDoc((prev) => ({ ...prev, elements: prev.elements.map((el) => (el.id === id ? updater(el) : el)) }));
   }, []);
 
+  const setTextMoveMode = useCallback(
+    (id: string) => {
+      if (!editable) return;
+      setSelectedId(id);
+      setTextInteractionMode("move");
+      setMode("select");
+      setPendingFocusTextId(null);
+      Keyboard.dismiss();
+    },
+    [editable]
+  );
+
   const addElement = useCallback((element: CanvasElement) => {
     pushUndoSnapshot();
     setDoc((prev) => {
@@ -970,6 +1019,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         startElY: el.y,
         startElW: el.width,
         startElH: el.height,
+        startElRotation: el.rotation ?? 0,
         startPageX: evt.nativeEvent.pageX,
         startPageY: evt.nativeEvent.pageY
       };
@@ -979,6 +1029,14 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
 
   const handleElementMovePressIn = useCallback(
     (el: CanvasElement, evt: GestureResponderEvent) => beginInteraction(el, "move", evt),
+    [beginInteraction]
+  );
+
+  const handleElementRotatePressIn = useCallback(
+    (el: CanvasElement, evt: GestureResponderEvent) => {
+      evt.stopPropagation();
+      beginInteraction(el, "rotate", evt);
+    },
     [beginInteraction]
   );
 
@@ -1509,6 +1567,12 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
 
               if (interaction.mode === "move") {
                 return { ...cur, x: snapped?.x ?? interaction.startElX + dxEl, y: snapped?.y ?? interaction.startElY + dyEl };
+              }
+
+              if (interaction.mode === "rotate") {
+                const rawRotation = interaction.startElRotation + dxEl * 0.5;
+                const normalizedRotation = ((rawRotation % 360) + 360) % 360;
+                return { ...cur, rotation: normalizedRotation };
               }
 
               const handle = interaction.handle ?? "se";
@@ -2084,6 +2148,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                   selected={editable && element.id === selectedId}
                   editable={editable}
                   isTextEditing={textInteractionMode === "edit" && element.id === selectedId}
+                  isDragging={isElementDragging && element.id === selectedId}
                   primaryColor={colors.primary}
                   surfaceElevated={colors.surfaceElevated}
                   defaultTextColor={defaultTextColor}
@@ -2092,7 +2157,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                   onTextFocused={handleTextFocused}
                   onSelect={handleSelect}
                   onEnterTextEdit={enterTextEdit}
+                  onSetTextMoveMode={setTextMoveMode}
                   onMovePressIn={handleElementMovePressIn}
+                  onRotatePressIn={handleElementRotatePressIn}
                   onResizePressIn={handleElementResizePressIn}
                   onChangeText={handleTextChange}
                   onTextSizeChange={handleTextSizeChange}
@@ -2227,7 +2294,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       handleTextFocused,
       setElementRef,
       setInputRef,
+      setTextMoveMode,
+      handleElementRotatePressIn,
       selectedId,
+      isElementDragging,
       textInteractionMode,
       sortedElements,
       updateDrawing
@@ -3607,6 +3677,38 @@ const styles = StyleSheet.create({
   arrowLine: { flex: 1 },
   arrowHead: { width: 0, height: 0, borderTopColor: "transparent", borderBottomColor: "transparent" },
   imageFill: { width: "100%", height: "100%" },
+  textActionButtonsWrap: {
+    position: "absolute",
+    left: "50%",
+    bottom: -54,
+    transform: [{ translateX: -52 }],
+    zIndex: 50
+  },
+  textActionButtonsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10
+  },
+  textActionButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(15,23,42,0.2)",
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 7
+  },
+  textActionButtonActive: {
+    backgroundColor: "#A7F3D0",
+    borderColor: "#10B981"
+  },
   handle: {
     position: "absolute",
     width: 24,
