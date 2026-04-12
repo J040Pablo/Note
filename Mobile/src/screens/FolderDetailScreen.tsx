@@ -247,6 +247,19 @@ const FolderDetailScreen: React.FC = () => {
   const topContentPadding = selectionMode ? TOP_PADDING_WITH_SELECTION : TOP_PADDING_DEFAULT;
   const isDraggingAny = draggingFolders || draggingNotes || draggingQuickNotes || draggingFiles;
 
+  const ensureItemSelectedForDrag = useCallback(
+    (item: { kind: "folder" | "note" | "quick"; id: string; parentId: string | null; label: string }) => {
+      if (selectionMode) {
+        if (!isSelected(item)) {
+          toggleSelection(item);
+        }
+        return;
+      }
+      startSelection(item);
+    },
+    [isSelected, selectionMode, startSelection, toggleSelection]
+  );
+
   const gridItemWidth = useMemo(() => {
     return (width - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
   }, [width]);
@@ -640,9 +653,7 @@ const FolderDetailScreen: React.FC = () => {
                   delayLongPress={250}
                   onDragStart={(item) => {
                     setDraggingFolders(true);
-                    if (selectionMode && !isSelected({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name })) {
-                      toggleSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
-                    }
+                    ensureItemSelectedForDrag({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
                   }}
                   onDragRelease={(data) => {
                     setGridFoldersData(
@@ -750,6 +761,7 @@ const FolderDetailScreen: React.FC = () => {
                         toggleSelection({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name });
                         return;
                       }
+                      ensureItemSelectedForDrag({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name });
                       drag();
                     }}
                     delayLongPress={260}
@@ -827,6 +839,7 @@ const FolderDetailScreen: React.FC = () => {
                         toggleSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
                         return;
                       }
+                      ensureItemSelectedForDrag({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
                       drag();
                     }}
                     delayLongPress={260}
@@ -881,7 +894,7 @@ const FolderDetailScreen: React.FC = () => {
                   delayLongPress={250}
                   onDragStart={(item) => {
                     setDraggingNotes(true);
-                    // Nao ativa selecao ao drag, apenas reposiciona
+                    ensureItemSelectedForDrag({ kind: "note", id: item.id, parentId: item.folderId ?? null, label: item.title });
                   }}
                   onDragRelease={(data) => {
                     setGridNotesData(data.map((note) => ({ ...note, key: note.id })));
@@ -975,6 +988,7 @@ const FolderDetailScreen: React.FC = () => {
                         toggleSelection({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
                         return;
                       }
+                      ensureItemSelectedForDrag({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
                       drag();
                     }}
                     delayLongPress={260}
@@ -1028,7 +1042,7 @@ const FolderDetailScreen: React.FC = () => {
                   delayLongPress={250}
                     onDragStart={(item) => {
                       setDraggingQuickNotes(true);
-                      // Nao ativa selecao ao drag, apenas reposiciona
+                      ensureItemSelectedForDrag({ kind: "quick", id: item.id, parentId: item.folderId ?? null, label: item.title });
                     }}
                   onDragRelease={(data) => {
                     setGridQuickNotesData(data.map((quick) => ({ ...quick, key: quick.id })));
