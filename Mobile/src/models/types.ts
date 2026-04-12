@@ -128,6 +128,13 @@ export interface CanvasTextElement extends CanvasElementBase {
   type: "text";
   text: string;
   style?: NoteTextStyle;
+  metadata?: {
+    link?: {
+      url: string;
+      start: number;
+      end: number;
+    };
+  };
 }
 
 export interface CanvasImageElement extends CanvasElementBase {

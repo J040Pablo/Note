@@ -1,6 +1,7 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
+  Linking,
   type NativeSyntheticEvent,
   PanResponder,
   Pressable,
@@ -28,6 +29,12 @@ import {
 } from "@utils/noteContent";
 import { insertClipboardHtmlIntoRichDoc, isClipboardRichText } from "@utils/richClipboard";
 import CodeBlockRenderer from "@components/CodeBlockRenderer";
+import { TextBlockWithLinks } from "@components/TextBlockWithLinks";
+import LinkModal from "@components/LinkModal";
+import { useLinkHandler } from "@hooks/useLinkHandler";
+import { useInternalSearch } from "@hooks/useInternalSearch";
+import { useRichEditorLink } from "@hooks/useRichEditorLink";
+import { stringToLink } from "@utils/linkUtils";
 
 interface RichNoteEditorProps {
   value: string;
@@ -177,8 +184,37 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [isSizePickerOpen, setIsSizePickerOpen] = useState(false);
   
+  // Link integration
+  const { linkContext, setLinkContext, insertLinkInBlock, getSelectedText } = useRichEditorLink();
+  const { searchInternalItems } = useInternalSearch();
+  
   // Debounce ref to avoid excessive saves
   const debouncedSaveRef = useRef<((content: string) => void) | null>(null);
+
+  // Define onInsertLinkHtml early so we can pass to useLinkHandler
+  const onInsertLinkHtml = useCallback(
+    (html: string) => {
+      if (!linkContext || !selectedTextId) return;
+      // Will call formatTextBlock when it's available
+      setDoc((prev) => {
+        const blockIndex = prev.blocks.findIndex((b) => b.id === selectedTextId);
+        if (blockIndex < 0) return prev;
+        const target = prev.blocks[blockIndex];
+        if (target.type !== "text") return prev;
+        const newText = insertLinkInBlock(target.text, html, linkContext);
+        return {
+          ...prev,
+          blocks: prev.blocks.map((b, idx) =>
+            idx === blockIndex && b.type === "text" ? { ...b, text: newText } : b
+          )
+        };
+      });
+      setLinkContext(null);
+    },
+    [linkContext, selectedTextId, insertLinkInBlock]
+  );
+
+  const { linkModalVisible, selectedText, openLinkModal, closeLinkModal, insertExternalLink, insertInternalLink, handleLinkPress } = useLinkHandler(onInsertLinkHtml);
 
   useEffect(() => {
     const parsed = parseRichNoteContent(value);
@@ -225,7 +261,6 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
   const commit = useCallback(
     (next: RichNoteDocument) => {
       setDoc(next);
-      // Use debounced save to avoid excessive updates
       if (debouncedSaveRef.current) {
         debouncedSaveRef.current(serializeRichNoteContent(next));
       }
@@ -240,7 +275,6 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
           ...prev,
           blocks: prev.blocks.map((b) => (b.id === blockId ? updater(b) : b))
         };
-        // Trigger debounced save
         if (debouncedSaveRef.current) {
           debouncedSaveRef.current(serializeRichNoteContent(next));
         }
@@ -288,6 +322,24 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
     },
     [updateBlock]
   );
+
+  const handleAddLink = useCallback(() => {
+    if (!selectedBlock) return;
+
+    const selectedTextContent = getSelectedText(selectedBlock.text, {
+      blockId: selectedBlock.id,
+      start: selection.start,
+      end: selection.end
+    });
+
+    setLinkContext({
+      blockId: selectedBlock.id,
+      start: selection.start,
+      end: selection.end
+    });
+
+    openLinkModal(selectedTextContent);
+  }, [selectedBlock, selection, getSelectedText, openLinkModal]);
 
   const selectedBlock = useMemo(
     () => doc.blocks.find((b) => b.id === selectedTextId && b.type === "text") as NoteTextBlock | undefined,
@@ -533,6 +585,15 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
               </Text>
             </Pressable>
 
+            <View style={styles.toolbarDivider} />
+
+            <Pressable
+              onPress={handleAddLink}
+              style={styles.toolbarButton}
+            >
+              <Ionicons name="link" size={16} color={theme.colors.primary} />
+            </Pressable>
+
             {hasSelectedRange && (
               <View style={styles.selectionBadge}>
                 <Text variant="caption" muted>{selection.end - selection.start} selected</Text>
@@ -593,8 +654,9 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
         <View key={block.id} style={styles.blockWrap}>
           {block.type === "text" && (
             <View style={[styles.blockCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
-              <TextInput
+              <TextBlockWithLinks
                 multiline
+                isSelected={selectedTextId === block.id}
                 value={block.text}
                 onFocus={() => {
                   setSelectedTextId(block.id);
@@ -602,6 +664,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
                 }}
                 onSelectionChange={(event) => handleSelectionChange(block.id, event)}
                 onChangeText={(text) => handleTextBlockChange(block.id, text)}
+                onLinkPress={handleLinkPress}
                 placeholder="Write..."
                 placeholderTextColor={theme.colors.textSecondary}
                 style={[
@@ -727,6 +790,15 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
           {mode === "quick" ? "Autosave enabled • Selection formatting" : "Autosave enabled • Rich blocks"}
         </Text>
       </Pressable>
+
+      <LinkModal
+        visible={linkModalVisible}
+        selectedText={selectedText}
+        onClose={closeLinkModal}
+        onInsertExternal={insertExternalLink}
+        onInsertInternal={insertInternalLink}
+        onSearchInternalItems={searchInternalItems}
+      />
     </View>
   );
 };

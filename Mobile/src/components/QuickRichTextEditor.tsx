@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, StyleSheet, Pressable } from "react-native";
+import { View, StyleSheet, Pressable, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
 import { useTheme } from "@hooks/useTheme";
@@ -7,6 +7,10 @@ import { Text } from "@components/Text";
 import { getPlainTextFromRichNoteContent } from "@utils/noteContent";
 import type { NoteTextBlock } from "@models/types";
 import { convertClipboardHtmlToRichBlocks, isClipboardRichText } from "@utils/richClipboard";
+import LinkModal from "@components/LinkModal";
+import { useLinkHandler } from "@hooks/useLinkHandler";
+import { useInternalSearch } from "@hooks/useInternalSearch";
+import { stringToLink } from "@utils/linkUtils";
 
 interface QuickRichTextEditorProps {
   value: string;
@@ -90,8 +94,41 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
   const [isSizePickerOpen, setIsSizePickerOpen] = useState(false);
   const [activeColor, setActiveColor] = useState<string | null>(null);
   const [activeSize, setActiveSize] = useState<number | null>(null);
+  const [selectedText, setSelectedText] = useState("");
 
   const toolbarVisible = hasSelection || isFocused;
+
+  const onInsertLink = useCallback(
+    (html: string) => {
+      if (!webViewRef.current) return;
+      webViewRef.current.injectJavaScript(`
+        const sel = window.getSelection();
+        if (sel.toString()) {
+          document.execCommand('delete');
+        }
+        const div = document.createElement('div');
+        div.innerHTML = ${JSON.stringify(html)};
+        const range = sel.getRangeAt(0);
+        range.insertNode(div.firstChild);
+        range.collapse(false);
+        sel.removeAllRanges();
+        sel.addRange(range);
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'content',
+          html: document.getElementById('editor').innerHTML
+        }));
+      `);
+    },
+    []
+  );
+
+  // Link integration
+  const { linkModalVisible, openLinkModal, closeLinkModal, insertExternalLink, insertInternalLink, handleLinkPress } = useLinkHandler((html: string) => {
+    onInsertLink(html);
+    // After link is inserted via modal, we need to close it
+    // This will be handled in onMessage when shouldOpenModal is false
+  });
+  const { searchInternalItems } = useInternalSearch();
 
   const htmlDoc = useMemo(() => {
     const initial = JSON.stringify(initialHtmlRef.current);
@@ -129,6 +166,18 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
       #editor:empty::before {
         content: attr(data-placeholder);
         color: ${theme.colors.textSecondary};
+      }
+
+      a {
+        color: #2563eb;
+        text-decoration: underline;
+        cursor: pointer;
+        opacity: 1;
+        transition: opacity 0.2s;
+      }
+
+      a:active {
+        opacity: 0.7;
       }
     </style>
   </head>
@@ -320,16 +369,31 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
   const onMessage = useCallback(
     (event: WebViewMessageEvent) => {
       try {
-        const payload = JSON.parse(event.nativeEvent.data) as EditorMessage;
+        const payload = JSON.parse(event.nativeEvent.data) as EditorMessage | { type: "linkPress"; href: string } | { type: "getSelection"; text: string; shouldOpenModal?: boolean };
+        
+        if (payload.type === "linkPress") {
+          const link = stringToLink(payload.href);
+          if (link) {
+            handleLinkPress(link);
+          }
+          return;
+        }
+
+        if (payload.type === "getSelection") {
+          setSelectedText(payload.text);
+          if ((payload as any).shouldOpenModal) {
+            openLinkModal(payload.text);
+          }
+          return;
+        }
+
         if (payload.type === "paste") {
-          const rawHtml = payload.html ?? "";
-          const plain = payload.text ?? "";
+          const rawHtml = (payload as EditorMessage & { html?: string }).html ?? "";
+          const plain = (payload as EditorMessage & { text?: string }).text ?? "";
           const source = rawHtml || plain;
           if (!source.trim()) return;
 
           if (rawHtml && isClipboardRichText(rawHtml)) {
-            // Convert clipboard HTML -> internal Note blocks -> HTML fragment for this editor.
-            // This keeps a shared conversion pipeline with Notes while preserving WebView cursor insertion.
             const converted = convertClipboardHtmlToRichBlocks(rawHtml);
             const textBlocks = converted.blocks.filter((b): b is NoteTextBlock => b.type === "text");
             const fragment = richBlocksToHtmlFragment(textBlocks);
@@ -348,13 +412,13 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
         }
 
         if (payload.type === "selection") {
-          setHasSelection(payload.hasSelection);
+          setHasSelection((payload as EditorMessage & { hasSelection?: boolean }).hasSelection ?? false);
           return;
         }
 
         if (payload.type === "focus") {
-          setIsFocused(payload.focused);
-          if (!payload.focused) {
+          setIsFocused((payload as EditorMessage & { focused?: boolean }).focused ?? false);
+          if (!(payload as EditorMessage & { focused?: boolean }).focused) {
             setHasSelection(false);
           }
           return;
@@ -362,17 +426,17 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
 
         if (payload.type === "content") {
           isEditorReadyRef.current = true;
-          if (payload.html === lastSentHtmlRef.current) return;
-          lastSentHtmlRef.current = payload.html;
-          // Emits a partial block patch so external state can update only one block.
-          onBlockChange?.({ blockId: "quick-root-block", html: payload.html });
-          onChangeText(payload.html);
+          const html = (payload as EditorMessage & { html?: string }).html ?? "";
+          if (html === lastSentHtmlRef.current) return;
+          lastSentHtmlRef.current = html;
+          onBlockChange?.({ blockId: "quick-root-block", html });
+          onChangeText(html);
         }
       } catch {
         // no-op
       }
     },
-    [onBlockChange, onChangeText]
+    [onBlockChange, onChangeText, handleLinkPress, openLinkModal]
   );
 
   return (
@@ -417,6 +481,25 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
             >
               <Ionicons name="text-outline" size={14} color={isSizePickerOpen ? "#fff" : theme.colors.textPrimary} />
               <Text variant="caption" style={{ color: isSizePickerOpen ? "#fff" : theme.colors.textPrimary }}>Size</Text>
+            </Pressable>
+
+            <View style={styles.divider} />
+
+            <Pressable
+              style={[styles.toolButton]}
+              onPress={() => {
+                webViewRef.current?.injectJavaScript(`
+                  const text = window.getSelection().toString();
+                  window.ReactNativeWebView.postMessage(JSON.stringify({
+                    type: 'getSelection',
+                    text: text,
+                    shouldOpenModal: true
+                  }));
+                  true;
+                `);
+              }}
+            >
+              <Ionicons name="link" size={14} color={theme.colors.primary} />
             </Pressable>
           </View>
 
@@ -481,8 +564,30 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
           domStorageEnabled
           scrollEnabled
           overScrollMode="never"
+          injectedJavaScriptBeforeContentLoaded={`
+            document.addEventListener('click', function(e) {
+              const link = e.target.closest('a');
+              if (link && link.href) {
+                e.preventDefault();
+                window.ReactNativeWebView.postMessage(JSON.stringify({
+                  type: 'linkPress',
+                  href: link.href
+                }));
+              }
+            });
+            true;
+          `}
         />
       </View>
+
+      <LinkModal
+        visible={linkModalVisible}
+        selectedText={selectedText}
+        onClose={closeLinkModal}
+        onInsertExternal={insertExternalLink}
+        onInsertInternal={insertInternalLink}
+        onSearchInternalItems={searchInternalItems}
+      />
     </View>
   );
 });

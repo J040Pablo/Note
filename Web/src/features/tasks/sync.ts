@@ -1,4 +1,7 @@
-export * from "./syncEngine";export type SyncPriority = "low" | "medium" | "high";
+export * from "./syncEngine";
+import MessageQueue from "../../services/messageQueue";
+
+export type SyncPriority = "low" | "medium" | "high";
 
 export type SyncFolder = {
   id: string;
@@ -116,6 +119,10 @@ let shouldReconnect = false;
 let reconnectAttempts = 0;
 let reconnectTimer: number | null = null;
 
+// Message queue for offline support + retry
+const messageQueue = new MessageQueue();
+const pendingMessages = new Map<string, unknown>();
+
 const messageListeners = new Set<MessageListener>();
 const statusListeners = new Set<StatusListener>();
 
@@ -140,6 +147,29 @@ const clearReconnectTimer = () => {
   if (reconnectTimer !== null) {
     window.clearTimeout(reconnectTimer);
     reconnectTimer = null;
+  }
+};
+
+const replayQueuedMessages = () => {
+  console.log("[sync] replaying queued messages, count:", messageQueue.size());
+  while (!messageQueue.isEmpty()) {
+    const queued = messageQueue.peek();
+    if (!queued) break;
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      console.log("[sync] socket not ready, stopping replay");
+      break;
+    }
+
+    messageQueue.dequeue();
+    try {
+      socket.send(JSON.stringify(queued));
+      console.log("[sync] replayed message:", queued.id);
+    } catch (error) {
+      console.warn("[sync] replay error", error);
+      messageQueue.enqueue(queued);
+      break;
+    }
   }
 };
 
@@ -271,9 +301,26 @@ const safeParseIncoming = (raw: string): SyncIncomingMessage | null => {
 
 const sendRaw = (payload: unknown) => {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
+    // Queue message for later delivery
+    const msgId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    messageQueue.enqueue({
+      id: msgId,
+      type: (payload as Record<string, unknown>)?.type as string || "UNKNOWN",
+      payload,
+      maxRetries: 3,
+    });
+    console.log("[sync] queued message:", msgId);
     return;
   }
-  socket.send(JSON.stringify(payload));
+
+  try {
+    const msgId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    socket.send(JSON.stringify(payload));
+    pendingMessages.set(msgId, payload);
+    console.log("[sync] sent message:", msgId);
+  } catch (error) {
+    console.warn("[sync] send error", error);
+  }
 };
 
 const normalizePayload = (payload?: Record<string, unknown>) => {
@@ -350,6 +397,10 @@ export const connectTaskSync = (url: string) => {
     emitStatus("connected");
     // Send INIT_SYNC to match what Mobile server expects
     sendRaw({ type: "INIT_SYNC" });
+    // Replay any queued messages
+    setTimeout(() => {
+      replayQueuedMessages();
+    }, 500);
   };
 
   socket.onmessage = (event) => {

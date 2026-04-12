@@ -300,7 +300,6 @@ const HomeScreen: React.FC = () => {
   );
 
   const handleClearSelection = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     clearSelection();
     setShowSelectionMenu(false);
   }, [clearSelection]);
@@ -593,7 +592,7 @@ const HomeScreen: React.FC = () => {
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       edges={["top", "left", "right"]}
     >
-      <View style={[hsStyles.header, { paddingTop: 24 }]}>
+      <View style={[hsStyles.header, { paddingTop: 24, minHeight: 70 }]}>
         <>
           {!selectionMode && (
             <View style={hsStyles.headerTopRow}>
@@ -652,6 +651,7 @@ const HomeScreen: React.FC = () => {
         keyExtractor={(item) => item}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 200, backgroundColor: theme.colors.background }}
         keyboardShouldPersistTaps="handled"
+        removeClippedSubviews={false}
         renderItem={({ item }) => {
           if (item === "pinned") {
             if (pinnedResolved.length === 0) return null;

@@ -260,7 +260,7 @@ export const updateTask = async (task: Task): Promise<Task> => {
   try {
     if (task.scheduledDate && task.scheduledTime && !task.completed) {
       // Reschedule notifications (this cancels old ones and creates new ones)
-      updatedTask.notificationIds = await rescheduleTaskNotifications(task);
+      updatedTask.notificationIds = await rescheduleTaskNotifications(updatedTask);
         if (__DEV__) {
           console.log(`[NOTIF] Rescheduled notifications for task ID: ${task.id}`);
         }

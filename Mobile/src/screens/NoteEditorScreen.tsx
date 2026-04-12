@@ -148,15 +148,19 @@ const NoteEditorScreen: React.FC = () => {
       return;
     }
 
-    navigation.navigate("Tabs", {
-      screen: folderId ? "Folders" : "Home",
-      params: folderId
-        ? {
-            screen: "FolderDetail",
-            params: { folderId, trail: [folderId] }
-          }
-        : undefined
-    });
+    if (folderId) {
+      navigation.navigate("Tabs", {
+        screen: "Folders",
+        params: {
+          screen: "FolderDetail",
+          params: { folderId, trail: [folderId] }
+        }
+      });
+    } else {
+      navigation.navigate("Tabs", {
+        screen: "Home"
+      });
+    }
   }, [currentNote, folderId, hasPendingChanges, navigation, persistNote]);
 
   const handleSaveAndClose = useCallback(async () => {
@@ -168,15 +172,19 @@ const NoteEditorScreen: React.FC = () => {
       return;
     }
 
-    navigation.navigate("Tabs", {
-      screen: folderId ? "Folders" : "Home",
-      params: folderId
-        ? {
-            screen: "FolderDetail",
-            params: { folderId, trail: [folderId] }
-          }
-        : undefined
-    });
+    if (folderId) {
+      navigation.navigate("Tabs", {
+        screen: "Folders",
+        params: {
+          screen: "FolderDetail",
+          params: { folderId, trail: [folderId] }
+        }
+      });
+    } else {
+      navigation.navigate("Tabs", {
+        screen: "Home"
+      });
+    }
   }, [folderId, navigation]);
 
   useEffect(() => {
@@ -199,6 +207,7 @@ const NoteEditorScreen: React.FC = () => {
           toolbarVisible={!isReadMode}
           editable={!isReadMode}
           centerSignal={centerSignal}
+          isViewMode={isReadMode}
         />
 
         <View style={[styles.headerRow, { borderBottomColor: theme.colors.border + "55" }]}> 

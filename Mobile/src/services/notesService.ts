@@ -230,45 +230,25 @@ export const updateQuickNote = async (id: ID, payload: { title: string; content:
   const updatedAt = Date.now();
   const safeTitle = (payload.title ?? "").trim() || "Quick Note";
   const safeContent = typeof payload.content === "string" ? payload.content : "";
-
-  if (payload.folderId === undefined) {
-    await runDbWrite(
-      "UPDATE quick_notes SET title = ?, content = ?, updatedAt = ? WHERE id = ?",
-      safeTitle,
-      safeContent,
-      updatedAt,
-      id
-    );
-    return;
-  }
-
-  if (payload.folderId === null) {
-    await runDbWrite(
-      "UPDATE quick_notes SET title = ?, content = ?, folderId = NULL, updatedAt = ? WHERE id = ?",
-      safeTitle,
-      safeContent,
-      updatedAt,
-      id
-    );
-    return;
-  }
+  const safeFolderId = payload.folderId === undefined ? null : payload.folderId;
 
   await runDbWrite(
     "UPDATE quick_notes SET title = ?, content = ?, folderId = ?, updatedAt = ? WHERE id = ?",
     safeTitle,
     safeContent,
-    payload.folderId,
+    safeFolderId,
     updatedAt,
     id
   );
 
+  // Always emit, regardless of folderId state
   emitEntityServerEvent({
     type: "UPSERT_QUICK_NOTE",
     payload: {
       id: String(id),
       title: safeTitle,
       content: safeContent,
-      folderId: payload.folderId ?? null,
+      folderId: safeFolderId,
       createdAt: updatedAt,
       updatedAt,
     },

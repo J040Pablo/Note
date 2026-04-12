@@ -9,7 +9,10 @@ import { FeedbackProvider } from "@components/FeedbackProvider";
 import { ThemeAwareStatusBar } from "@components/ThemeAwareStatusBar";
 import { useNotificationSetup } from "@hooks/useNotificationSetup";
 import { useTaskSyncServer } from "@hooks/useTaskSyncServer";
+import { useSyncListener } from "@hooks/useSyncListener";
+import { useInitializeStores } from "@hooks/useInitializeStores";
 import { addNotificationResponseListener } from "@services/notificationService";
+import { useTasksStore } from "@store/useTasksStore";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 
 const navRef = createNavigationContainerRef<RootStackParamList>();
@@ -44,6 +47,8 @@ const ThemedNavigation: React.FC = () => {
   // Initialize notifications on app startup
   useNotificationSetup();
   useTaskSyncServer();
+  useSyncListener(); // Real-time sync listener for all stores
+  useInitializeStores(); // Pre-load stores to prevent race conditions with notifications
 
   React.useEffect(() => {
     const handleUrl = (incoming: string | null) => {
@@ -58,9 +63,25 @@ const ThemedNavigation: React.FC = () => {
     const sub = RNLinking.addEventListener("url", ({ url }) => handleUrl(url));
 
     const notificationSub = addNotificationResponseListener((response) => {
-      const taskId = response?.notification?.request?.content?.data?.taskId;
-      if (taskId && navRef.isReady()) {
-        navRef.navigate("Tabs", { screen: "Tasks", params: { focusTaskId: taskId } });
+      try {
+        const taskId = response?.notification?.request?.content?.data?.taskId;
+        if (!taskId || !navRef.isReady()) return;
+
+        // Validate taskId exists in store before navigating
+        const tasks = useTasksStore.getState().tasks;
+        if (tasks && tasks[taskId]) {
+          navRef.navigate("Tabs", { screen: "Tasks", params: { focusTaskId: taskId } });
+        } else {
+          console.warn('[NOTIF] Task not found in store:', taskId);
+          // Navigate to Tasks tab anyway so user sees something
+          navRef.navigate("Tabs", { screen: "Tasks" });
+        }
+      } catch (error) {
+        console.error('[NOTIF] Error handling notification response:', error);
+        // Always navigate to Tasks to prevent blank screen
+        if (navRef.isReady()) {
+          navRef.navigate("Tabs", { screen: "Tasks" });
+        }
       }
     });
 

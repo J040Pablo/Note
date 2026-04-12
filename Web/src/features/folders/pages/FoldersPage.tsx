@@ -267,7 +267,7 @@ const FoldersPage: React.FC = () => {
             .forEach((folder) =>
               dispatchEntitySyncEvent({
                 type: "DELETE_FOLDER",
-                payload: { id: folder.id },
+                payload: { id: folder.id, updatedAt: Date.now() },
               })
             );
 
@@ -283,7 +283,7 @@ const FoldersPage: React.FC = () => {
             .forEach((note) =>
               dispatchEntitySyncEvent({
                 type: "DELETE_NOTE",
-                payload: { id: note.id },
+                payload: { id: note.id, updatedAt: Date.now() },
               })
             );
         } else {

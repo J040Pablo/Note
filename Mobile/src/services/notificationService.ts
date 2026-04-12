@@ -60,6 +60,9 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
     if (shouldLogDev) {
       console.info(`[Notifications] Permission request result: ${status}`);
     }
+    if (status !== 'granted') {
+      console.warn('[Notifications] Permission denied by user - notifications will not work');
+    }
     return status === 'granted';
   } catch (error) {
     console.error('Error requesting notification permission:', error);
@@ -176,9 +179,15 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
       return [];
     }
 
-    if (triggerDate.getTime() <= Date.now()) {
+    // Validate trigger is in future (including time of day for today)
+    const now = new Date();
+    const isToday = triggerDate.toDateString() === now.toDateString();
+    const isPastTime = isToday && triggerDate.getTime() <= now.getTime();
+    
+    if (triggerDate.getTime() <= Date.now() || isPastTime) {
       if (shouldLogDev) {
-        console.info('[Notifications] Skipped scheduling: trigger date is in the past.');
+        const reason = isToday ? 'time already passed today' : 'date is in the past';
+        console.info(`[Notifications] Skipped scheduling: ${reason}.`);
       }
       return [];
     }
@@ -188,7 +197,7 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
       return [];
     }
 
-    const now = Date.now();
+    const nowMs = Date.now();
     const seenTimestamps = new Set<number>();
     const notificationIds: string[] = [];
 
@@ -197,7 +206,7 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
       const reminderDate = new Date(triggerDate.getTime() - offsetMs);
       const reminderTs = reminderDate.getTime();
 
-      if (reminderTs <= now) {
+      if (reminderTs <= nowMs) {
         continue;
       }
 

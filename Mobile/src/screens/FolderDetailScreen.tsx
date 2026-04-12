@@ -66,6 +66,7 @@ import type { AppFile, Folder, ID, Note, QuickNote } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { DraggableGrid } from "react-native-draggable-grid";
+import { useFolderFABActions } from "@hooks/useFolderFABActions";
  
 
 const firstLine = (text: string): string => getRichNotePreviewLine(text, 80);
@@ -225,6 +226,13 @@ const FolderDetailScreen: React.FC = () => {
     quickNotes: folderQuickNotes,
     selectableItems
   } = useUnifiedItems({ scope: "folder", parentId: folderId });
+
+  const fabActions = useFolderFABActions({
+    folderId: folderId ?? null,
+    onShowCreateFolder: () => setShowCreateFolder(true),
+    onShowAddFile: () => setShowAddFileMenu(true),
+    isDetailScreen: true
+  });
 
   const folderFiles = useMemo(
     () => Object.values(files).filter((f) => (f.parentFolderId ?? null) === folderId),
@@ -1464,59 +1472,7 @@ const FolderDetailScreen: React.FC = () => {
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
       <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 68 + 20 }]} pointerEvents="box-none">
-        {([
-          {
-            key: "note",
-            label: "Create Note",
-            icon: "document-text-outline" as const,
-            onPress: () => {
-              closeFab();
-              withLock(() => {
-                navigation.navigate("NoteEditor", { folderId: folderId ?? null });
-              });
-            }
-          },
-          {
-            key: "quick-note",
-            label: "Quick Note",
-            icon: "flash-outline" as const,
-            onPress: () => {
-              closeFab();
-              withLock(() => {
-                navigation.getParent()?.getParent()?.navigate("QuickNote", { folderId: folderId ?? null });
-              });
-            }
-          },
-          {
-            key: "folder",
-            label: "Create Folder",
-            icon: "folder-outline" as const,
-            onPress: () => {
-              closeFab();
-              setShowCreateFolder(true);
-            }
-          },
-          {
-            key: "import",
-            label: "Import Package",
-            icon: "download-outline" as const,
-            onPress: () => {
-              closeFab();
-              withLock(() => {
-                navigation.navigate("ImportFolderPackage", { destinationFolderId: folderId ?? null });
-              });
-            }
-          },
-          {
-            key: "file",
-            label: "Add File",
-            icon: "attach-outline" as const,
-            onPress: () => {
-              closeFab();
-              handleAddFile();
-            }
-          }
-        ] as const).map((item, index) => (
+        {fabActions.map((item, index) => (
           <Animated.View
             key={item.key}
             pointerEvents={fabOpen ? "auto" : "none"}
@@ -1542,7 +1498,10 @@ const FolderDetailScreen: React.FC = () => {
             ]}
           >
             <Pressable
-              onPress={item.onPress}
+              onPress={() => {
+                item.onPress();
+                closeFab();
+              }}
               style={[
                 styles.fabMenuItem,
                 {
@@ -1551,7 +1510,7 @@ const FolderDetailScreen: React.FC = () => {
                 }
               ]}
             >
-              <Ionicons name={item.icon} size={16} color={theme.colors.primary} />
+              <Ionicons name={item.icon as any} size={16} color={theme.colors.primary} />
               <Text style={[styles.fabMenuLabel, { color: theme.colors.textPrimary }]}>{item.label}</Text>
             </Pressable>
           </Animated.View>

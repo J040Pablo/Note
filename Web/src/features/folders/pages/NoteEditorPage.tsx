@@ -219,7 +219,7 @@ const NoteEditorPage: React.FC = () => {
     if (isMobileSync) {
       dispatchEntitySyncEvent({
         type: "DELETE_NOTE",
-        payload: { id: note.id },
+        payload: { id: note.id, updatedAt: Date.now() },
       });
     }
     navigate(-1);

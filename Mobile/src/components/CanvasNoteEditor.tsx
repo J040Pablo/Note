@@ -17,6 +17,7 @@ import {
   Animated,
   Easing,
   Keyboard,
+  Linking,
   Modal,
   PanResponder,
   Pressable,
@@ -78,7 +79,7 @@ type InteractionMode = "move" | "resize" | "rotate";
 type ResizeHandle = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 type DrawingToolMode = "pencil" | "transparentPencil" | "eraser" | null;
 type EditorInteractionMode = "draw" | "select" | "text";
-type TextInteractionMode = "move" | "edit";
+type TextInteractionMode = "idle" | "selected" | "editing";
 
 interface CanvasNoteEditorProps {
   value: string;
@@ -86,6 +87,7 @@ interface CanvasNoteEditorProps {
   toolbarVisible?: boolean;
   editable?: boolean;
   centerSignal?: number;
+  isViewMode?: boolean;  // 🔥 NEW: true = view/read-only mode, false = editor mode
 }
 
 interface ElementInteraction {
@@ -164,6 +166,33 @@ const buildSmoothPath = (points: Array<{ x: number; y: number } | null>) => {
 const cloneDoc = (doc: CanvasNoteDocument): CanvasNoteDocument => JSON.parse(JSON.stringify(doc)) as CanvasNoteDocument;
 const touchDist = (a: { pageX: number; pageY: number }, b: { pageX: number; pageY: number }) =>
   Math.sqrt((a.pageX - b.pageX) ** 2 + (a.pageY - b.pageY) ** 2);
+
+// 🔒 VALIDAÇÃO SEGURA DE EVENTOS TOUCH
+const getSafePageCoords = (evt: GestureResponderEvent) => {
+  const { pageX, pageY } = evt?.nativeEvent ?? {};
+  if (typeof pageX !== "number" || typeof pageY !== "number") {
+    console.warn("[CanvasEditor] Invalid touch coords", { pageX, pageY });
+    return null;
+  }
+  return { pageX, pageY };
+};
+
+// 🧭 SNAP INTELIGENTE DE ROTAÇÃO
+const snapRotation = (angle: number, threshold = 6) => {
+  const snapAngles = [0, 90, 180, 270];
+  for (const snapAngle of snapAngles) {
+    if (Math.abs(angle - snapAngle) < threshold) {
+      return snapAngle;
+    }
+  }
+  return angle;
+};
+
+// 📐 NORMALIZAR ÂNGULO PARA 0-360
+const normalizeAngle = (angle: number): number => {
+  return ((angle % 360) + 360) % 360;
+};
+
 const toPositiveNumber = (value: unknown, fallback: number) => {
   const n = typeof value === "number" ? value : Number(value);
   return Number.isFinite(n) && n > 0 ? n : fallback;
@@ -245,20 +274,27 @@ interface ElementProps {
   editable: boolean;
   isTextEditing: boolean;
   isDragging: boolean;
+  isRotating: boolean;  // 📐 Indica se está em modo rotação
+  rotationAngle: number;  // 📐 Ângulo atual de rotação
   primaryColor: string;
   surfaceElevated: string;
   defaultTextColor: string;
+  isOpeningLinkRef: React.MutableRefObject<boolean>;
+  isViewMode?: boolean;  // 🔥 NEW: true = read-only view mode
   onSetRef: (id: string, node: View | null) => void;
   onSetInputRef: (id: string, node: TextInput | null) => void;
   onTextFocused: (id: string) => void;
   onSelect: (id: string) => void;
   onEnterTextEdit: (id: string) => void;
   onSetTextMoveMode: (id: string) => void;
+  onSetTextToolbarMode: (mode: "hidden" | "floating" | "keyboard") => void;
+  onMeasureToolbarPosition: (id: string) => void;
   onMovePressIn: (el: CanvasElement, evt: GestureResponderEvent) => void;
   onRotatePressIn: (el: CanvasElement, evt: GestureResponderEvent) => void;
   onResizePressIn: (el: CanvasElement, handle: ResizeHandle, evt: GestureResponderEvent) => void;
   onChangeText: (id: string, text: string) => void;
-  onTextSizeChange: (id: string, h: number) => void;
+  onSelectionChange: (selection: { start: number; end: number } | null) => void;
+  textInteractionMode?: "idle" | "selected" | "editing";
 }
 
 const CanvasElementView = memo(
@@ -268,34 +304,50 @@ const CanvasElementView = memo(
     editable,
     isTextEditing,
     isDragging,
+    isRotating,  // 📐 Prop para controlar visibilidade do ângulo
+    rotationAngle,  // 📐 Ângulo atual
     primaryColor,
     surfaceElevated,
     defaultTextColor,
+    isOpeningLinkRef,
+    isViewMode,
     onSetRef,
     onSetInputRef,
     onTextFocused,
     onSelect,
     onEnterTextEdit,
     onSetTextMoveMode,
+    onSetTextToolbarMode,
+    onMeasureToolbarPosition,
     onMovePressIn,
     onRotatePressIn,
     onResizePressIn,
     onChangeText,
-    onTextSizeChange
+    onSelectionChange,
+    textInteractionMode
   }: ElementProps) => {
     const lastTapRef = useRef(0);
+    const inputRefRef = useRef<TextInput | null>(null);
+
+    // Focus TextInput when entering edit mode
+    useEffect(() => {
+      if (textInteractionMode === "editing" && element.type === "text") {
+        inputRefRef.current?.focus?.();
+      }
+    }, [textInteractionMode, element.type]);
 
     const handlePress = useCallback(() => {
+      // 🔥 SOLO USE textInteractionMode - IGNORE isTextEditing
       if (!editable) return;
       if (element.type !== "text") {
         onSelect(element.id);
         return;
       }
 
-      if (isTextEditing) return;
+      if (textInteractionMode === "editing") return;
 
       const now = Date.now();
-      const isDoubleTap = selected && now - lastTapRef.current <= DOUBLE_TAP_MS;
+      const isDoubleTap = textInteractionMode === "selected" && now - lastTapRef.current <= DOUBLE_TAP_MS;
       lastTapRef.current = now;
 
       if (isDoubleTap) {
@@ -304,20 +356,72 @@ const CanvasElementView = memo(
       }
 
       onSetTextMoveMode(element.id);
-    }, [editable, element.id, element.type, isTextEditing, onEnterTextEdit, onSelect, onSetTextMoveMode, selected]);
+    }, [editable, element.id, element.type, textInteractionMode, onEnterTextEdit, onSelect, onSetTextMoveMode]);
 
     const handlePressIn = useCallback(
       (evt: GestureResponderEvent) => {
         if (!editable) return;
         if (element.type === "text") {
-          if (isTextEditing) return;
+          if (textInteractionMode === "editing") return;
+          // When in selected mode, allow drag to move
           onMovePressIn(element, evt);
           return;
         }
         onMovePressIn(element, evt);
       },
-      [editable, element, isTextEditing, onMovePressIn]
+      [editable, element, textInteractionMode, onMovePressIn]
     );
+
+    const handleTextPress = useCallback(
+      (evt: GestureResponderEvent) => {
+        if (!editable || isTextEditing) return;
+        evt.stopPropagation();
+        onSelect(element.id);
+        onEnterTextEdit(element.id);
+      },
+      [editable, element.id, isTextEditing, onEnterTextEdit, onSelect]
+    );
+
+    const handleLinkPress = useCallback(() => {
+      // 🔥 CRITICAL RULE: Links only work in VIEW MODE
+      // In editor mode, selection/editing always takes priority
+      if (!isViewMode) {
+        return;
+      }
+
+      if (element.type !== "text") return;
+      const metadata = (element as any).metadata as any;
+      if (!metadata?.link) return;
+      const url = metadata.link.url;
+      if (!url) return;
+      
+      // Check if it's a valid URL
+      const validUrl = url.startsWith("http://") || url.startsWith("https://") || url.startsWith("app://")
+        ? url
+        : `https://${url}`;
+      
+      Linking.openURL(validUrl).catch(() => {
+        Alert.alert("Cannot open link", "The link is not valid");
+      });
+    }, [element, isViewMode]);
+
+    const handleElementPress = useCallback(() => {
+      // 🔥 LINK BEHAVIOR DEPENDS ON VIEWING MODE
+      const metadata = (element as any).metadata as any;
+      const hasLink = element.type === "text" && metadata?.link?.url;
+
+      // VIEW MODE: Links take priority, text clicks do nothing
+      if (isViewMode) {
+        if (hasLink) {
+          handleLinkPress();
+        }
+        // In view mode, don't select/edit
+        return;
+      }
+
+      // EDITOR MODE: Selection/editing takes priority, links ignored
+      handlePress();
+    }, [element, isViewMode, handleLinkPress, handlePress]);
 
     const handleText = useCallback(
       (t: string) => {
@@ -332,7 +436,7 @@ const CanvasElementView = memo(
     if (element.type === "text") {
       const color = element.style?.textColor ?? defaultTextColor;
       const isCodeBlock = element.style?.fontFamily === "monospace";
-      const canEditText = selected && editable && isTextEditing && !isDragging;
+      const canEditText = textInteractionMode === "editing" && editable && !isDragging;
       const codeEditColor = "#E5E7EB";
       const codeEditBackground = "#111827";
       const textDecorationLine = element.style?.underline
@@ -370,23 +474,37 @@ const CanvasElementView = memo(
       } else {
         inner = (
           <TextInput
-            ref={(node) => onSetInputRef(element.id, node)}
+            ref={(node) => {
+              inputRefRef.current = node;
+              onSetInputRef(element.id, node);
+            }}
             multiline
             scrollEnabled={false}
             value={element.text}
             editable={canEditText}
+            pointerEvents={canEditText ? "auto" : "auto"}
             onFocus={() => {
               if (!editable) return;
-              handlePress();
-              onTextFocused(element.id);
+              // Only set toolbar mode to keyboard, DO NOT change interaction mode
+              onSetTextToolbarMode("keyboard");
+              onMeasureToolbarPosition(element.id);
             }}
             onBlur={() => {
               if (!editable) return;
-              onSetTextMoveMode(element.id);
+              if (isOpeningLinkRef.current) return;
+              // When blur occurs during editing, revert to selected or idle
+              if (textInteractionMode === "editing") {
+                onSetTextToolbarMode("floating");
+              }
             }}
-            onPressIn={canEditText ? undefined : handlePressIn}
+            onSelectionChange={(e) => {
+              const selection = {
+                start: e.nativeEvent.selection.start,
+                end: e.nativeEvent.selection.end
+              };
+              onSelectionChange(selection);
+            }}
             onChangeText={handleText}
-            onContentSizeChange={(e) => onTextSizeChange(element.id, e.nativeEvent.contentSize.height)}
             placeholder="Tap to type…"
             placeholderTextColor={isCodeBlock ? "#9CA3AF" : `${color}66`}
             style={{
@@ -402,7 +520,8 @@ const CanvasElementView = memo(
               paddingHorizontal: 8,
               paddingVertical: 6,
               width: "100%",
-              height: "100%"
+              height: "100%",
+              textAlignVertical: "top"
             }}
           />
         );
@@ -433,6 +552,10 @@ const CanvasElementView = memo(
       }
     }
 
+    const showTextBorder = element.type === "text" && (textInteractionMode === "selected" || textInteractionMode === "editing");
+    const showTextHandles = element.type === "text" && (textInteractionMode === "selected" || isRotating);
+    const showNonTextBorder = selected && element.type !== "text";
+
     return (
       <View
         ref={(node) => onSetRef(element.id, node)}
@@ -444,44 +567,66 @@ const CanvasElementView = memo(
           height: element.height,
           transform: [{ rotate: `${element.rotation}deg` }],
           zIndex: element.zIndex,
-          borderWidth: selected ? 2 : 0,
-          borderColor: selected ? primaryColor : "transparent",
+          borderWidth: showTextBorder || showNonTextBorder ? 2 : 0,
+          borderColor: showTextBorder || showNonTextBorder ? primaryColor : "transparent",
           borderRadius: 10
         }}
       >
         <Pressable
-          onPress={handlePress}
-          onPressIn={handlePressIn}
+          onPress={handleElementPress}
+          onPressIn={element.type === "text" ? undefined : handlePressIn}
+          pointerEvents="auto"
           style={StyleSheet.absoluteFillObject}
         >
           {inner}
         </Pressable>
 
-        {selected && editable && element.type === "text" && (
-          <View pointerEvents="box-none" style={styles.textActionButtonsWrap}>
-            <View style={styles.textActionButtonsRow}>
-              <Pressable
-                onPress={() => onSetTextMoveMode(element.id)}
-                hitSlop={8}
-                style={[styles.textActionButton, !isTextEditing && styles.textActionButtonActive]}
-              >
-                <Ionicons name="move" size={18} color={isTextEditing ? "#E5E7EB" : "#111827"} />
-              </Pressable>
-
-              <Pressable
-                onPressIn={(evt) => onRotatePressIn(element, evt)}
-                hitSlop={8}
-                style={styles.textActionButton}
-              >
-                <Ionicons name="sync" size={18} color="#111827" />
-              </Pressable>
-            </View>
-          </View>
-        )}
-
-        {selected && editable && element.type !== "text" && (
+        {/* TEXT ELEMENT HANDLES - ONLY IN SELECTED MODE */}
+        {editable && showTextHandles && (
           <>
-            {/* Corners */}
+            <View pointerEvents="box-none" style={styles.textActionButtonsWrap}>
+              <View style={styles.textActionButtonsRow}>
+                <Pressable
+                  onPressIn={(evt) => onMovePressIn(element, evt)}
+                  hitSlop={8}
+                  style={[styles.textActionButton, styles.textActionButtonActive]}
+                >
+                  <Ionicons name="move" size={18} color="#111827" />
+                </Pressable>
+
+                <View style={{ position: "relative" }}>
+                  <Pressable
+                    onPressIn={(evt) => onRotatePressIn(element, evt)}
+                    hitSlop={8}
+                    style={styles.textActionButton}
+                  >
+                    <Ionicons name="sync" size={18} color="#111827" />
+                  </Pressable>
+                  {/* 📐 MOSTRAR ÂNGULO SOMENTE DURANTE DRAG DE ROTAÇÃO */}
+                  {isRotating && (
+                    <Text
+                      style={{
+                        position: "absolute",
+                        top: -22,
+                        left: "50%",
+                        transform: [{ translateX: -15 }],
+                        fontSize: 11,
+                        color: "#fff",
+                        backgroundColor: "#00000099",
+                        paddingHorizontal: 6,
+                        paddingVertical: 2,
+                        borderRadius: 3,
+                        fontWeight: "600",
+                        fontFamily: "monospace"
+                      }}
+                    >
+                      {Math.round(rotationAngle)}°
+                    </Text>
+                  )}
+                </View>
+              </View>
+            </View>
+            {/* Corner resize handles for text */}
             {(["nw", "ne", "sw", "se"] as const).map((h) => (
               <Pressable
                 key={h}
@@ -498,7 +643,47 @@ const CanvasElementView = memo(
                 ]}
               />
             ))}
-            {/* Sides */}
+            {/* Side resize handles for text */}
+            {(["n", "e", "s", "w"] as const).map((h) => (
+              <Pressable
+                key={h}
+                onPressIn={(evt) => onResizePressIn(element, h, evt)}
+                hitSlop={12}
+                style={[
+                  styles.handle,
+                  styles.sideHandle,
+                  h === "n" && styles.handleN,
+                  h === "e" && styles.handleE,
+                  h === "s" && styles.handleS,
+                  h === "w" && styles.handleW,
+                  { borderColor: primaryColor, backgroundColor: surfaceElevated }
+                ]}
+              />
+            ))}
+          </>
+        )}
+
+        {/* NON-TEXT ELEMENT HANDLES */}
+        {editable && showNonTextBorder && (
+          <>
+            {/* Corner handles */}
+            {(["nw", "ne", "sw", "se"] as const).map((h) => (
+              <Pressable
+                key={h}
+                onPressIn={(evt) => onResizePressIn(element, h, evt)}
+                hitSlop={12}
+                style={[
+                  styles.handle,
+                  styles.cornerHandle,
+                  h === "nw" && styles.handleNW,
+                  h === "ne" && styles.handleNE,
+                  h === "sw" && styles.handleSW,
+                  h === "se" && styles.handleSE,
+                  { borderColor: primaryColor, backgroundColor: surfaceElevated }
+                ]}
+              />
+            ))}
+            {/* Side handles */}
             {(["n", "e", "s", "w"] as const).map((h) => (
               <Pressable
                 key={h}
@@ -531,7 +716,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   onChangeText,
   toolbarVisible = true,
   editable = true,
-  centerSignal = 0
+  centerSignal = 0,
+  isViewMode = false  // 🔥 true = read-only view, false = editor
 }) => {
   const { theme } = useTheme();
   const defaultTextColor = "#FFFFFF";
@@ -558,7 +744,9 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const [pendingFocusTextId, setPendingFocusTextId] = useState<string | null>(null);
   const [drawingMode, setDrawingMode] = useState<DrawingToolMode>(null);
   const [mode, setMode] = useState<EditorInteractionMode>("select");
-  const [textInteractionMode, setTextInteractionMode] = useState<TextInteractionMode>("move");
+  const [textInteractionMode, setTextInteractionMode] = useState<TextInteractionMode>("idle");
+  const [isRotating, setIsRotating] = useState(false);  // 📐 Controlar visibilidade do ângulo
+  const [rotationAngle, setRotationAngle] = useState(0);  // 📐 Ângulo atualizado em tempo real
   const [drawingOpacity, setDrawingOpacity] = useState(1);
   const [drawingSmoothness, setDrawingSmoothness] = useState(0.05);
   const [drawingColor, setDrawingColor] = useState(DRAW_COLORS[1]);
@@ -575,8 +763,18 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const [alignmentGuides, setAlignmentGuides] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
   const [isElementDragging, setIsElementDragging] = useState(false);
   const [showPencilModal, setShowPencilModal] = useState(false);
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkModalInput, setLinkModalInput] = useState("");
+  const [selectedTextRange, setSelectedTextRange] = useState<{ start: number; end: number } | null>(null);
+  const [textToolbarMode, setTextToolbarMode] = useState<"hidden" | "floating" | "keyboard">("hidden");
+  const [toolbarPosition, setToolbarPosition] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
+  const selectionRef = useRef<{ start: number; end: number } | null>(null);
+  const isOpeningLinkRef = useRef(false);
+  const lastTextTapIdRef = useRef<string | null>(null);
+  const lastTextTapTimeRef = useRef<number>(0);
+  
   const docRef = useRef(doc);
   docRef.current = doc;
   const zoomRef = useRef(zoom);
@@ -591,6 +789,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const canvasPanStateRef = useRef<CanvasPanState | null>(null);
   const rootRef = useRef<View | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
+  const elementInputRefs = useRef<Map<string, TextInput | null>>(new Map());
   const elementRefs = useRef<Record<string, View | null>>({});
   const inputRefs = useRef<Record<string, TextInput | null>>({});
   const undoStackRef = useRef<CanvasNoteDocument[]>([]);
@@ -789,13 +988,58 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
 
   const setInputRef = useCallback((id: string, node: TextInput | null) => {
     inputRefs.current[id] = node;
+    if (node) {
+      elementInputRefs.current.set(id, node);
+    }
   }, []);
 
   const handleTextFocused = useCallback((id: string) => {
-    setTextInteractionMode("edit");
+    setTextInteractionMode("editing");
     setMode("text");
     if (pendingFocusTextId === id) setPendingFocusTextId(null);
   }, [pendingFocusTextId]);
+
+  // Refocus text input when link modal closes
+  useEffect(() => {
+    if (showLinkModal) {
+      isOpeningLinkRef.current = false;
+    }
+  }, [showLinkModal]);
+
+  // Refocus text input when link modal closes
+  useEffect(() => {
+    if (!showLinkModal && selectedId) {
+      const input = elementInputRefs.current.get(selectedId);
+      if (input) {
+        requestAnimationFrame(() => {
+          input.focus();
+          if (selectionRef.current) {
+            input.setSelection?.(selectionRef.current.start, selectionRef.current.end);
+          }
+        });
+      }
+    }
+  }, [showLinkModal, selectedId]);
+
+  // Handle keyboard show/hide for toolbar positioning
+  useEffect(() => {
+    const subscriptions = [
+      Keyboard.addListener("keyboardDidShow", () => {
+        if (textInteractionMode === "editing") {
+          setTextToolbarMode("keyboard");
+        }
+      }),
+      Keyboard.addListener("keyboardDidHide", () => {
+        if (selectedId && textInteractionMode === "editing") {
+          setTextToolbarMode("floating");
+        } else {
+          setTextToolbarMode("hidden");
+        }
+      })
+    ];
+    
+    return () => subscriptions.forEach(sub => sub.remove());
+  }, [selectedId, textInteractionMode]);
 
   const clearAlignmentGuides = useCallback(() => {
     setAlignmentGuides((prev) => (prev.x === null && prev.y === null ? prev : { x: null, y: null }));
@@ -805,12 +1049,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     setSelectedId(null);
     setIsElementDragging(false);
     clearAlignmentGuides();
-    setTextInteractionMode("move");
+    setTextInteractionMode("idle");
     // Keep drawing mode active; otherwise drawing touch layer is disabled mid-stroke.
     setMode(drawingMode ? "draw" : "select");
     setPendingFocusTextId(null);
     setShowStylePanel(false);
     setShowAlignMenu(false);
+    setTextToolbarMode("hidden");
     Keyboard.dismiss();
   }, [clearAlignmentGuides, drawingMode]);
 
@@ -854,7 +1099,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         });
       });
     });
-  }, [rootLayout.height, rootLayout.width, selectedTextElement]);
+  }, [rootLayout.height, rootLayout.width, selectedTextElement?.id]);
 
   useEffect(() => {
     const max = Math.max(0, (doc.pages?.length ?? 1) - 1);
@@ -902,7 +1147,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   useEffect(() => {
     if (editable) return;
     setDrawingMode(null);
-    setTextInteractionMode("move");
+    setTextInteractionMode("idle");
     setShowShapeMenu(false);
     setShowStylePanel(false);
     setShowAlignMenu(false);
@@ -928,16 +1173,29 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     setDoc((prev) => ({ ...prev, elements: prev.elements.map((el) => (el.id === id ? updater(el) : el)) }));
   }, []);
 
+  const measureToolbarPosition = useCallback((id: string) => {
+    requestAnimationFrame(() => {
+      const input = elementInputRefs.current.get(id);
+      if (input) {
+        input.measureInWindow((x, y, width, height) => {
+          setToolbarPosition({ x, y, width, height });
+        });
+      }
+    });
+  }, []);
+
   const setTextMoveMode = useCallback(
     (id: string) => {
       if (!editable) return;
       setSelectedId(id);
-      setTextInteractionMode("move");
+      setTextInteractionMode("selected");
       setMode("select");
       setPendingFocusTextId(null);
+      setTextToolbarMode("floating");
       Keyboard.dismiss();
+      measureToolbarPosition(id);
     },
-    [editable]
+    [editable, measureToolbarPosition]
   );
 
   const addElement = useCallback((element: CanvasElement) => {
@@ -980,12 +1238,41 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     (id: string) => {
       if (!editable || drawingMode) return;
       const target = docRef.current.elements.find((x) => x.id === id);
+      
+      // Double-tap logic for text elements
+      if (target?.type === "text") {
+        const now = Date.now();
+        const isSameElement = lastTextTapIdRef.current === id;
+        const isDoubleTap = isSameElement && (now - lastTextTapTimeRef.current) < DOUBLE_TAP_MS;
+        
+        lastTextTapIdRef.current = id;
+        lastTextTapTimeRef.current = now;
+        
+        if (isDoubleTap) {
+          // Second tap: enter edit mode
+          setSelectedId(id);
+          setTextInteractionMode("editing");
+          setMode("text");
+          setPendingFocusTextId(id);
+          bringToFront(id);
+          return;
+        }
+      }
+      
+      // First tap or non-text: just select
       setSelectedId(id);
-      setTextInteractionMode(target?.type === "text" ? "move" : "move");
+      setTextInteractionMode(target?.type === "text" ? "selected" : "idle");
       setMode("select");
       bringToFront(id);
+      
+      // 📐 SEMPRE MEDIR POSIÇÃO DA TOOLBAR
+      if (target?.type === "text") {
+        requestAnimationFrame(() => {
+          measureToolbarPosition(id);
+        });
+      }
     },
-    [bringToFront, drawingMode, editable]
+    [bringToFront, drawingMode, editable, measureToolbarPosition]
   );
 
   const enterTextEdit = useCallback(
@@ -993,23 +1280,39 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       if (!editable || drawingMode) return;
       const target = docRef.current.elements.find((x) => x.id === id);
       if (!target || target.type !== "text") return;
+      
       setSelectedId(id);
-      setTextInteractionMode("edit");
+      setTextInteractionMode("editing");
       setMode("text");
       setPendingFocusTextId(id);
       bringToFront(id);
+      
+      // 📐 FOCAR INPUT COM REQUESTANIMATIONFRAME
+      requestAnimationFrame(() => {
+        const input = elementInputRefs.current.get(id);
+        if (input) {
+          input.focus?.();
+        }
+      });
     },
     [bringToFront, drawingMode, editable]
   );
 
   const beginInteraction = useCallback(
     (el: CanvasElement, mode: InteractionMode, evt: GestureResponderEvent, handle?: ResizeHandle) => {
-      if (!editable || drawingMode || textInteractionMode === "edit") return;
+      if (!editable || drawingMode || textInteractionMode === "editing") return;
+      if (!evt?.nativeEvent) return;
+      
+      // 🔒 VALIDAÇÃO SEGURA DE COORDENADAS
+      const coords = getSafePageCoords(evt);
+      if (!coords) return;
+      
       pushUndoSnapshot();
       setSelectedId(el.id);
       setIsElementDragging(mode === "move");
       if (mode !== "move") clearAlignmentGuides();
-      setTextInteractionMode("move");
+      if (mode === "rotate") setIsRotating(true);  // 📐 INICIAR MODO ROTAÇÃO
+      setTextInteractionMode("idle");
       bringToFront(el.id);
       elementInteractionRef.current = {
         elementId: el.id,
@@ -1020,8 +1323,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         startElW: el.width,
         startElH: el.height,
         startElRotation: el.rotation ?? 0,
-        startPageX: evt.nativeEvent.pageX,
-        startPageY: evt.nativeEvent.pageY
+        startPageX: coords?.pageX ?? 0,
+        startPageY: coords?.pageY ?? 0
       };
     },
     [bringToFront, clearAlignmentGuides, drawingMode, editable, pushUndoSnapshot, textInteractionMode]
@@ -1148,6 +1451,51 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       };
     });
   }, [defaultTextColor, updateSelectedTextStyle]);
+
+  const handleSelectionChange = useCallback((selection: { start: number; end: number } | null) => {
+    setSelectedTextRange(selection);
+    selectionRef.current = selection;
+  }, []);
+
+  const handleOpenLinkModal = useCallback(() => {
+    isOpeningLinkRef.current = true;
+    selectionRef.current = selectedTextRange;
+    setShowLinkModal(true);
+  }, [selectedTextRange]);
+
+  const addLinkToText = useCallback(() => {
+    if (!linkModalInput.trim() || !selectedTextElement) return;
+    
+    const selection = selectionRef.current;
+    if (!selection || selection.start === selection.end) {
+      // No text selected, just add URL to end
+      const linkMetadata = {
+        url: linkModalInput,
+        start: selectedTextElement.text.length,
+        end: selectedTextElement.text.length
+      };
+      updateElement(selectedTextElement.id, (prev) =>
+        prev.type === "text" 
+          ? { ...prev, metadata: { ...((prev as any).metadata || {}), link: linkMetadata } } 
+          : prev
+      );
+    } else {
+      // Use selected text and add link metadata
+      const linkMetadata = {
+        url: linkModalInput,
+        start: selection.start,
+        end: selection.end
+      };
+      updateElement(selectedTextElement.id, (prev) =>
+        prev.type === "text" 
+          ? { ...prev, metadata: { ...((prev as any).metadata || {}), link: linkMetadata } } 
+          : prev
+      );
+    }
+    
+    setShowLinkModal(false);
+    setLinkModalInput("");
+  }, [linkModalInput, selectedTextElement, updateElement]);
 
   const beginDrawing = useCallback(
     (pageId: ID, rawX: number, rawY: number) => {
@@ -1435,13 +1783,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         onStartShouldSetPanResponder: () => false,
         onStartShouldSetPanResponderCapture: (evt) => {
           if (isDraggingPageRef.current || overviewMode) return false;
-          if (textInteractionMode === "edit") return false;
+          if (textInteractionMode === "editing") return false;
           return (evt.nativeEvent.touches?.length ?? 0) >= 2;
         },
         onMoveShouldSetPanResponder: () => false,
         onMoveShouldSetPanResponderCapture: (evt, gs) => {
           if (isDraggingPageRef.current || overviewMode) return false;
-          if (textInteractionMode === "edit") return false;
+          if (textInteractionMode === "editing") return false;
           const touches = evt.nativeEvent.touches?.length ?? 0;
           if (touches >= 2) return true;
           if (drawingMode) return false;
@@ -1453,7 +1801,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
 
         onPanResponderGrant: (evt) => {
           const touches = evt.nativeEvent.touches ?? [];
-          if (isDraggingPageRef.current || overviewMode || textInteractionMode === "edit") return;
+          if (isDraggingPageRef.current || overviewMode || textInteractionMode === "editing") return;
           if (drawingMode && touches.length < 2) return;
           pageSwipeActiveRef.current = false;
           if (touches.length >= 2) {
@@ -1466,6 +1814,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
             const scale = displayScaleRef.current || 1;
             const offsetX = canvasPositionRef.current.x;
             const offsetY = canvasPositionRef.current.y;
+            // 🔒 VALIDAÇÃO SEGURA DE COORDENADAS
+            if (!touches[0]?.pageX || !touches[1]?.pageX || !touches[0]?.pageY || !touches[1]?.pageY) {
+              return;
+            }
             const midX = (touches[0].pageX + touches[1].pageX) / 2;
             const midY = (touches[0].pageY + touches[1].pageY) / 2;
             pinchStateRef.current = {
@@ -1486,9 +1838,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
 
         onPanResponderMove: (evt, gs: PanResponderGestureState) => {
           const touches = evt.nativeEvent.touches ?? [];
-          if (isDraggingPageRef.current || overviewMode || textInteractionMode === "edit") return;
+          if (isDraggingPageRef.current || overviewMode || textInteractionMode === "editing") return;
           if (drawingMode && touches.length < 2) return;
           if (touches.length >= 2 && pinchStateRef.current) {
+            // 🔒 VALIDAÇÃO SEGURA DE COORDENADAS
+            if (!touches[0]?.pageX || !touches[1]?.pageX || !touches[0]?.pageY || !touches[1]?.pageY) {
+              return;
+            }
             const dist = touchDist(touches[0], touches[1]);
             const ratio = dist / Math.max(1, pinchStateRef.current.startDist);
             const nextZoom = clamp(pinchStateRef.current.startZoom * ratio, ZOOM_MIN, ZOOM_MAX);
@@ -1538,9 +1894,16 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           }
 
           if (!interaction) return;
+          
+          // 🔒 VALIDAÇÃO SEGURA DE COORDENADAS
+          const coords = getSafePageCoords(evt);
+          if (!coords) return;
+          
           const scale = displayScaleRef.current || 1;
-          const dxEl = (evt.nativeEvent.pageX - interaction.startPageX) / scale;
-          const dyEl = (evt.nativeEvent.pageY - interaction.startPageY) / scale;
+          const offsetX = canvasPositionRef.current.x || 0;
+          const offsetY = canvasPositionRef.current.y || 0;
+          const dxEl = ((coords.pageX - offsetX) - (interaction.startPageX - offsetX)) / scale;
+          const dyEl = ((coords.pageY - offsetY) - (interaction.startPageY - offsetY)) / scale;
 
           setDoc((prev) => {
             const prevEl = prev.elements.find((x) => x.id === interaction.elementId) ?? null;
@@ -1570,9 +1933,46 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
               }
 
               if (interaction.mode === "rotate") {
-                const rawRotation = interaction.startElRotation + dxEl * 0.5;
-                const normalizedRotation = ((rawRotation % 360) + 360) % 360;
-                return { ...cur, rotation: normalizedRotation };
+                // 📐 ROTAÇÃO MELHORADA COM SNAP E FEEDBACK
+                const centerX = interaction.startElX + interaction.startElW / 2;
+                const centerY = interaction.startElY + interaction.startElH / 2;
+                
+                // Usar coordenadas validadas
+                const touchX = coords.pageX;
+                const touchY = coords.pageY;
+                const offsetX = canvasPositionRef.current.x || 0;
+                const offsetY = canvasPositionRef.current.y || 0;
+                const scale = displayScaleRef.current || 1;
+                
+                // Converter para espaço do canvas
+                const canvasX = (touchX - offsetX) / scale;
+                const canvasY = (touchY - offsetY) / scale;
+                
+                // Ângulo atual
+                const dx = canvasX - centerX;
+                const dy = canvasY - centerY;
+                const currentAngle = Math.atan2(dy, dx) * (180 / Math.PI);
+                
+                // Ângulo inicial (do toque inicial)
+                const startOffsetX = canvasPositionRef.current.x || 0;
+                const startOffsetY = canvasPositionRef.current.y || 0;
+                const startCanvasX = (interaction.startPageX - startOffsetX) / scale;
+                const startCanvasY = (interaction.startPageY - startOffsetY) / scale;
+                const startDx = startCanvasX - centerX;
+                const startDy = startCanvasY - centerY;
+                const startAngle = Math.atan2(startDy, startDx) * (180 / Math.PI);
+                
+                // Delta de rotação
+                const rotationDelta = currentAngle - startAngle;
+                const rawRotation = interaction.startElRotation + rotationDelta;
+                const normalizedRotation = normalizeAngle(rawRotation);
+                
+                // 📐 ATUALIZAR ÂNGULO EM TEMPO REAL PARA EXIBIÇÃO
+                setRotationAngle(normalizedRotation);
+                
+                // 🧭 APLICAR SNAP INTELIGENTE
+                const snappedRotation = snapRotation(normalizedRotation);
+                return { ...cur, rotation: snappedRotation };
               }
 
               const handle = interaction.handle ?? "se";
@@ -1664,7 +2064,16 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           pinchStateRef.current = null;
           canvasPanStateRef.current = null;
           setIsElementDragging(false);
+          setIsRotating(false);  // 📐 FINALIZAR MODO ROTAÇÃO
+          setRotationAngle(0);  // 📐 RESETAR ÂNGULO
           clearAlignmentGuides();
+          
+          // 📐 RECALCULAR POSIÇÃO DA TOOLBAR APÓS MOVIMENTO/RESIZE
+          if (selectedId) {
+            requestAnimationFrame(() => {
+              measureToolbarPosition(selectedId);
+            });
+          }
         },
 
         onPanResponderTerminate: () => {
@@ -1684,6 +2093,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
           pinchStateRef.current = null;
           canvasPanStateRef.current = null;
           setIsElementDragging(false);
+          setIsRotating(false);  // 📐 FINALIZAR MODO ROTAÇÃO
+          setRotationAngle(0);  // 📐 RESETAR ÂNGULO
           clearAlignmentGuides();
         }
       }),
@@ -1720,7 +2131,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     const y = Math.max(24, pageH * 0.18);
     const el = createCanvasTextElement("", x, y, pageId);
     addElement({ ...el, style: { ...el.style, textColor: defaultTextColor } });
-    setTextInteractionMode("edit");
+    setTextInteractionMode("editing");
     setMode("text");
     setPendingFocusTextId(el.id);
   }, [addElement, defaultTextColor, doc.pageHeight, doc.pageWidth, getDefaultTargetPageId, pagesById]);
@@ -1914,13 +2325,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       setMode("draw");
       return;
     }
-    if (selectedTextElement && textInteractionMode === "edit") {
+    if (selectedTextElement && textInteractionMode === "editing") {
       setMode("text");
       return;
     }
     setMode("select");
   }, [drawingMode, selectedTextElement, textInteractionMode]);
-  const showTextToolbar = !!selectedTextElement && !drawingMode;
+  const showTextToolbar = textToolbarMode !== "hidden";
   const selectedTextStyle = selectedTextElement?.style ?? {};
   const selectedTextColor = selectedTextStyle.textColor ?? defaultTextColor;
   const selectedFontFamily = selectedTextStyle.fontFamily ?? "System";
@@ -1949,14 +2360,28 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   const overlayHeight = rootLayout.height || rootWindowFrame.height;
   const toolbarWidth = Math.min(textToolbarLayout.width || 320, Math.max(220, overlayWidth - 16));
   const toolbarHeight = textToolbarLayout.height || FLOATING_TOOLBAR_H;
-  const toolbarAnchorX = selectedOverlayRect ? selectedOverlayRect.x + selectedOverlayRect.width / 2 : overlayWidth / 2;
-  const toolbarLeft = clamp(toolbarAnchorX - toolbarWidth / 2, 8, Math.max(8, overlayWidth - toolbarWidth - 8));
-  const minToolbarTop = 62;
-  const preferredToolbarTop = selectedOverlayRect ? selectedOverlayRect.y - toolbarHeight - 12 : overlayHeight - keyboardHeight - toolbarHeight - 8;
-  const fallbackToolbarTop = selectedOverlayRect ? selectedOverlayRect.y + selectedOverlayRect.height + 12 : preferredToolbarTop;
-  const maxToolbarTop = Math.max(minToolbarTop, overlayHeight - keyboardHeight - toolbarHeight - 8);
-  const textToolbarTop = clamp(preferredToolbarTop >= minToolbarTop ? preferredToolbarTop : fallbackToolbarTop, minToolbarTop, maxToolbarTop);
-  const popupTop = clamp(textToolbarTop + toolbarHeight + 8, minToolbarTop, Math.max(minToolbarTop, overlayHeight - keyboardHeight - 120));
+  
+  // 🔥 GUARD: Se não temos posição válida, não renderizar toolbar
+  const hasValidToolbarPosition = textToolbarMode === "floating" && toolbarPosition && typeof toolbarPosition.x === "number" && typeof toolbarPosition.y === "number";
+  
+  // Calcular posição da toolbar baseado em modo
+  let toolbarLeft = overlayWidth / 2 - toolbarWidth / 2;
+  let dynamicToolbarWidth = toolbarWidth;
+  let textToolbarTop = 62;
+  
+  if (hasValidToolbarPosition && textToolbarMode === "floating") {
+    // Modo floating: aparecer acima do elemento
+    toolbarLeft = clamp(toolbarPosition.x + toolbarPosition.width / 2 - toolbarWidth / 2, 8, Math.max(8, overlayWidth - toolbarWidth - 8));
+    textToolbarTop = Math.max(62, toolbarPosition.y - toolbarHeight - 12);
+    dynamicToolbarWidth = toolbarWidth;
+  } else if (textToolbarMode === "keyboard") {
+    // Modo keyboard: aparecer acima do teclado, ocupar largura inteira
+    toolbarLeft = 0;
+    dynamicToolbarWidth = overlayWidth;
+    textToolbarTop = overlayHeight - keyboardHeight - toolbarHeight - 8;
+  }
+  
+  const popupTop = clamp(textToolbarTop + toolbarHeight + 8, 62, Math.max(62, overlayHeight - keyboardHeight - 120));
   const renderCanvasPosition = useMemo(() => {
     const x = Number.isFinite(canvasPosition.x) ? canvasPosition.x : 0;
     const y = Number.isFinite(canvasPosition.y) ? canvasPosition.y : 0;
@@ -2089,7 +2514,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     }
 
     setSelectedId(null);
-    setTextInteractionMode("move");
+    setTextInteractionMode("idle");
     setPendingFocusTextId(null);
     setShowShapeMenu(false);
     setShowStylePanel(false);
@@ -2111,7 +2536,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     }
 
     setSelectedId(null);
-    setTextInteractionMode("move");
+    setTextInteractionMode("idle");
     setPendingFocusTextId(null);
     setShowShapeMenu(false);
     setShowStylePanel(false);
@@ -2147,22 +2572,29 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                   element={element}
                   selected={editable && element.id === selectedId}
                   editable={editable}
-                  isTextEditing={textInteractionMode === "edit" && element.id === selectedId}
+                  isTextEditing={textInteractionMode === "editing" && element.id === selectedId}
                   isDragging={isElementDragging && element.id === selectedId}
+                  isRotating={isRotating && element.id === selectedId}  // 📐 PASSAR isRotating
+                  rotationAngle={rotationAngle}  // 📐 PASSAR rotationAngle
                   primaryColor={colors.primary}
                   surfaceElevated={colors.surfaceElevated}
                   defaultTextColor={defaultTextColor}
+                  isOpeningLinkRef={isOpeningLinkRef}
+                  isViewMode={isViewMode}
                   onSetRef={setElementRef}
                   onSetInputRef={setInputRef}
                   onTextFocused={handleTextFocused}
                   onSelect={handleSelect}
                   onEnterTextEdit={enterTextEdit}
                   onSetTextMoveMode={setTextMoveMode}
+                  onSetTextToolbarMode={setTextToolbarMode}
+                  onMeasureToolbarPosition={measureToolbarPosition}
                   onMovePressIn={handleElementMovePressIn}
                   onRotatePressIn={handleElementRotatePressIn}
                   onResizePressIn={handleElementResizePressIn}
                   onChangeText={handleTextChange}
-                  onTextSizeChange={handleTextSizeChange}
+                  onSelectionChange={handleSelectionChange}
+                  textInteractionMode={element.id === selectedId ? textInteractionMode : "idle"}
                 />
               ))}
             </View>
@@ -2290,7 +2722,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       handleSelect,
       enterTextEdit,
       handleTextChange,
-      handleTextSizeChange,
       handleTextFocused,
       setElementRef,
       setInputRef,
@@ -2915,8 +3346,38 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         </Pressable>
       </Modal>
 
+      <Modal visible={showLinkModal} transparent animationType="fade" onRequestClose={() => setShowLinkModal(false)}>
+        <Pressable style={styles.shapeModalBackdrop} onPress={() => setShowLinkModal(false)}>
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={[styles.shapeModalCard, { backgroundColor: colors.surfaceElevated, borderColor: colors.border }]}
+          >
+            <Text variant="subtitle" style={styles.shapeModalTitle}>Add Link</Text>
+            <TextInput
+              value={linkModalInput}
+              onChangeText={setLinkModalInput}
+              placeholder="Enter URL or text"
+              placeholderTextColor="#94A3B866"
+              style={[styles.renameInput, { color: colors.textPrimary, borderColor: colors.border }]}
+              autoFocus
+            />
+            <View style={styles.renameActions}>
+              <Pressable style={styles.menuBtnSmall} onPress={() => {
+                setShowLinkModal(false);
+                setLinkModalInput("");
+              }}>
+                <Text muted>Cancel</Text>
+              </Pressable>
+              <Pressable style={[styles.menuBtnSmall, styles.activeBtn]} onPress={addLinkToText}>
+                <Text style={{ color: colors.textPrimary }}>Add</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <View pointerEvents="box-none" style={styles.overlayLayer}>
-        {showTextToolbar && (
+        {showTextToolbar && !(textToolbarMode === "floating" && !hasValidToolbarPosition) && (
           <>
             <View
               style={[
@@ -2924,7 +3385,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 {
                   left: toolbarLeft,
                   top: textToolbarTop,
-                  width: toolbarWidth
+                  width: dynamicToolbarWidth
                 }
               ]}
               onLayout={(e) => {
@@ -2982,6 +3443,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                 onPress={toggleCodeTextStyle}
               >
                 <Ionicons name="code-slash-outline" size={18} color={colors.textPrimary} />
+              </Pressable>
+
+              <Pressable
+                style={styles.textTbBtn}
+                onPressIn={handleOpenLinkModal}
+              >
+                <Ionicons name="link" size={18} color={colors.textPrimary} />
               </Pressable>
 
               <View style={[styles.verticalDivider, { backgroundColor: colors.border }]} />

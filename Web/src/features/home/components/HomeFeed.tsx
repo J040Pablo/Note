@@ -17,6 +17,7 @@ import { getPinnedItems, getRecentItems, savePinnedItems, saveRecentItems } from
 import { useAppMode } from "../../../app/mode";
 import {
   dispatchEntitySyncEvent,
+  dispatchTaskSyncEvent,
   subscribeTaskSyncMessages,
   type SyncFolder,
   type SyncNote,
@@ -360,10 +361,19 @@ const HomeFeed: React.FC = () => {
       const next = prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task));
       if (!isMobileSync) {
         serviceToggleTask(taskId);
+      } else {
+        const task = next.find((t) => t.id === taskId);
+        if (task) {
+          dispatchTaskSyncEvent({
+            type: "TASK_TOGGLE",
+            taskId: taskId,
+            payload: { completed: task.completed },
+          });
+        }
       }
       return next;
     });
-  }, []);
+  }, [isMobileSync]);
 
   const handleCreateQuickNote = React.useCallback(() => {
     const content = quickNote.trim();

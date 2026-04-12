@@ -16,6 +16,7 @@ interface TextFormattingToolbarProps {
   onAlignmentChange: (align: "left" | "center" | "right") => void;
   onAddCode: () => void;
   onAddImage: () => void;
+  onAddLink?: () => void;
 }
 
 const TextFormattingToolbar = memo(function TextFormattingToolbar({
@@ -29,7 +30,8 @@ const TextFormattingToolbar = memo(function TextFormattingToolbar({
   onFontSizeChange,
   onAlignmentChange,
   onAddCode,
-  onAddImage
+  onAddImage,
+  onAddLink
 }: TextFormattingToolbarProps) {
   const { theme } = useTheme();
 
@@ -198,6 +200,16 @@ const TextFormattingToolbar = memo(function TextFormattingToolbar({
       <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
 
       {/* Insert Options */}
+      {onAddLink && (
+        <>
+          <Pressable onPress={onAddLink} style={styles.toolButton}>
+            <Ionicons name="link" size={18} color={theme.colors.primary} />
+          </Pressable>
+
+          <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
+        </>
+      )}
+
       <Pressable onPress={onAddCode} style={styles.toolButton}>
         <Ionicons name="code" size={18} color={theme.colors.primary} />
       </Pressable>

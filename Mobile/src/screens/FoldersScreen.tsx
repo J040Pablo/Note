@@ -14,7 +14,10 @@ import { useAppStore } from "@store/useAppStore";
 import { createFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
 import { useNotesStore } from "@store/useNotesStore";
 import { useQuickNotesStore } from "@store/useQuickNotesStore";
+import { useFilesStore } from "@store/useFilesStore";
 import { getAllNotes, getAllQuickNotes } from "@services/notesService";
+import { importFileFromDevice } from "@services/filesService";
+import { useFolderFABActions } from "@hooks/useFolderFABActions";
 import {
   addRecentOpen,
   getPinnedItems,
@@ -79,11 +82,14 @@ const FoldersScreen: React.FC = () => {
   const quickNotesMap = useQuickNotesStore((s) => s.quickNotes);
   const setQuickNotes = useQuickNotesStore((s) => s.setQuickNotes);
 
+  const upsertFile = useFilesStore((s) => s.upsertFile);
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
   const [showSelectionMenu, setShowSelectionMenu] = useState(false);
   const [pendingDeleteFolder, setPendingDeleteFolder] = useState<Folder | null>(null);
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [showAddFileMenu, setShowAddFileMenu] = useState(false);
   const [sortMode, setSortMode] = useState<FolderSortMode>("custom");
   const [viewMode, setViewMode] = useState<FolderViewMode>("grid");
   const [fabOpen, setFabOpen] = useState(false);
@@ -153,6 +159,16 @@ const FoldersScreen: React.FC = () => {
   const gridItemWidth = useMemo(() => {
     return (width - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
   }, [width]);
+
+  const fabActions = useFolderFABActions({
+    folderId: null,
+    onShowCreateFolder: () => setShowCreateModal(true),
+    onShowAddFile: () => {
+      setShowAddFileMenu(true);
+      setFabOpen(false);
+    },
+    isDetailScreen: false
+  });
 
   const canDragReorder = sortMode === "custom";
   const isScrollLocked = dragState.isDragging;
@@ -863,6 +879,30 @@ const FoldersScreen: React.FC = () => {
         ]}
       />
 
+      <ContextActionMenu
+        visible={showAddFileMenu}
+        title="Add file"
+        onClose={() => setShowAddFileMenu(false)}
+        actions={[
+          {
+            key: "import",
+            label: "Import from device",
+            icon: "download-outline",
+            onPress: async () => {
+              const created = await importFileFromDevice(null);
+              if (created) upsertFile(created);
+              setShowAddFileMenu(false);
+            }
+          },
+          {
+            key: "scan",
+            label: "Scan document",
+            icon: "scan-outline",
+            onPress: () => Alert.alert("Coming soon", "Document scanner will be available in a future update.")
+          }
+        ]}
+      />
+
       <FolderNameModal
         visible={showCreateModal}
         onCancel={() => {
@@ -964,61 +1004,7 @@ const FoldersScreen: React.FC = () => {
       {fabOpen && <Pressable style={styles.fabBackdrop} onPress={closeFab} />}
 
       <View style={[styles.fabRoot, { bottom: Math.max(insets.bottom + 8, 16) + 68 + 20 }]} pointerEvents="box-none">
-        {([
-          {
-            key: "note",
-            label: "Create Note",
-            icon: "document-text-outline" as const,
-            onPress: () => {
-              closeFab();
-              withLock(() => {
-                navigation.getParent()?.getParent()?.navigate("NoteEditor", { folderId: null });
-              });
-            }
-          },
-          {
-            key: "quick-note",
-            label: "Quick Note",
-            icon: "flash-outline" as const,
-            onPress: () => {
-              closeFab();
-              withLock(() => {
-                navigation.getParent()?.getParent()?.navigate("QuickNote", { folderId: null });
-              });
-            }
-          },
-          {
-            key: "folder",
-            label: "Create Folder",
-            icon: "folder-outline" as const,
-            onPress: () => {
-              closeFab();
-              setShowCreateModal(true);
-            }
-          },
-          {
-            key: "file",
-            label: "Add File",
-            icon: "attach-outline" as const,
-            onPress: () => {
-              closeFab();
-              withLock(() => {
-                navigation.getParent()?.getParent()?.navigate("ImportFolderPackage", { mode: "file", folderId: null });
-              });
-            }
-          },
-          {
-            key: "import-package",
-            label: "Import Package",
-            icon: "download-outline" as const,
-            onPress: () => {
-              closeFab();
-              withLock(() => {
-                navigation.getParent()?.getParent()?.navigate("ImportFolderPackage");
-              });
-            }
-          }
-        ] as const).map((item, index) => (
+        {fabActions.map((item, index) => (
           <Animated.View
             key={item.key}
             pointerEvents={fabOpen ? "auto" : "none"}
@@ -1044,7 +1030,10 @@ const FoldersScreen: React.FC = () => {
             ]}
           >
             <Pressable
-              onPress={item.onPress}
+              onPress={() => {
+                item.onPress();
+                closeFab();
+              }}
               style={[
                 styles.fabMenuItem,
                 {
@@ -1053,7 +1042,7 @@ const FoldersScreen: React.FC = () => {
                 }
               ]}
             >
-              <Ionicons name={item.icon} size={16} color={theme.colors.primary} />
+              <Ionicons name={item.icon as any} size={16} color={theme.colors.primary} />
               <Text style={[styles.fabMenuLabel, { color: theme.colors.textPrimary }]}>{item.label}</Text>
             </Pressable>
           </Animated.View>

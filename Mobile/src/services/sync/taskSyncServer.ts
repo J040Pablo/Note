@@ -13,8 +13,7 @@ import {
 } from "@services/notesService";
 import { createTask, deleteTask, getAllTasks, updateTask } from "@services/tasksService";
 import { deleteMetaKey, upsertMetaKey } from "@services/appMetaService";
-import { emitTaskServerEvent, subscribeTaskServerEvents, type TaskServerEvent } from "@services/sync/taskSyncEvents";
-import { subscribeEntityServerEvents, type EntityServerEvent } from "@services/sync/entitySyncEvents";
+import { subscribeTaskServerEvents, subscribeEntityServerEvents, type TaskServerEvent } from "@services/sync/taskSyncEvents";
 import { fromSyncPriority, toSyncTask, type SyncPriority, type SyncTask } from "@services/sync/taskSyncProtocol";
 import type { Task } from "@models/types";
 import { isExpoGo, shouldLogDev } from "@utils/runtimeEnv";
@@ -294,7 +293,7 @@ const handleTaskCreate = async (payload: Extract<SyncIncomingMessage, { type: "T
   const title = (payload?.title ?? payload?.text ?? "").trim();
   if (!title) return;
 
-  const created = await createTask({
+  await createTask({
     id: payload?.id,
     text: title,
     priority: fromSyncPriority(payload?.priority),
@@ -305,8 +304,6 @@ const handleTaskCreate = async (payload: Extract<SyncIncomingMessage, { type: "T
     noteId: typeof payload?.noteId === "string" ? payload.noteId : null,
     updatedAt: Number(payload?.updatedAt ?? Date.now()),
   });
-
-  emitTaskServerEvent({ type: "TASK_CREATED", payload: toSyncTask(created) });
 };
 
 const handleTaskUpdate = async (payload: Extract<SyncIncomingMessage, { type: "TASK_UPDATE" }>["payload"]) => {
@@ -323,8 +320,7 @@ const handleTaskUpdate = async (payload: Extract<SyncIncomingMessage, { type: "T
     return;
   }
 
-  const updated = await updateTask(mapIncomingPayloadToTask(existing, payload));
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated) });
+  await updateTask(mapIncomingPayloadToTask(existing, payload));
 };
 
 const handleTaskDelete = async (payload: Extract<SyncIncomingMessage, { type: "TASK_DELETE" }>["payload"]) => {
@@ -332,10 +328,6 @@ const handleTaskDelete = async (payload: Extract<SyncIncomingMessage, { type: "T
   if (!id) return;
 
   await deleteTask(id);
-  emitTaskServerEvent({
-    type: "TASK_DELETED",
-    payload: { id: String(id), updatedAt: Number(payload?.updatedAt ?? Date.now()) },
-  });
 };
 
 const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "TASK_TOGGLE" }>["payload"]) => {
@@ -347,13 +339,11 @@ const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "T
   if (!existing) return;
 
   const completed = typeof payload?.completed === "boolean" ? payload.completed : !existing.completed;
-  const updated = await updateTask({
+  await updateTask({
     ...existing,
     completed,
     updatedAt: Date.now(),
   });
-
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated) });
 };
 
 const handleIncomingMessage = async (socket: SocketClient, message: SyncIncomingMessage) => {
@@ -412,6 +402,16 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
 
     const all = await getAllNotes();
     const current = all.find((n) => String(n.id) === id);
+    
+    // Conflict resolution: skip if incoming is older
+    if (current) {
+      const incomingUpdatedAt = Number(message.payload?.updatedAt ?? 0);
+      const currentUpdatedAt = Number(current.updatedAt ?? 0);
+      if (incomingUpdatedAt > 0 && currentUpdatedAt > incomingUpdatedAt) {
+        return;
+      }
+    }
+
     const folderId = (message.payload?.folderId ?? message.payload?.parentId ?? null) as string | null;
     const content = typeof message.payload?.content === "string" ? message.payload.content : "";
 
@@ -457,6 +457,15 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
     const folderId = (message.payload?.folderId ?? null) as string | null;
     const current = await getQuickNoteById(id);
 
+    // Conflict resolution: skip if incoming is older
+    if (current) {
+      const incomingUpdatedAt = Number(message.payload?.updatedAt ?? 0);
+      const currentUpdatedAt = Number(current.updatedAt ?? 0);
+      if (incomingUpdatedAt > 0 && currentUpdatedAt > incomingUpdatedAt) {
+        return;
+      }
+    }
+
     if (!current) {
       await createQuickNote({
         id,
@@ -487,6 +496,16 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
 
     const all = await getAllFolders();
     const current = all.find((f) => String(f.id) === id);
+    
+    // Conflict resolution: skip if incoming is older
+    if (current) {
+      const incomingUpdatedAt = Number(message.payload?.updatedAt ?? 0);
+      const currentUpdatedAt = Number(current.updatedAt ?? 0);
+      if (incomingUpdatedAt > 0 && currentUpdatedAt > incomingUpdatedAt) {
+        return;
+      }
+    }
+
     const parentId = (message.payload?.parentId ?? null) as string | null;
 
     if (!current) {
