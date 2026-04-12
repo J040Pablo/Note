@@ -28,15 +28,13 @@ import { SelectionIndicator } from "@components/SelectionIndicator";
 import { FloatingButton } from "@components/FloatingButton";
 import { useNavigationLock } from "@hooks/useNavigationLock";
 import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } from "@utils/noteContent";
-import { deleteNote, deleteQuickNote } from "@services/notesService";
-import { deleteFolder } from "@services/foldersService";
-import { deleteTask } from "@services/tasksService";
-import { useSelection } from "@hooks/useSelection";
+import { useGlobalSelection } from "@hooks/useGlobalSelection";
+import { useItemActions } from "@hooks/useItemActions";
+import { useUnifiedItems } from "@hooks/useUnifiedItems";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Tabs">;
 type SelectableKind = "folder" | "note" | "quick" | "task";
 type SelectedItem = { kind: SelectableKind; id: ID; label: string };
-type SelectionKey = `${SelectableKind}:${ID}`;
 
 const TOP_PADDING_DEFAULT = 24;
 const TOP_PADDING_WITH_SELECTION = 80;
@@ -75,6 +73,7 @@ const HomeScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
+  const actions = useItemActions();
 
   const foldersMap = useAppStore((s) => s.folders);
   const setFolders = useAppStore((s) => s.setFolders);
@@ -274,27 +273,11 @@ const HomeScreen: React.FC = () => {
       .filter(Boolean) as Array<{ type: "folder" | "note"; id: ID; openedAt: number; label: string; subtitle?: string; color?: string; photoPath?: string; bannerPath?: string }>;
   }, [foldersMap, notesMap, recentItems]);
 
-  const allSelectableItems = useMemo<SelectedItem[]>(() => {
-    const map: Record<string, SelectedItem> = {};
-    pinnedResolved.forEach((item) => {
-      map[`${item.type}:${item.id}`] = { kind: item.type, id: item.id, label: item.label };
-    });
-    todaysTasks.forEach((task) => {
-      map[`task:${task.id}`] = { kind: "task", id: task.id, label: task.text };
-    });
-    recentNotes.forEach((note) => {
-      map[`${note.kind}:${note.id}`] = { kind: note.kind, id: note.id, label: note.title };
-    });
-    previewFolders.forEach((folder) => {
-      map[`folder:${folder.id}`] = { kind: "folder", id: folder.id, label: folder.name };
-    });
-    recentResolved.forEach((item) => {
-      map[`${item.type}:${item.id}`] = { kind: item.type, id: item.id, label: item.label };
-    });
-    return Object.values(map);
-  }, [pinnedResolved, todaysTasks, recentNotes, previewFolders, recentResolved]);
+  const { selectableItems: unifiedSelectableItems } = useUnifiedItems({ scope: "root" });
 
-  const getSelectionKey = useCallback((kind: SelectableKind, id: ID): SelectionKey => `${kind}:${id}`, []);
+  const allSelectableItems = useMemo<SelectedItem[]>(() => {
+    return unifiedSelectableItems.map((item) => ({ kind: item.kind, id: item.id, label: item.label }));
+  }, [unifiedSelectableItems]);
 
   const {
     selectedItems,
@@ -305,8 +288,7 @@ const HomeScreen: React.FC = () => {
     startSelection,
     clearSelection,
     selectAllVisible
-  } = useSelection(allSelectableItems, {
-    getKey: (item) => getSelectionKey(item.kind, item.id),
+  } = useGlobalSelection(allSelectableItems, {
     onSelectionStart: () => showToast("Modo de selecao ativado")
   });
 
@@ -510,15 +492,13 @@ const HomeScreen: React.FC = () => {
     }
     try {
       for (const item of pinnable) {
-        const type = item.kind as PinnedItemType;
-        const next = togglePinned(type, item.id);
-        await savePinnedItems(next);
+        await actions.pin({ kind: item.kind, id: item.id, parentId: null });
       }
       showToast("Pins atualizados");
     } finally {
       handleClearSelection();
     }
-  }, [handleClearSelection, selectedItems, showToast, togglePinned]);
+  }, [actions, handleClearSelection, selectedItems, showToast]);
 
   const handleDeleteSelected = useCallback(() => {
     const items = selectedItems;
@@ -534,23 +514,7 @@ const HomeScreen: React.FC = () => {
           style: "destructive",
           onPress: async () => {
             for (const item of items) {
-              if (item.kind === "note") {
-                await deleteNote(item.id);
-                removeNote(item.id);
-                continue;
-              }
-              if (item.kind === "quick") {
-                await deleteQuickNote(item.id);
-                removeQuickNote(item.id);
-                continue;
-              }
-              if (item.kind === "folder") {
-                await deleteFolder(item.id);
-                removeFolder(item.id);
-                continue;
-              }
-              await deleteTask(item.id);
-              removeTask(item.id);
+              await actions.delete({ kind: item.kind, id: item.id, parentId: null });
             }
             handleClearSelection();
             showToast(items.length === 1 ? "Item apagado" : `${items.length} itens apagados`);
@@ -558,7 +522,7 @@ const HomeScreen: React.FC = () => {
         }
       ]
     );
-  }, [handleClearSelection, removeFolder, removeNote, removeQuickNote, removeTask, selectedItems, showToast]);
+  }, [actions, handleClearSelection, selectedItems, showToast]);
 
   const memoizedTodayTasks = useMemo(() => todaysTasks, [todaysTasks]);
 
@@ -1434,7 +1398,7 @@ const hsStyles = StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
     paddingHorizontal: 0,
-    minHeight: 100
+    minHeight: 0
   },
   headerTopRow: {
     paddingHorizontal: spacing.md,

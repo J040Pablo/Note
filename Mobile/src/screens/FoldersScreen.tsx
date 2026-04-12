@@ -11,15 +11,14 @@ import { SelectionIndicator } from "@components/SelectionIndicator";
 import { FloatingButton } from "@components/FloatingButton";
 import { useTheme } from "@hooks/useTheme";
 import { useAppStore } from "@store/useAppStore";
-import { createFolder, deleteFolder, getFoldersByParent, reorderFolders, updateFolder } from "@services/foldersService";
+import { createFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
 import { useNotesStore } from "@store/useNotesStore";
 import { useQuickNotesStore } from "@store/useQuickNotesStore";
-import { getAllNotes, getAllQuickNotes, deleteNote, deleteQuickNote } from "@services/notesService";
+import { getAllNotes, getAllQuickNotes } from "@services/notesService";
 import {
   addRecentOpen,
   getPinnedItems,
   getSortPreference,
-  savePinnedItems,
   saveSortPreference
 } from "@services/appMetaService";
 import { useNavigation } from "@react-navigation/native";
@@ -31,15 +30,16 @@ import type { Folder, ID } from "@models/types";
 import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { DraggableGrid } from "react-native-draggable-grid";
-import { useSelection } from "@hooks/useSelection";
-import { exportFolderPackageAndShare } from "@services/folderPackageService";
+import { useGlobalSelection } from "@hooks/useGlobalSelection";
+import { useItemActions } from "@hooks/useItemActions";
+import { useUnifiedItems } from "@hooks/useUnifiedItems";
+import type { AppItem } from "@domain/items/types";
 const firstLine = (text: string): string => {
   if (!text) return "";
   return text.split("\n")[0].slice(0, 90);
 };
 
-type SelectableKind = "folder" | "note" | "quick";
-type SelectedItem = { kind: SelectableKind; id: ID; label: string };
+type SelectedItem = AppItem & { label: string };
 type GridFolderItem = Folder & { key: string; disabledDrag?: boolean };
 
 type Nav = NativeStackNavigationProp<FoldersStackParamList, "FoldersRoot">;
@@ -54,9 +54,9 @@ const LIST_BOTTOM_EXTRA = 140;
 const TOP_PADDING_DEFAULT = 24;
 const TOP_PADDING_WITH_SELECTION = 80;
 const GRID_COLUMNS = 2;
-const GRID_PADDING = 12;
+const GRID_PADDING = 20;
 const GRID_GAP = 20;
-const GRID_ITEM_HEIGHT = 178;
+const GRID_ITEM_HEIGHT = 180;
 const GRID_CELL_HEIGHT = GRID_ITEM_HEIGHT + GRID_GAP;
 
 const FoldersScreen: React.FC = () => {
@@ -66,22 +66,18 @@ const FoldersScreen: React.FC = () => {
   const { width } = useWindowDimensions();
   const { withLock } = useNavigationLock();
   const { showToast } = useFeedback();
+  const actions = useItemActions();
   const folders = useAppStore((s) => s.folders);
   const setFolders = useAppStore((s) => s.setFolders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);
-  const removeFolder = useAppStore((s) => s.removeFolder);
-  const reorderFoldersInStore = useAppStore((s) => s.reorderFoldersInStore);
   const pinnedItems = useAppStore((s) => s.pinnedItems);
-  const togglePinned = useAppStore((s) => s.togglePinned);
   const setPinnedItems = useAppStore((s) => s.setPinnedItems);
   const setRecentItems = useAppStore((s) => s.setRecentItems);
 
   const notesMap = useNotesStore((s) => s.notes);
   const setNotes = useNotesStore((s) => s.setNotes);
-  const removeNote = useNotesStore((s) => s.removeNote);
   const quickNotesMap = useQuickNotesStore((s) => s.quickNotes);
   const setQuickNotes = useQuickNotesStore((s) => s.setQuickNotes);
-  const removeQuickNote = useQuickNotesStore((s) => s.removeQuickNote);
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
@@ -93,13 +89,12 @@ const FoldersScreen: React.FC = () => {
   const [fabOpen, setFabOpen] = useState(false);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [folderDeleting, setFolderDeleting] = useState(false);
-  const [activeDragFolderId, setActiveDragFolderId] = useState<ID | null>(null);
+  const [dragState, setDragState] = useState<{ activeId: ID | null; isDragging: boolean }>({
+    activeId: null,
+    isDragging: false
+  });
   const [gridFoldersData, setGridFoldersData] = useState<GridFolderItem[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
-
-  const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestOrderRef = useRef<string[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -118,13 +113,12 @@ const FoldersScreen: React.FC = () => {
     })();
   }, [setFolders, setPinnedItems, setNotes, setQuickNotes]);
 
-  const rootFolders = useMemo(
-    () =>
-      Object.values(folders)
-        .filter((f) => f.parentId == null)
-        .sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
-    [folders]
-  );
+  const {
+    folders: rootFolders,
+    notes: looseNotes,
+    quickNotes: looseQuickNotes,
+    selectableItems
+  } = useUnifiedItems({ scope: "root" });
 
   const visibleFolders = useMemo(() => {
     if (sortMode === "name_asc") return [...rootFolders].sort((a, b) => a.name.localeCompare(b.name));
@@ -132,25 +126,6 @@ const FoldersScreen: React.FC = () => {
     if (sortMode === "recent") return [...rootFolders].sort((a, b) => b.createdAt - a.createdAt);
     return [...rootFolders].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
   }, [rootFolders, sortMode]);
-
-  const looseNotes = useMemo(
-    () => Object.values(notesMap).filter((n) => n.folderId == null),
-    [notesMap]
-  );
-
-  const looseQuickNotes = useMemo(
-    () => Object.values(quickNotesMap).filter((n) => n.folderId == null),
-    [quickNotesMap]
-  );
-
-  const selectableItems = useMemo<SelectedItem[]>(
-    () => [
-      ...visibleFolders.map((folder) => ({ kind: "folder" as const, id: folder.id, label: folder.name })),
-      ...looseNotes.map((note) => ({ kind: "note" as const, id: note.id, label: note.title })),
-      ...looseQuickNotes.map((quick) => ({ kind: "quick" as const, id: quick.id, label: quick.title }))
-    ],
-    [visibleFolders, looseNotes, looseQuickNotes]
-  );
 
   const {
     selectedItems,
@@ -161,8 +136,7 @@ const FoldersScreen: React.FC = () => {
     startSelection,
     clearSelection,
     selectAllVisible
-  } = useSelection(selectableItems, {
-    getKey: (item) => `${item.kind}:${item.id}`,
+  } = useGlobalSelection(selectableItems, {
     onSelectionStart: () => showToast("Modo de seleção ativado")
   });
 
@@ -180,49 +154,48 @@ const FoldersScreen: React.FC = () => {
     return (width - GRID_PADDING * 2 - GRID_GAP * (GRID_COLUMNS - 1)) / GRID_COLUMNS;
   }, [width]);
 
-  const canDragReorder = sortMode === "custom" && selectionMode;
+  const canDragReorder = sortMode === "custom";
+  const isScrollLocked = dragState.isDragging;
 
-  const tryStartDrag = useCallback(
-    (drag: () => void) => {
+  const ensureFolderSelectedForDrag = useCallback(
+    (folder: Pick<Folder, "id" | "name" | "parentId">) => {
+      const item = { kind: "folder" as const, id: folder.id, parentId: folder.parentId ?? null, label: folder.name };
       if (selectionMode) {
-        showToast("Desative a seleção para reordenar");
+        if (!isSelected(item)) {
+          toggleSelection(item);
+        }
         return;
       }
+      startSelection(item);
+    },
+    [isSelected, selectionMode, startSelection, toggleSelection]
+  );
+
+  const handleStartSelection = useCallback(
+    (item: SelectedItem) => {
+      if (dragState.isDragging) return;
+      startSelection(item);
+    },
+    [dragState.isDragging, startSelection]
+  );
+
+  const tryStartDrag = useCallback(
+    (folder: Pick<Folder, "id" | "name" | "parentId">, drag: () => void) => {
       if (sortMode !== "custom") {
         showToast("Use ordenação: Custom order para reordenar");
         return;
       }
+      ensureFolderSelectedForDrag(folder);
+      setShowSelectionMenu(false);
+      setDragState({ activeId: folder.id, isDragging: true });
       drag();
     },
-    [selectionMode, showToast, sortMode]
-  );
-
-  const persistFolderOrder = useCallback(
-    (ordered: string[] | Array<{ id: string }>) => {
-      const orderedIds = typeof ordered[0] === "string"
-        ? (ordered as string[])
-        : (ordered as Array<{ id: string }>).map((item) => item.id);
-
-      setActiveDragFolderId(null);
-
-      reorderFoldersInStore(orderedIds);
-      setSortMode("custom");
-
-      latestOrderRef.current = orderedIds;
-      if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
-      reorderTimerRef.current = setTimeout(() => {
-        reorderTimerRef.current = null;
-        const ids = latestOrderRef.current;
-        saveSortPreference(FOLDER_SORT_SCOPE, "custom");
-        reorderFolders(null, ids);
-      }, 300);
-    },
-    [reorderFoldersInStore]
+    [ensureFolderSelectedForDrag, showToast, sortMode]
   );
 
   useEffect(() => {
     if (!canDragReorder) {
-      setActiveDragFolderId(null);
+      setDragState({ activeId: null, isDragging: false });
     }
   }, [canDragReorder]);
 
@@ -236,31 +209,6 @@ const FoldersScreen: React.FC = () => {
     );
   }, [viewMode, visibleFolders]);
 
-  useEffect(() => {
-    return () => {
-      if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
-    };
-  }, []);
-
-  const handleListDragEnd = useCallback(
-    ({ data }: { data: Folder[] }) => {
-      persistFolderOrder(data.map((x) => x.id));
-    },
-    [persistFolderOrder]
-  );
-
-  const handleGridReorder = useCallback(
-    (data: GridFolderItem[]) => {
-      const normalized = data.map((folder) => ({
-        ...folder,
-        key: folder.id
-      }));
-      setGridFoldersData(normalized);
-      persistFolderOrder(normalized);
-    },
-    [canDragReorder, persistFolderOrder]
-  );
-
   const handleClearSelection = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     clearSelection();
@@ -271,16 +219,13 @@ const FoldersScreen: React.FC = () => {
     const items = selectedItems;
     try {
       for (const item of items) {
-        if (item.kind === "quick") continue;
-        const type = item.kind === "folder" ? "folder" : "note";
-        const next = togglePinned(type, item.id);
-        await savePinnedItems(next);
+        await actions.pin(item);
       }
       showToast("Pins atualizados");
     } finally {
       handleClearSelection();
     }
-  }, [handleClearSelection, selectedItems, showToast, togglePinned]);
+  }, [actions, handleClearSelection, selectedItems, showToast]);
 
   const handleEditSelected = useCallback(() => {
     if (selectedItems.length !== 1) return;
@@ -311,21 +256,9 @@ const FoldersScreen: React.FC = () => {
     const items = selectedItems;
     if (!items.length) return;
 
-    // If a single folder is selected, export full subtree as ZIP and share it.
-    if (items.length === 1 && items[0].kind === "folder") {
-      const selectedFolder = items[0];
+    if (items.length === 1) {
       try {
-        await exportFolderPackageAndShare(selectedFolder.id, {
-          onProgress: (event) => {
-            if (event.step === "zipping" || event.step === "sharing") {
-              showToast(`${event.message} ${Math.round(event.progress * 100)}%`);
-            }
-          },
-          onMessage: (message, tone = "success") => showToast(message, tone)
-        });
-      } catch (error) {
-        console.error("[folder-package] share failed", error);
-        showToast("Nao foi possivel compartilhar a pasta", "error");
+        await actions.share(items[0]);
       } finally {
         handleClearSelection();
       }
@@ -362,18 +295,7 @@ const FoldersScreen: React.FC = () => {
           style: "destructive",
           onPress: async () => {
             for (const item of selectedItems) {
-              if (item.kind === "folder") {
-                await deleteFolder(item.id);
-                removeFolder(item.id);
-                continue;
-              }
-              if (item.kind === "note") {
-                await deleteNote(item.id);
-                removeNote(item.id);
-                continue;
-              }
-              await deleteQuickNote(item.id);
-              removeQuickNote(item.id);
+              await actions.delete(item);
             }
             handleClearSelection();
             showToast(selectedItems.length === 1 ? "Item apagado" : `${selectedItems.length} itens apagados`);
@@ -381,7 +303,7 @@ const FoldersScreen: React.FC = () => {
         }
       ]
     );
-  }, [handleClearSelection, removeFolder, selectedItems, showToast]);
+  }, [actions, handleClearSelection, selectedItems, showToast]);
 
   const onChangeSort = async (mode: FolderSortMode) => {
     setSortMode(mode);
@@ -422,11 +344,11 @@ const FoldersScreen: React.FC = () => {
       {looseNotes.map((note) => (
         <Pressable
           key={`note-${note.id}`}
-          onLongPress={() => startSelection({ kind: "note", id: note.id, label: note.title })}
+            onLongPress={() => handleStartSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title })}
           delayLongPress={260}
           onPress={() => {
             if (selectionMode) {
-              toggleSelection({ kind: "note", id: note.id, label: note.title });
+              toggleSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
               return;
             }
             withLock(() => {
@@ -442,7 +364,7 @@ const FoldersScreen: React.FC = () => {
               marginBottom: 6,
               borderWidth: 2
             },
-            isSelected({ kind: "note", id: note.id, label: note.title }) && {
+            isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title }) && {
               borderColor: theme.colors.primary
             }
           ]}
@@ -472,17 +394,17 @@ const FoldersScreen: React.FC = () => {
               )}
             </View>
           </View>
-          <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, label: note.title })} />
+          <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title })} />
         </Pressable>
       ))}
       {looseQuickNotes.map((quick) => (
         <Pressable
           key={`quick-${quick.id}`}
-          onLongPress={() => startSelection({ kind: "quick", id: quick.id, label: quick.title })}
+          onLongPress={() => handleStartSelection({ kind: "quick", id: quick.id, parentId: quick.folderId ?? null, label: quick.title })}
           delayLongPress={260}
           onPress={() => {
             if (selectionMode) {
-              toggleSelection({ kind: "quick", id: quick.id, label: quick.title });
+              toggleSelection({ kind: "quick", id: quick.id, parentId: quick.folderId ?? null, label: quick.title });
               return;
             }
             withLock(() => {
@@ -501,7 +423,7 @@ const FoldersScreen: React.FC = () => {
               marginBottom: 6,
               borderWidth: 2
             },
-            isSelected({ kind: "quick", id: quick.id, label: quick.title }) && {
+            isSelected({ kind: "quick", id: quick.id, parentId: quick.folderId ?? null, label: quick.title }) && {
               borderColor: theme.colors.primary
             }
           ]}
@@ -531,7 +453,7 @@ const FoldersScreen: React.FC = () => {
               )}
             </View>
           </View>
-          <SelectionIndicator visible={isSelected({ kind: "quick", id: quick.id, label: quick.title })} />
+          <SelectionIndicator visible={isSelected({ kind: "quick", id: quick.id, parentId: quick.folderId ?? null, label: quick.title })} />
         </Pressable>
       ))}
     </View>
@@ -567,6 +489,18 @@ const FoldersScreen: React.FC = () => {
               </Pressable>
             </View>
             <Pressable
+              onLongPress={() => {
+                if (sortMode !== "custom") {
+                  showToast("Use ordenação: Custom order para reordenar");
+                  return;
+                }
+                if (dragState.isDragging) {
+                  setDragState({ activeId: null, isDragging: false });
+                  return;
+                }
+                showToast("Segure um item para mover");
+              }}
+              delayLongPress={220}
               onPress={() => setShowSortMenu(true)}
               style={[styles.sortButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
             >
@@ -605,7 +539,7 @@ const FoldersScreen: React.FC = () => {
 
       {viewMode === "grid" ? (
         <ScrollView
-          scrollEnabled={!isDragging}
+          scrollEnabled={!isScrollLocked}
           contentContainerStyle={{ paddingTop: 8, paddingHorizontal: GRID_PADDING, paddingBottom: 120 }}
           showsVerticalScrollIndicator={false}
         >
@@ -618,19 +552,29 @@ const FoldersScreen: React.FC = () => {
               data={gridFoldersData}
               delayLongPress={250}
               onDragStart={(item) => {
-                setActiveDragFolderId(item.id);
-                setIsDragging(true);
+                setDragState({ activeId: item.id, isDragging: true });
+                ensureFolderSelectedForDrag(item);
               }}
               onDragItemActive={(item) => {
-                setActiveDragFolderId(item.id);
+                setDragState({ activeId: item.id, isDragging: true });
               }}
               onDragRelease={(data) => {
-                setIsDragging(false);
-                handleGridReorder(data);
+                const orderedIds = data.map((folder) => folder.id);
+                setGridFoldersData(
+                  data.map((folder) => ({
+                    ...folder,
+                    key: folder.id
+                  }))
+                );
+                actions.reorder({ kind: "folder", parentId: null, orderedIds });
+                setSortMode("custom");
+                saveSortPreference(FOLDER_SORT_SCOPE, "custom");
+                setDragState({ activeId: null, isDragging: false });
               }}
               onItemPress={(item) => {
+                if (dragState.isDragging) return;
                 if (selectionMode) {
-                  toggleSelection({ kind: "folder", id: item.id, label: item.name });
+                  toggleSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
                   return;
                 }
                 withLock(() => {
@@ -639,11 +583,12 @@ const FoldersScreen: React.FC = () => {
                 });
               }}
               onItemLongPress={(item) => {
+                if (dragState.isDragging) return;
                 if (!selectionMode) {
-                  startSelection({ kind: "folder", id: item.id, label: item.name });
+                  handleStartSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
                   return;
                 }
-                toggleSelection({ kind: "folder", id: item.id, label: item.name });
+                toggleSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
               }}
               renderItem={(item: GridFolderItem, index: number) => (
                 <View
@@ -671,10 +616,10 @@ const FoldersScreen: React.FC = () => {
                         backgroundColor: theme.colors.card,
                         shadowColor: theme.colors.textPrimary
                       },
-                      isSelected({ kind: "folder", id: item.id, label: item.name }) && {
+                      isSelected({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name }) && {
                         borderColor: theme.colors.primary
                       },
-                      activeDragFolderId === item.id && {
+                      dragState.activeId === item.id && {
                         opacity: 0.96,
                         backgroundColor: theme.colors.primaryAlpha20,
                         transform: [{ scale: 1.03 }],
@@ -713,7 +658,7 @@ const FoldersScreen: React.FC = () => {
                       </View>
                     </View>
 
-                    <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, label: item.name })} />
+                    <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name })} />
                   </View>
                 </View>
               )}
@@ -730,6 +675,7 @@ const FoldersScreen: React.FC = () => {
       ) : (
         <DraggableFlatList
           key={viewMode}
+          scrollEnabled={!isScrollLocked}
           contentContainerStyle={[styles.listContent, { paddingBottom: listBottomPadding }]}
           data={visibleFolders}
           keyExtractor={(item) => item.id}
@@ -743,21 +689,36 @@ const FoldersScreen: React.FC = () => {
           activationDistance={12}
           onDragBegin={(index) => {
             const dragged = visibleFolders[index];
-            setActiveDragFolderId(dragged?.id ?? null);
+            setDragState({ activeId: dragged?.id ?? null, isDragging: true });
+            // Não chamar ensureFolderSelectedForDrag aqui: altera selectionMode → flicker
           }}
-          onRelease={() => undefined}
           renderPlaceholder={() => <View style={styles.staticDragPlaceholder} />}
           ListFooterComponent={looseNotesSection}
-          onDragEnd={handleListDragEnd}
+          onRelease={() => {
+            setDragState((current) => ({ ...current, isDragging: false, activeId: null }));
+          }}
+          onDragEnd={(params) => {
+            const orderedIds = params.data.map((folder) => folder.id);
+            actions.reorder({ kind: "folder", parentId: null, orderedIds });
+            setSortMode("custom");
+            saveSortPreference(FOLDER_SORT_SCOPE, "custom");
+            setDragState({ activeId: null, isDragging: false });
+          }}
           renderItem={({ item, drag, isActive }: RenderItemParams<Folder>) => (
             <Pressable
               onLongPress={() => {
-                startSelection({ kind: "folder", id: item.id, label: item.name });
+                if (dragState.isDragging) return;
+                if (sortMode === "custom") {
+                  tryStartDrag(item, drag);
+                  return;
+                }
+                handleStartSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
               }}
               delayLongPress={260}
               onPress={() => {
+                if (dragState.isDragging) return;
                 if (selectionMode) {
-                  toggleSelection({ kind: "folder", id: item.id, label: item.name });
+                  toggleSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
                   return;
                 }
                 withLock(() => {
@@ -768,10 +729,10 @@ const FoldersScreen: React.FC = () => {
               style={[
                 styles.folderCard,
                 { borderColor: theme.colors.border, borderWidth: 2, backgroundColor: theme.colors.card, shadowColor: theme.colors.textPrimary },
-                isSelected({ kind: "folder", id: item.id, label: item.name }) && {
+                isSelected({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name }) && {
                   borderColor: theme.colors.primary
                 },
-                (isActive || activeDragFolderId === item.id) && {
+                (isActive || dragState.activeId === item.id) && {
                   opacity: 0.96,
                   backgroundColor: theme.colors.primaryAlpha20,
                   transform: [{ scale: 1.03 }],
@@ -797,20 +758,8 @@ const FoldersScreen: React.FC = () => {
                     </Text>
                   )}
                 </View>
-                <Pressable
-                  onPressIn={(event) => event.stopPropagation()}
-                  onLongPress={(event) => {
-                    event.stopPropagation();
-                    tryStartDrag(drag);
-                  }}
-                  delayLongPress={220}
-                  hitSlop={8}
-                  style={[styles.dragHandle, !canDragReorder && { opacity: 0.45 }]}
-                >
-                  <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
-                </Pressable>
               </View>
-              <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, label: item.name })} />
+              <SelectionIndicator visible={isSelected({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name })} />
             </Pressable>
           )}
           ListEmptyComponent={
@@ -865,7 +814,7 @@ const FoldersScreen: React.FC = () => {
             label: "Mover",
             icon: "folder-open-outline",
             onPress: () => {
-              showToast("Segure no ícone de mover para arrastar");
+              showToast("Segure o item para mover");
               handleClearSelection();
             }
           },
@@ -1000,8 +949,7 @@ const FoldersScreen: React.FC = () => {
           setFolderDeleting(true);
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           try {
-            await deleteFolder(pendingDeleteFolder.id);
-            removeFolder(pendingDeleteFolder.id);
+            await actions.deleteItem({ kind: "folder", id: pendingDeleteFolder.id, parentId: pendingDeleteFolder.parentId ?? null });
             setPendingDeleteFolder(null);
             showToast("Deleted ✓");
           } catch (error) {
@@ -1137,6 +1085,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingTop: 16,
     marginBottom: 12
   },
   selectionBar: {

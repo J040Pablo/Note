@@ -136,6 +136,20 @@ export const getRecentNotes = async (limit = 5): Promise<Note[]> => {
   return rows;
 };
 
+export const reorderNotes = async (folderId: ID | null, orderedIds: ID[]): Promise<void> => {
+  if (!orderedIds.length) return;
+  const base = Date.now();
+  for (let index = 0; index < orderedIds.length; index += 1) {
+    const id = orderedIds[index];
+    const updatedAt = base + (orderedIds.length - index);
+    if (folderId === null) {
+      await runDbWrite("UPDATE notes SET updatedAt = ? WHERE id = ? AND folderId IS NULL", updatedAt, id);
+    } else {
+      await runDbWrite("UPDATE notes SET updatedAt = ? WHERE id = ? AND folderId = ?", updatedAt, id, folderId);
+    }
+  }
+};
+
 export const getAllNotes = async (): Promise<Note[]> => {
   const db = await getDB();
   return db.getAllAsync<Note>("SELECT * FROM notes ORDER BY updatedAt DESC");
@@ -278,6 +292,20 @@ export const getQuickNotesByFolder = async (folderId: ID | null): Promise<QuickN
 export const getAllQuickNotes = async (): Promise<QuickNote[]> => {
   const db = await getDB();
   return db.getAllAsync<QuickNote>("SELECT * FROM quick_notes ORDER BY updatedAt DESC");
+};
+
+export const reorderQuickNotes = async (folderId: ID | null, orderedIds: ID[]): Promise<void> => {
+  if (!orderedIds.length) return;
+  const base = Date.now();
+  for (let index = 0; index < orderedIds.length; index += 1) {
+    const id = orderedIds[index];
+    const updatedAt = base + (orderedIds.length - index);
+    if (folderId === null) {
+      await runDbWrite("UPDATE quick_notes SET updatedAt = ? WHERE id = ? AND folderId IS NULL", updatedAt, id);
+    } else {
+      await runDbWrite("UPDATE quick_notes SET updatedAt = ? WHERE id = ? AND folderId = ?", updatedAt, id, folderId);
+    }
+  }
 };
 
 export const getQuickNoteById = async (id: ID): Promise<QuickNote | null> => {

@@ -1,41 +1,42 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { pruneSelectionMap, selectAllVisibleMap, startSelectionMap, toggleSelectionInMap } from "@engines/selectionEngine";
+import type { AppItem } from "@domain/items/types";
+import { getSelectionKey, pruneSelectionMap, selectAllVisibleMap, startSelectionMap, toggleSelectionInMap } from "@engines/selectionEngine";
 
-interface UseSelectionOptions<T> {
-  getKey: (item: T) => string;
+interface UseGlobalSelectionOptions {
   onSelectionStart?: () => void;
 }
 
-export const useSelection = <T>(visibleItems: T[], options: UseSelectionOptions<T>) => {
-  const { getKey, onSelectionStart } = options;
+export const useGlobalSelection = <T extends { kind: AppItem["kind"]; id: string }>(
+  items: T[],
+  options: UseGlobalSelectionOptions = {}
+) => {
   const [selectedMap, setSelectedMap] = useState<Record<string, T>>({});
 
-  const selectionCount = useMemo(() => Object.keys(selectedMap).length, [selectedMap]);
-  const selectionMode = selectionCount > 0;
-
+  const getKey = getSelectionKey;
   const selectedItems = useMemo(() => Object.values(selectedMap), [selectedMap]);
+  const selectionCount = selectedItems.length;
+  const selectionMode = selectionCount > 0;
 
   const isSelected = useCallback(
     (item: T) => {
-      const key = getKey(item);
-      return !!selectedMap[key];
+      return !!selectedMap[getKey(item)];
     },
     [getKey, selectedMap]
   );
 
   const toggleSelection = useCallback(
     (item: T) => {
-      setSelectedMap((prev) => toggleSelectionInMap(prev, item, getKey));
+      setSelectedMap((current) => toggleSelectionInMap(current, item, getKey));
     },
     [getKey]
   );
 
   const startSelection = useCallback(
     (item: T) => {
-      onSelectionStart?.();
+      options.onSelectionStart?.();
       setSelectedMap(startSelectionMap(item, getKey));
     },
-    [getKey, onSelectionStart]
+    [getKey, options]
   );
 
   const clearSelection = useCallback(() => {
@@ -43,12 +44,12 @@ export const useSelection = <T>(visibleItems: T[], options: UseSelectionOptions<
   }, []);
 
   const selectAllVisible = useCallback(() => {
-    setSelectedMap(selectAllVisibleMap(visibleItems, getKey));
-  }, [getKey, visibleItems]);
+    setSelectedMap(selectAllVisibleMap(items, getKey));
+  }, [getKey, items]);
 
   useEffect(() => {
-    setSelectedMap((prev) => pruneSelectionMap(prev, visibleItems ?? [], getKey));
-  }, [getKey, visibleItems]);
+    setSelectedMap((current) => pruneSelectionMap(current, items, getKey));
+  }, [getKey, items]);
 
   return {
     selectedItems,
@@ -63,4 +64,3 @@ export const useSelection = <T>(visibleItems: T[], options: UseSelectionOptions<
     selectAllVisible
   };
 };
-

@@ -17,7 +17,6 @@ import {
   deleteTask,
   getAllTasks,
   isTaskCompletedForDate,
-  reorderTasks,
   shouldAppearOnDate,
   toDateKey,
   toggleTaskForDate,
@@ -37,7 +36,9 @@ import type { RouteProp } from "@react-navigation/native";
 import type { TabsParamList } from "@navigation/RootNavigator";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
-import { useSelection } from "@hooks/useSelection";
+import { useGlobalSelection } from "@hooks/useGlobalSelection";
+import { useItemActions } from "@hooks/useItemActions";
+import { useUnifiedItems } from "@hooks/useUnifiedItems";
 import { FloatingButton } from "@components/FloatingButton";
 
 type TasksRoute = RouteProp<TabsParamList, "Tasks">;
@@ -113,12 +114,11 @@ const TasksScreen: React.FC = () => {
   const navigation = useNavigation<TasksNav>();
   const insets = useSafeAreaInsets();
   const { showToast } = useFeedback();
+  const actions = useItemActions();
   const tasksMap = useTasksStore((s) => s.tasks);
   const setTasks = useTasksStore((s) => s.setTasks);
   const upsertTask = useTasksStore((s) => s.upsertTask);
   const removeTask = useTasksStore((s) => s.removeTask);
-  const reorderTasksInStore = useTasksStore((s) => s.reorderTasksInStore);
-  const togglePinned = useAppStore((s) => s.togglePinned);
   const pinnedItems = useAppStore((s) => s.pinnedItems);
 
   const [newText, setNewText] = useState("");
@@ -251,6 +251,8 @@ const TasksScreen: React.FC = () => {
 
   const monthCells = useMemo(() => buildMonthCells(monthCursor), [monthCursor]);
 
+  const { tasks: unifiedTasks, selectableItems: unifiedSelectableItems } = useUnifiedItems({ scope: "root" });
+
   const expiredTasks = useMemo(() => {
     return tasks
       .filter(isExpired)
@@ -262,8 +264,8 @@ const TasksScreen: React.FC = () => {
 
   // Only root tasks (no parentId) appear in the list — subtasks render inside their parent card
   const rootTasksForDate = useMemo(
-    () => tasks.filter((task) => !task.parentId && shouldAppearOnDate(task, selectedDate) && !isExpired(task)),
-    [selectedDate, tasks, isExpired]
+    () => unifiedTasks.filter((task) => shouldAppearOnDate(task, selectedDate) && !isExpired(task)),
+    [selectedDate, unifiedTasks, isExpired]
   );
 
   const sortedRootTasks = useMemo(() => {
@@ -365,20 +367,6 @@ const TasksScreen: React.FC = () => {
     setShowModal(true);
   };
 
-  const selectableTaskItems = useMemo(() => {
-    const map: Record<string, { kind: "task"; id: string; label: string }> = {};
-
-    enrichedTasks.forEach((task) => {
-      map[task.id] = { kind: "task", id: task.id, label: task.text };
-    });
-
-    expiredTasks.forEach((task) => {
-      map[task.id] = { kind: "task", id: task.id, label: task.text };
-    });
-
-    return Object.values(map);
-  }, [enrichedTasks, expiredTasks]);
-
   const {
     selectedItems,
     selectionCount,
@@ -388,13 +376,9 @@ const TasksScreen: React.FC = () => {
     startSelection,
     clearSelection,
     selectAllVisible
-  } = useSelection(
-    selectableTaskItems,
-    {
-      getKey: (item) => `${item.kind}:${item.id}`,
-      onSelectionStart: () => showToast("Modo de seleção ativado")
-    }
-  );
+  } = useGlobalSelection(unifiedSelectableItems, {
+    onSelectionStart: () => showToast("Modo de seleção ativado")
+  });
 
   const topContentPadding = selectionMode ? TOP_PADDING_WITH_SELECTION : TOP_PADDING_DEFAULT;
 
@@ -408,13 +392,13 @@ const TasksScreen: React.FC = () => {
     const items = selectedItems;
     try {
       for (const item of items) {
-        togglePinned("task", item.id);
+        await actions.pin(item);
       }
       showToast("Pins atualizados");
     } finally {
       handleClearSelection();
     }
-  }, [handleClearSelection, selectedItems, showToast, togglePinned]);
+  }, [actions, handleClearSelection, selectedItems, showToast]);
 
   const handleEditSelected = useCallback(() => {
     if (selectedItems.length !== 1) return;
@@ -449,8 +433,7 @@ const TasksScreen: React.FC = () => {
           style: "destructive",
           onPress: async () => {
             for (const item of selectedItems) {
-              await deleteTask(item.id);
-              removeTask(item.id);
+              await actions.delete(item);
             }
             handleClearSelection();
             showToast(selectedItems.length === 1 ? "Tarefa apagada" : `${selectedItems.length} tarefas apagadas`);
@@ -458,7 +441,33 @@ const TasksScreen: React.FC = () => {
         }
       ]
     );
-  }, [handleClearSelection, removeTask, selectedItems, showToast]);
+  }, [actions, handleClearSelection, selectedItems, showToast]);
+
+  const ensureTaskSelectedForDrag = useCallback(
+    (task: { id: string; parentId?: string | null; text: string }) => {
+      const item = { kind: "task" as const, id: task.id, parentId: task.parentId ?? null, label: task.text };
+      if (selectionMode) {
+        if (!isSelected(item)) {
+          toggleSelection(item);
+        }
+        return;
+      }
+      startSelection(item);
+    },
+    [isSelected, selectionMode, startSelection, toggleSelection]
+  );
+
+  const startTaskDrag = useCallback(
+    (drag: () => void) => {
+      if (sortMode !== "custom") {
+        showToast("Use ordenação: Custom order para reordenar");
+        return;
+      }
+      setShowSelectionMenu(false);
+      drag();
+    },
+    [showToast, sortMode]
+  );
 
   const openFab = useCallback(() => {
     setFabOpen(true);
@@ -499,7 +508,7 @@ const TasksScreen: React.FC = () => {
         windowSize={9}
         removeClippedSubviews={false}
         style={styles.taskList}
-        contentContainerStyle={[styles.screenScrollContent, { paddingTop: 24 }]}
+        contentContainerStyle={[styles.screenScrollContent, { paddingTop: 16 }]}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <>
@@ -645,7 +654,7 @@ const TasksScreen: React.FC = () => {
                 <View style={{ gap: 10 }}>
                   {expiredTasks.map(root => {
                     const isExpanded = expandedTaskId === root.id;
-                    const taskSelected = isSelected({ kind: "task", id: root.id, label: root.text });
+                    const taskSelected = isSelected({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
 
                     return (
                       <View
@@ -664,7 +673,7 @@ const TasksScreen: React.FC = () => {
                           style={{ padding: 14 }}
                           onPress={() => {
                             if (selectionMode) {
-                              toggleSelection({ kind: "task", id: root.id, label: root.text });
+                              toggleSelection({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
                               return;
                             }
                             LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
@@ -672,10 +681,10 @@ const TasksScreen: React.FC = () => {
                           }}
                           onLongPress={() => {
                             if (selectionMode) {
-                              toggleSelection({ kind: "task", id: root.id, label: root.text });
+                              toggleSelection({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
                               return;
                             }
-                            startSelection({ kind: "task", id: root.id, label: root.text });
+                            startSelection({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
                           }}
                           delayLongPress={280}
                         >
@@ -831,27 +840,19 @@ const TasksScreen: React.FC = () => {
         }
         onDragEnd={({ data }) => {
           const orderedIds = data.map((x) => x.id);
-          reorderTasksInStore(orderedIds);
           setSortMode("custom");
-
-          latestOrderRef.current = orderedIds;
-          if (reorderTimerRef.current) clearTimeout(reorderTimerRef.current);
-          reorderTimerRef.current = setTimeout(() => {
-            reorderTimerRef.current = null;
-            const ids = latestOrderRef.current;
-            saveSortPreference(TASK_SORT_SCOPE, "custom");
-            reorderTasks(ids).catch((error) => {
-              console.error("[tasks] reorder persist failed", error);
-              showToast("Não foi possível salvar a ordem", "error");
-            });
-          }, 250);
+          saveSortPreference(TASK_SORT_SCOPE, "custom");
+          actions.reorder({ kind: "task", parentId: null, orderedIds }).catch((error) => {
+            console.error("[tasks] reorder persist failed", error);
+            showToast("Não foi possível salvar a ordem", "error");
+          });
         }}
         ItemSeparatorComponent={() => (
           <View style={{ height: 10 }} />
         )}
         renderItem={({ item: root, drag, isActive }: RenderItemParams<typeof enrichedTasks[number]>) => {
           const isExpanded = expandedTaskId === root.id;
-          const taskSelected = isSelected({ kind: "task", id: root.id, label: root.text });
+          const taskSelected = isSelected({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
 
           return (
             <View
@@ -874,18 +875,23 @@ const TasksScreen: React.FC = () => {
                 style={{ padding: 14 }}
                 onPress={() => {
                   if (selectionMode) {
-                    toggleSelection({ kind: "task", id: root.id, label: root.text });
+                    toggleSelection({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
                     return;
                   }
                   LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
                   setExpandedTaskId(prev => prev === root.id ? null : root.id);
                 }}
-                onLongPress={(event) => {
-                  if (selectionMode) {
-                    toggleSelection({ kind: "task", id: root.id, label: root.text });
+                onLongPress={() => {
+                  if (sortMode === "custom") {
+                    ensureTaskSelectedForDrag(root);
+                    startTaskDrag(drag);
                     return;
                   }
-                  startSelection({ kind: "task", id: root.id, label: root.text });
+                  if (selectionMode) {
+                    toggleSelection({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
+                    return;
+                  }
+                  startSelection({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
                 }}
                 delayLongPress={280}
               >
@@ -966,17 +972,6 @@ const TasksScreen: React.FC = () => {
                   {root.total > 0 && (
                     <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={18} color={theme.colors.textSecondary} />
                   )}
-
-                  {/* Drag handle */}
-                  <Pressable
-                    onPressIn={(event) => event.stopPropagation()}
-                    onLongPress={(event) => { event.stopPropagation(); drag(); }}
-                    delayLongPress={220}
-                    hitSlop={8}
-                    style={[styles.dragHandle]}
-                  >
-                    <Ionicons name="reorder-three-outline" size={18} color={theme.colors.textSecondary} />
-                  </Pressable>
                 </View>
 
                 {/* Subtask progress bar */}
@@ -1113,7 +1108,7 @@ const TasksScreen: React.FC = () => {
             label: "Mover",
             icon: "folder-open-outline",
             onPress: () => {
-              showToast("Segure no ícone de mover para arrastar");
+              showToast("Segure o item para mover");
               handleClearSelection();
             }
           },
@@ -1174,8 +1169,7 @@ const TasksScreen: React.FC = () => {
           if (!pendingDeleteTask || taskDeleting) return;
           setTaskDeleting(true);
           try {
-            await deleteTask(pendingDeleteTask.id);
-            removeTask(pendingDeleteTask.id);
+            await actions.delete({ kind: "task", id: pendingDeleteTask.id, parentId: pendingDeleteTask.parentId ?? null });
             setPendingDeleteTask(null);
             showToast("Deleted ✓");
           } catch (error) {
@@ -1478,8 +1472,7 @@ const TasksScreen: React.FC = () => {
                       const validSubtaskIds = new Set(validSubtasks.map(s => s.id));
                       for (const existing of existingSubtasks) {
                         if (!validSubtaskIds.has(existing.id)) {
-                          await deleteTask(existing.id);
-                          removeTask(existing.id);
+                          await actions.delete({ kind: "task", id: existing.id, parentId: existing.parentId ?? null });
                         }
                       }
                       

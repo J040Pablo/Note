@@ -36,6 +36,15 @@
       "@models/*": [
         "src/models/*"
       ],
+      "@domain/*": [
+        "src/domain/*"
+      ],
+      "@engines/*": [
+        "src/engines/*"
+      ],
+      "@adapters/*": [
+        "src/adapters/*"
+      ],
       "@services/*": [
         "src/services/*"
       ],

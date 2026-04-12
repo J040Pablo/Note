@@ -1,27 +1,22 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View, StyleSheet, Pressable, FlatList, TextInput } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
 import type { RootStackParamList } from "@navigation/RootNavigator";
-import { useAppStore } from "@store/useAppStore";
-import { useNotesStore } from "@store/useNotesStore";
-import { useTasksStore } from "@store/useTasksStore";
-import { getAllFolders } from "@services/foldersService";
-import { getAllNotes } from "@services/notesService";
-import { getAllTasks } from "@services/tasksService";
+import { useUnifiedItems } from "@hooks/useUnifiedItems";
 import { getPlainTextFromRichNoteContent, getRichNotePreviewLine } from "@utils/noteContent";
 
-type SearchFilter = "all" | "folder" | "note" | "task";
+type SearchFilter = "all" | "folder" | "note" | "quick" | "task";
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 type SearchResult = {
   id: string;
-  type: "folder" | "note" | "task";
+  type: "folder" | "note" | "quick" | "task";
   title: string;
   subtitle?: string;
 };
@@ -32,32 +27,10 @@ const SearchScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const { theme } = useTheme();
 
-  const foldersMap = useAppStore((s) => s.folders);
-  const setFolders = useAppStore((s) => s.setFolders);
-
-  const notesMap = useNotesStore((s) => s.notes);
-  const setNotes = useNotesStore((s) => s.setNotes);
-
-  const tasksMap = useTasksStore((s) => s.tasks);
-  const setTasks = useTasksStore((s) => s.setTasks);
+  const { folders, notes, quickNotes, tasks } = useUnifiedItems({ scope: "global" });
 
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<SearchFilter>("all");
-
-  useFocusEffect(
-    useCallback(() => {
-      (async () => {
-        const [folders, notes, tasks] = await Promise.all([getAllFolders(), getAllNotes(), getAllTasks()]);
-        setFolders(folders);
-        setNotes(notes);
-        setTasks(tasks);
-      })();
-    }, [setFolders, setNotes, setTasks])
-  );
-
-  const folders = useMemo(() => Object.values(foldersMap), [foldersMap]);
-  const notes = useMemo(() => Object.values(notesMap), [notesMap]);
-  const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -71,13 +44,17 @@ const SearchScreen: React.FC = () => {
       .filter((n) => `${n.title}\n${getPlainTextFromRichNoteContent(n.content)}`.toLowerCase().includes(q))
       .map((n) => ({ id: n.id, type: "note", title: n.title, subtitle: firstLine(n.content) }));
 
+    const quickNoteResults: SearchResult[] = quickNotes
+      .filter((n) => `${n.title}\n${n.content}`.toLowerCase().includes(q))
+      .map((n) => ({ id: n.id, type: "quick", title: n.title, subtitle: firstLine(n.content) }));
+
     const taskResults: SearchResult[] = tasks
       .filter((t) => t.text.toLowerCase().includes(q))
       .map((t) => ({ id: t.id, type: "task", title: t.text }));
 
-    const merged = [...folderResults, ...noteResults, ...taskResults];
+    const merged = [...folderResults, ...noteResults, ...quickNoteResults, ...taskResults];
     return filter === "all" ? merged : merged.filter((x) => x.type === filter);
-  }, [filter, folders, notes, query, tasks]);
+  }, [filter, folders, notes, quickNotes, query, tasks]);
 
   const openResult = async (item: SearchResult) => {
     if (item.type === "folder") {
@@ -96,6 +73,11 @@ const SearchScreen: React.FC = () => {
       return;
     }
 
+    if (item.type === "quick") {
+      navigation.navigate("QuickNote", { quickNoteId: item.id });
+      return;
+    }
+
     navigation.navigate("Tabs", {
       screen: "Tasks",
       params: { focusTaskId: item.id }
@@ -104,53 +86,56 @@ const SearchScreen: React.FC = () => {
 
   return (
     <Screen>
-      <Text variant="title">Search</Text>
-      <Text muted style={styles.subtitle}>Find folders, notes and tasks</Text>
+      <View style={styles.headerBlock}>
+        <Text variant="title">Search</Text>
+        <Text muted style={styles.subtitle}>Find folders, notes and tasks</Text>
 
-      <View style={[styles.searchBar, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
-        <Ionicons name="search-outline" size={18} color={theme.colors.textSecondary} />
-        <TextInput
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Type to search..."
-          placeholderTextColor={theme.colors.textSecondary}
-          style={[styles.input, { color: theme.colors.textPrimary }]}
-          autoCapitalize="none"
-        />
-        {!!query && (
-          <Pressable onPress={() => setQuery("")} hitSlop={8}>
-            <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
-          </Pressable>
-        )}
-      </View>
-
-      <View style={styles.filtersRow}>
-        {([
-          { key: "all", label: "All", icon: "grid-outline" },
-          { key: "folder", label: "Folders", icon: "folder-outline" },
-          { key: "note", label: "Notes", icon: "document-text-outline" },
-          { key: "task", label: "Tasks", icon: "checkmark-done-outline" }
-        ] as const).map((item) => {
-          const active = filter === item.key;
-          return (
-            <Pressable
-              key={item.key}
-              onPress={() => setFilter(item.key)}
-              style={[
-                styles.filterChip,
-                {
-                  borderColor: theme.colors.border,
-                  backgroundColor: active ? theme.colors.primaryAlpha20 : theme.colors.card
-                }
-              ]}
-            >
-              <Ionicons name={item.icon} size={14} color={active ? theme.colors.primary : theme.colors.textSecondary} />
-              <Text style={{ color: active ? theme.colors.primary : theme.colors.textSecondary, fontSize: 12 }}>
-                {item.label}
-              </Text>
+        <View style={[styles.searchBar, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
+          <Ionicons name="search-outline" size={18} color={theme.colors.textSecondary} />
+          <TextInput
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Type to search..."
+            placeholderTextColor={theme.colors.textSecondary}
+            style={[styles.input, { color: theme.colors.textPrimary }]}
+            autoCapitalize="none"
+          />
+          {!!query && (
+            <Pressable onPress={() => setQuery("")} hitSlop={8}>
+              <Ionicons name="close-circle" size={18} color={theme.colors.textSecondary} />
             </Pressable>
-          );
-        })}
+          )}
+        </View>
+
+        <View style={styles.filtersRow}>
+          {([
+            { key: "all", label: "All", icon: "grid-outline" },
+            { key: "folder", label: "Folders", icon: "folder-outline" },
+            { key: "note", label: "Notes", icon: "document-text-outline" },
+            { key: "quick", label: "Quick Notes", icon: "flash-outline" },
+            { key: "task", label: "Tasks", icon: "checkmark-done-outline" }
+          ] as const).map((item) => {
+            const active = filter === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() => setFilter(item.key)}
+                style={[
+                  styles.filterChip,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: active ? theme.colors.primaryAlpha20 : theme.colors.card
+                  }
+                ]}
+              >
+                <Ionicons name={item.icon} size={14} color={active ? theme.colors.primary : theme.colors.textSecondary} />
+                <Text style={{ color: active ? theme.colors.primary : theme.colors.textSecondary, fontSize: 12 }}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <FlatList
@@ -196,6 +181,9 @@ const styles = StyleSheet.create({
   subtitle: {
     marginTop: 4,
     marginBottom: 10
+  },
+  headerBlock: {
+    paddingTop: 16
   },
   searchBar: {
     borderWidth: StyleSheet.hairlineWidth,

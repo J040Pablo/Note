@@ -298,6 +298,34 @@ export const updateTask = async (task: Task): Promise<Task> => {
   return updatedTask;
 };
 
+export const moveTask = async (taskId: ID, parentId: ID | null): Promise<Task> => {
+  const db = await getDB();
+  const row = await db.getFirstAsync<Task & { repeatDays?: string; completedDates?: string; reminders?: string; notificationIds?: string }>(
+    "SELECT * FROM tasks WHERE id = ?",
+    taskId
+  );
+
+  if (!row) {
+    throw new Error(`Task not found: ${taskId}`);
+  }
+
+  const movedTask: Task = {
+    ...parseTask(row),
+    parentId: parentId ?? null,
+    updatedAt: Date.now()
+  };
+
+  await runDbWrite(
+    "UPDATE tasks SET parentId = ?, updatedAt = ? WHERE id = ?",
+    movedTask.parentId,
+    movedTask.updatedAt,
+    movedTask.id
+  );
+
+  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(movedTask) });
+  return movedTask;
+};
+
 export const deleteTask = async (taskId: ID): Promise<void> => {
   // First get task to retrieve notification IDs
   const db = await getDB();
