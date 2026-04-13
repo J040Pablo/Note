@@ -37,7 +37,7 @@ import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
 import PencilToolbarModal from "@components/PencilToolbarModal";
 import type { CanvasElement, CanvasNoteDocument, CanvasPage, ID } from "@models/types";
-import { pickAndStoreImage } from "@utils/mediaPicker";
+import { pickAndSaveImage, deleteImage } from "@services/imageService";
 import { highlightCodeBlock } from "@utils/syntaxHighlighter";
 import {
   createCanvasDrawingElement,
@@ -527,7 +527,7 @@ const CanvasElementView = memo(
         );
       }
     } else if (element.type === "image") {
-      inner = <Image source={{ uri: element.uri }} style={styles.imageFill} resizeMode="contain" />;
+      inner = element.uri ? <Image source={{ uri: element.uri }} style={styles.imageFill} resizeMode="contain" /> : <View style={[styles.imageFill, { backgroundColor: "#f0f0f0" }]} />;
     } else if (element.type === "shape") {
       if (element.shape === "arrow") {
         inner = <ArrowShape color={element.color} strokeWidth={element.strokeWidth} />;
@@ -2137,7 +2137,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   }, [addElement, defaultTextColor, doc.pageHeight, doc.pageWidth, getDefaultTargetPageId, pagesById]);
 
   const addImage = useCallback(async () => {
-    const uri = await pickAndStoreImage("canvas-note");
+    const uri = await pickAndSaveImage("canvas-note");
     if (!uri) return;
     const pageId = getDefaultTargetPageId();
     if (!pageId) return;
@@ -2777,12 +2777,17 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
                   }
 
                   if (el.type === "image") {
-                    return (
+                    return el.uri ? (
                       <Image
                         key={el.id}
                         source={{ uri: el.uri }}
                         style={{ position: "absolute", left: el.x, top: el.y, width: el.width, height: el.height, borderRadius: 4 }}
                         resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        key={el.id}
+                        style={{ position: "absolute", left: el.x, top: el.y, width: el.width, height: el.height, borderRadius: 4, backgroundColor: "#f0f0f0" }}
                       />
                     );
                   }

@@ -35,7 +35,7 @@ export type RootStackParamList = {
 
 export type FoldersStackParamList = {
   FoldersRoot: undefined;
-  FolderDetail: { folderId: string | null; trail?: string[]; from?: "home" | "folders" };
+  FolderDetail: { folderId: string | null; trail?: string[] };
 };
 
 export type TabsParamList = {
@@ -54,7 +54,9 @@ const FoldersStackNavigator = () => {
   const { theme } = useTheme();
 
   return (
+    // @ts-ignore - React Navigation type mismatch with id prop
     <FolderStack.Navigator
+      id="FolderStack"
       screenOptions={{
         animation: "slide_from_right",
         animationDuration: 40,
@@ -90,7 +92,9 @@ const TabsNavigator = () => {
   const insets = useSafeAreaInsets();
 
   return (
+    // @ts-ignore - React Navigation type mismatch with id prop
     <Tab.Navigator
+      id="BottomTab"
       safeAreaInsets={{ bottom: 0 }}
       screenOptions={({ route }) => ({
         headerShown: false,
@@ -153,7 +157,9 @@ const TabsNavigator = () => {
 const RootNavigator = () => {
   const { theme } = useTheme();
   return (
+    // @ts-ignore - React Navigation type mismatch with id prop
     <RootStack.Navigator
+      id="RootStack"
       screenOptions={{
         animation: "slide_from_right",
         animationDuration: 40,

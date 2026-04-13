@@ -1,0 +1,11 @@
+{
+  "name": "app-widget",
+  "version": "1.0.0",
+  "description": "Expo config plugin for App Widget",
+  "main": "index.js",
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "expo": "*"
+  }
+}

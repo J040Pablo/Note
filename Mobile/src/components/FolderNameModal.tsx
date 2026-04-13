@@ -4,7 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { Text } from "./Text";
 import { FOLDER_COLOR_OPTIONS, getFolderColorHex } from "@utils/folderColors";
-import { pickAndStoreImage } from "@utils/mediaPicker";
+import { pickAndSaveImage, deleteImage } from "@services/imageService";
 
 interface FolderNameModalProps {
   visible: boolean;
@@ -113,8 +113,11 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
                 disabled={submitting}
                 onPress={async () => {
                   if (submitting) return;
-                  const picked = await pickAndStoreImage("folder-photo");
-                  if (picked) setPhotoPath(picked);
+                  const picked = await pickAndSaveImage("folder-photo");
+                  if (picked) {
+                    if (photoPath) await deleteImage(photoPath);
+                    setPhotoPath(picked);
+                  }
                 }}
                 style={[styles.pickButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}
               >
@@ -135,8 +138,11 @@ export const FolderNameModal: React.FC<FolderNameModalProps> = ({
                 disabled={submitting}
                 onPress={async () => {
                   if (submitting) return;
-                  const picked = await pickAndStoreImage("folder-banner");
-                  if (picked) setBannerPath(picked);
+                  const picked = await pickAndSaveImage("folder-banner");
+                  if (picked) {
+                    if (bannerPath) await deleteImage(bannerPath);
+                    setBannerPath(picked);
+                  }
                 }}
                 style={[styles.pickButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}
               >

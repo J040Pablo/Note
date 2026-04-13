@@ -8,7 +8,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx"
+    "lint": "eslint . --ext .js,.jsx,.ts,.tsx",
+    "widget:validate": "node scripts/widget/validate-widget.js",
+    "widget:verify": "node scripts/widget/verify-widget-final.js",
+    "widget:check": "node scripts/widget/check-widget-in-build.js",
+    "build:android": "npm run widget:verify && eas build -p android --profile preview"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",

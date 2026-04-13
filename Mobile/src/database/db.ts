@@ -86,6 +86,20 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
   await ensureColumn(db, "files", "thumbnailPath", "TEXT");
   await ensureColumn(db, "files", "bannerPath", "TEXT");
 
+  // Add globalOrder columns for unified grid ordering
+  await ensureColumn(db, "folders", "globalOrder", "INTEGER");
+  await ensureColumn(db, "notes", "globalOrder", "INTEGER");
+  await ensureColumn(db, "quick_notes", "globalOrder", "INTEGER");
+  await ensureColumn(db, "files", "globalOrder", "INTEGER");
+
+  // Fix existing NULL globalOrder values - set to 9999 (will sort to end, maintains legacy order)
+  await db.execAsync?.(`
+    UPDATE folders SET globalOrder = 9999 WHERE globalOrder IS NULL;
+    UPDATE notes SET globalOrder = 9999 WHERE globalOrder IS NULL;
+    UPDATE quick_notes SET globalOrder = 9999 WHERE globalOrder IS NULL;
+    UPDATE files SET globalOrder = 9999 WHERE globalOrder IS NULL;
+  `);
+
   await db.execAsync?.(`
     UPDATE folders
     SET orderIndex = createdAt

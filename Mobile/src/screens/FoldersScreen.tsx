@@ -594,7 +594,7 @@ const FoldersScreen: React.FC = () => {
                   return;
                 }
                 withLock(() => {
-                  navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id], from: "folders" });
+                  navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
                   addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
                 });
               }}
@@ -738,7 +738,7 @@ const FoldersScreen: React.FC = () => {
                   return;
                 }
                 withLock(() => {
-                  navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id], from: "folders" });
+                  navigation.navigate("FolderDetail", { folderId: item.id, trail: [item.id] });
                   addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
                 });
               }}

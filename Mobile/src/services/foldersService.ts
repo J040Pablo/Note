@@ -83,9 +83,9 @@ export const getFolders = async (parentId: ID | null = null): Promise<Folder[]> 
 
   const rows =
     parentId === null
-      ? await db.getAllAsync<Folder>("SELECT * FROM folders WHERE parentId IS NULL ORDER BY orderIndex ASC, createdAt DESC")
+      ? await db.getAllAsync<Folder>("SELECT * FROM folders WHERE parentId IS NULL ORDER BY COALESCE(globalOrder, 9999) ASC, id ASC")
       : await db.getAllAsync<Folder>(
-          "SELECT * FROM folders WHERE parentId = ? ORDER BY orderIndex ASC, createdAt DESC",
+          "SELECT * FROM folders WHERE parentId = ? ORDER BY COALESCE(globalOrder, 9999) ASC, id ASC",
           parentId
         );
 
@@ -108,7 +108,7 @@ export const updateFolder = async (folder: Folder): Promise<Folder> => {
     const nextOrderIndex = parentChanged ? await getNextFolderOrderIndex(db, folder.parentId ?? null) : folder.orderIndex;
     const updatedFolder: Folder = { ...folder, orderIndex: nextOrderIndex, updatedAt: Date.now() };
     await db.runAsync(
-      "UPDATE folders SET name = ?, color = ?, parentId = ?, orderIndex = ?, description = ?, photoPath = ?, bannerPath = ?, updatedAt = ? WHERE id = ?",
+      "UPDATE folders SET name = ?, color = ?, parentId = ?, orderIndex = ?, description = ?, photoPath = ?, bannerPath = ?, globalOrder = ?, updatedAt = ? WHERE id = ?",
       updatedFolder.name,
       updatedFolder.color ?? null,
       updatedFolder.parentId,
@@ -116,6 +116,7 @@ export const updateFolder = async (folder: Folder): Promise<Folder> => {
       updatedFolder.description ?? null,
       updatedFolder.photoPath ?? null,
       updatedFolder.bannerPath ?? null,
+      updatedFolder.globalOrder ?? null,
       updatedFolder.updatedAt,
       updatedFolder.id
     );
@@ -164,4 +165,12 @@ export const deleteFolder = async (folderId: ID): Promise<void> => {
     type: "DELETE_FOLDER",
     payload: { id: String(folderId), updatedAt: Date.now() },
   });
+};
+
+export const updateFolderGlobalOrder = async (id: ID, globalOrder: number): Promise<void> => {
+  await runDbWrite(
+    "UPDATE folders SET globalOrder = ? WHERE id = ?",
+    globalOrder,
+    id
+  );
 };

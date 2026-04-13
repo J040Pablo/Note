@@ -44,7 +44,8 @@
       "expo-font",
       "@react-native-community/datetimepicker",
       "expo-camera",
-      "expo-notifications"
+      "expo-notifications",
+      "./expo-plugins/app-widget"
     ]
   }
 }

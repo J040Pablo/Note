@@ -15,8 +15,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
-import type { DrawingPoint, DrawingStroke, NoteBlock, NoteCodeBlock, NoteDrawingBlock, NoteTextBlock, RichNoteDocument } from "@models/types";
-import { pickAndStoreImage } from "@utils/mediaPicker";
+import type { DrawingPoint, DrawingStroke, NoteBlock, NoteCodeBlock, NoteDrawingBlock, NoteTextBlock, NoteImageBlock, RichNoteDocument } from "@models/types";
+import { pickAndSaveImage, deleteImage } from "@services/imageService";
+import { useValidatedImageUri } from "@hooks/useValidatedImageUri";
 import { debounce } from "@utils/performance";
 import {
   createCodeBlock,
@@ -46,6 +47,58 @@ type TextSelectionRange = {
   start: number;
   end: number;
 };
+
+const ImageBlock = memo(({ 
+  block, 
+  onUpdate, 
+  onDelete 
+}: { 
+  block: NoteImageBlock; 
+  onUpdate: (block: NoteImageBlock) => void;
+  onDelete: () => void;
+}) => {
+  const { theme } = useTheme();
+  const validatedUri = useValidatedImageUri(block.uri);
+
+  if (!validatedUri) {
+    return (
+      <View style={[styles.blockCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
+        <View style={[styles.imageBlock, { backgroundColor: theme.colors.primaryAlpha20, alignItems: "center", justifyContent: "center" }]}>
+          <Ionicons name="image-outline" size={32} color={theme.colors.textSecondary} />
+          <Text muted style={{ marginTop: 8 }}>Image not found</Text>
+        </View>
+        <View style={styles.imageActionsRow}>
+          <Pressable onPress={onDelete}>
+            <Text muted variant="caption">Remove</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.blockCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}>
+      <Image source={{ uri: validatedUri }} style={styles.imageBlock} resizeMode="cover" />
+      <TextInput
+        value={block.caption ?? ""}
+        onChangeText={(caption) => onUpdate({ ...block, caption })}
+        placeholder="Caption (optional)"
+        placeholderTextColor={theme.colors.textSecondary}
+        style={[styles.captionInput, { color: theme.colors.textPrimary }]}
+      />
+      <View style={styles.imageActionsRow}>
+        <Pressable
+          onPress={() => onUpdate(createDrawingBlock(validatedUri))}
+        >
+          <Text muted variant="caption">Annotate</Text>
+        </Pressable>
+        <Pressable onPress={onDelete}>
+          <Text muted variant="caption">Remove</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+});
 
 const clampFontSize = (size?: number) => {
   const next = size ?? 16;
@@ -137,8 +190,12 @@ const DrawingCanvas = memo(function DrawingCanvas({
           </Pressable>
           <Pressable
             onPress={async () => {
-              const uri = await pickAndStoreImage("note-draw-bg");
+              const uri = await pickAndSaveImage("note-draw-bg");
               if (!uri) return;
+              const oldBg = block.backgroundUri;
+              if (oldBg) {
+                deleteImage(oldBg).catch(() => {});
+              }
               onChange({ ...block, backgroundUri: uri });
             }}
             hitSlop={8}
@@ -302,6 +359,13 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
   const removeBlock = useCallback(
     (blockId: string) => {
       setDoc((prev) => {
+        const blockToRemove = prev.blocks.find((b) => b.id === blockId);
+        if (blockToRemove && blockToRemove.type === "image") {
+          deleteImage(blockToRemove.uri).catch(() => {});
+        }
+        if (blockToRemove && blockToRemove.type === "drawing") {
+          deleteImage(blockToRemove.backgroundUri).catch(() => {});
+        }
         const nextBlocks = prev.blocks.filter((b) => b.id !== blockId);
         const next = { ...prev, blocks: nextBlocks.length ? nextBlocks : [createTextBlock("")] };
         if (debouncedSaveRef.current) {
@@ -690,31 +754,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
           )}
 
           {block.type === "image" && (
-            <View style={[styles.blockCard, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
-              <Image source={{ uri: block.uri }} style={styles.imageBlock} resizeMode="cover" />
-              <TextInput
-                value={block.caption ?? ""}
-                onChangeText={(caption) => updateBlock(block.id, (prev) => (prev.type === "image" ? { ...prev, caption } : prev))}
-                placeholder="Caption (optional)"
-                placeholderTextColor={theme.colors.textSecondary}
-                style={[styles.captionInput, { color: theme.colors.textPrimary }]}
-              />
-              <View style={styles.imageActionsRow}>
-                <Pressable
-                  onPress={() =>
-                    updateBlock(block.id, (prev) => {
-                      if (prev.type !== "image") return prev;
-                      return createDrawingBlock(prev.uri);
-                    })
-                  }
-                >
-                  <Text muted variant="caption">Annotate</Text>
-                </Pressable>
-                <Pressable onPress={() => removeBlock(block.id)}>
-                  <Text muted variant="caption">Remove</Text>
-                </Pressable>
-              </View>
-            </View>
+            <ImageBlock block={block} onUpdate={(updated) => updateBlock(block.id, () => updated)} onDelete={() => removeBlock(block.id)} />
           )}
 
           {block.type === "drawing" && (
@@ -749,7 +789,7 @@ export const RichNoteEditor: React.FC<RichNoteEditorProps> = ({ value, onChangeT
             <Pressable
               style={[styles.insertButton, { borderColor: theme.colors.border }]}
               onPress={async () => {
-                const uri = await pickAndStoreImage("note-img");
+                const uri = await pickAndSaveImage("note-img");
                 if (!uri) return;
                 insertAfter(index, createImageBlock(uri));
               }}

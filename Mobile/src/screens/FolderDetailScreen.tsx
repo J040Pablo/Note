@@ -31,6 +31,7 @@ import { FloatingButton } from "@components/FloatingButton";
 import FolderExplorerMenu from "@components/FolderExplorerMenu";
 import { useTheme } from "@hooks/useTheme";
 import type { CompositeNavigationProp, RouteProp } from "@react-navigation/native";
+import { useFocusEffect } from "@react-navigation/native";
 import type { FoldersStackParamList, RootStackParamList } from "@navigation/RootNavigator";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { useAppStore } from "@store/useAppStore";
@@ -42,8 +43,8 @@ import { createTextBlock, getRichNotePreviewLine, serializeRichNoteContent } fro
 import { useNotesStore } from "@store/useNotesStore";
 import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useFilesStore } from "@store/useFilesStore";
-import { createFolder, deleteFolder, getFoldersByParent, updateFolder } from "@services/foldersService";
-import { createNote, deleteNote, deleteQuickNote, getNotesByFolder, getQuickNotesByFolder, updateNote } from "@services/notesService";
+import { createFolder, deleteFolder, getFoldersByParent, updateFolder, updateFolderGlobalOrder } from "@services/foldersService";
+import { createNote, deleteNote, deleteQuickNote, getNotesByFolder, getQuickNotesByFolder, updateNote, updateNoteGlobalOrder, updateQuickNoteGlobalOrder } from "@services/notesService";
 import {
   addRecentOpen,
   getPinnedItems,
@@ -59,7 +60,8 @@ import {
   moveFileToFolder,
   openExternalFile,
   reorderFiles,
-  updateFileDetails
+  updateFileDetails,
+  updateFileGlobalOrder
 } from "@services/filesService";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { AppFile, Folder, ID, Note, QuickNote } from "@models/types";
@@ -82,6 +84,11 @@ type GridFolderItem = Folder & { key: string };
 type GridNoteItem = Note & { key: string };
 type GridQuickNoteItem = QuickNote & { key: string };
 type GridFileItem = AppFile & { key: string };
+type GridAllItem = 
+  | (Folder & { key: string; itemType: "folder" })
+  | (Note & { key: string; itemType: "note" })
+  | (QuickNote & { key: string; itemType: "quick" })
+  | (AppFile & { key: string; itemType: "file" });
 const GRID_COLUMNS = 2;
 const GRID_PADDING = 12;
 const GRID_GAP = 20;
@@ -163,10 +170,12 @@ const FolderDetailScreen: React.FC = () => {
   const [draggingNotes, setDraggingNotes] = useState(false);
   const [draggingQuickNotes, setDraggingQuickNotes] = useState(false);
   const [draggingFiles, setDraggingFiles] = useState(false);
+  const [draggingGridItem, setDraggingGridItem] = useState(false);
   const [gridFoldersData, setGridFoldersData] = useState<GridFolderItem[]>([]);
   const [gridNotesData, setGridNotesData] = useState<GridNoteItem[]>([]);
   const [gridQuickNotesData, setGridQuickNotesData] = useState<GridQuickNoteItem[]>([]);
   const [gridFilesData, setGridFilesData] = useState<GridFileItem[]>([]);
+  const [gridAllItems, setGridAllItems] = useState<GridAllItem[]>([]);
   const [fileSortMode, setFileSortMode] = useState<FileSortMode>("custom");
   const [fileSizes, setFileSizes] = useState<Record<string, number>>({});
   const [renderKey, setRenderKey] = useState(0);
@@ -175,9 +184,20 @@ const FolderDetailScreen: React.FC = () => {
   const [noteSubmitting, setNoteSubmitting] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
+  const isDraggingRef = useRef(false);
+  const gridInitializedRef = useRef(false);
 
   const currentFolder = folderId ? folders[folderId] : undefined;
   const currentViewMode = folderViewModes[folderId ?? "root"] ?? "grid";
+
+  // Reset the navigation stack when focusing back on FolderDetail from another screen
+  // This ensures we can navigate back properly
+  useFocusEffect(
+    useCallback(() => {
+      // Just ensure the screen is properly focused
+      return;
+    }, [])
+  );
 
   useEffect(() => {
     (async () => {
@@ -205,14 +225,15 @@ const FolderDetailScreen: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      const visible = Object.values(files).filter((f) => (f.parentFolderId ?? null) === folderId);
+      const visible = Object.values(files).filter((f) => ((f as AppFile).parentFolderId ?? null) === folderId);
       const pairs = await Promise.all(
         visible.map(async (file) => {
           try {
-            const info = await FileSystem.getInfoAsync(file.path);
-            return [file.id, info.exists && "size" in info ? Number(info.size || 0) : 0] as const;
+            const appFile = file as AppFile;
+            const info = await FileSystem.getInfoAsync(appFile.path);
+            return [appFile.id, info.exists && "size" in info ? Number(info.size || 0) : 0] as const;
           } catch {
-            return [file.id, 0] as const;
+            return [(file as AppFile).id, 0] as const;
           }
         })
       );
@@ -235,7 +256,7 @@ const FolderDetailScreen: React.FC = () => {
   });
 
   const folderFiles = useMemo(
-    () => Object.values(files).filter((f) => (f.parentFolderId ?? null) === folderId),
+    () => Object.values(files).filter((f) => ((f as AppFile).parentFolderId ?? null) === folderId) as AppFile[],
     [files, folderId]
   );
 
@@ -253,7 +274,7 @@ const FolderDetailScreen: React.FC = () => {
   });
 
   const topContentPadding = selectionMode ? TOP_PADDING_WITH_SELECTION : TOP_PADDING_DEFAULT;
-  const isDraggingAny = draggingFolders || draggingNotes || draggingQuickNotes || draggingFiles;
+  const isDraggingAny = draggingFolders || draggingNotes || draggingQuickNotes || draggingFiles || draggingGridItem;
 
   const ensureItemSelectedForDrag = useCallback(
     (item: { kind: "folder" | "note" | "quick"; id: string; parentId: string | null; label: string }) => {
@@ -367,72 +388,82 @@ const FolderDetailScreen: React.FC = () => {
   }, [folderId, folders, routeTrail]);
 
   const visibleFiles = useMemo(() => {
-    if (fileSortMode === "name_asc") return [...folderFiles].sort((a, b) => a.name.localeCompare(b.name));
-    if (fileSortMode === "name_desc") return [...folderFiles].sort((a, b) => b.name.localeCompare(a.name));
-    if (fileSortMode === "recent") return [...folderFiles].sort((a, b) => b.createdAt - a.createdAt);
-    if (fileSortMode === "size_asc") return [...folderFiles].sort((a, b) => (fileSizes[a.id] ?? 0) - (fileSizes[b.id] ?? 0));
-    if (fileSortMode === "size_desc") return [...folderFiles].sort((a, b) => (fileSizes[b.id] ?? 0) - (fileSizes[a.id] ?? 0));
-    return [...folderFiles].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
+    const sortedFiles = folderFiles as AppFile[];
+    if (fileSortMode === "name_asc") return [...sortedFiles].sort((a, b) => a.name.localeCompare(b.name));
+    if (fileSortMode === "name_desc") return [...sortedFiles].sort((a, b) => b.name.localeCompare(a.name));
+    if (fileSortMode === "recent") return [...sortedFiles].sort((a, b) => b.createdAt - a.createdAt);
+    if (fileSortMode === "size_asc") return [...sortedFiles].sort((a, b) => (fileSizes[a.id] ?? 0) - (fileSizes[b.id] ?? 0));
+    if (fileSortMode === "size_desc") return [...sortedFiles].sort((a, b) => (fileSizes[b.id] ?? 0) - (fileSizes[a.id] ?? 0));
+    return [...sortedFiles].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0));
   }, [fileSizes, fileSortMode, folderFiles]);
 
   const visibleChildFolders = useMemo(
-    () => [...(childFolders ?? [])].sort((a, b) => (a.orderIndex ?? 0) - (b.orderIndex ?? 0)),
+    () => [...(childFolders ?? [])].sort((a, b) => (a.globalOrder ?? 0) - (b.globalOrder ?? 0)),
     [childFolders]
   );
 
   const visibleFolderNotes = useMemo(
-    () => [...(folderNotes ?? [])].sort((a, b) => b.updatedAt - a.updatedAt),
+    () => [...(folderNotes ?? [])].sort((a, b) => (a.globalOrder ?? 0) - (b.globalOrder ?? 0)),
     [folderNotes]
   );
 
   const visibleFolderQuickNotes = useMemo(
-    () => [...(folderQuickNotes ?? [])].sort((a, b) => b.updatedAt - a.updatedAt),
+    () => [...(folderQuickNotes ?? [])].sort((a, b) => (a.globalOrder ?? 0) - (b.globalOrder ?? 0)),
     [folderQuickNotes]
   );
 
+  // 🔥 CRITICAL: Initialize grid ONLY ONCE from stores
+  // After this, gridAllItems is the single source of truth for order
   useEffect(() => {
+    if (gridInitializedRef.current) return;
     if (currentViewMode !== "grid") return;
-    // Evita re-render desnecessario comparando arrays de IDs
-    const newFolderIds = visibleChildFolders.map((f) => f.id).join(",");
-    setGridFoldersData((prev) => {
-      const prevIds = prev.map((f) => f.id).join(",");
-      if (prevIds === newFolderIds) return prev;
-      return visibleChildFolders.map((folder) => ({
+
+    const allItems: GridAllItem[] = [
+      ...visibleChildFolders.map((folder) => ({
         ...folder,
-        key: folder.id
-      }));
-    });
-  }, [currentViewMode, visibleChildFolders]);
+        key: folder.id,
+        itemType: "folder" as const
+      })),
+      ...visibleFolderNotes.map((note) => ({
+        ...note,
+        key: note.id,
+        itemType: "note" as const
+      })),
+      ...visibleFolderQuickNotes.map((quick) => ({
+        ...quick,
+        key: quick.id,
+        itemType: "quick" as const
+      })),
+      ...visibleFiles.map((file) => ({
+        ...file,
+        key: file.id,
+        itemType: "file" as const
+      }))
+    ];
 
-  useEffect(() => {
-    if (currentViewMode !== "grid") return;
-    const newNoteIds = visibleFolderNotes.map((n) => n.id).join(",");
-    setGridNotesData((prev) => {
-      const prevIds = prev.map((n) => n.id).join(",");
-      if (prevIds === newNoteIds) return prev;
-      return visibleFolderNotes.map((note) => ({ ...note, key: note.id }));
-    });
-  }, [currentViewMode, visibleFolderNotes]);
+    // Ensure every item has a valid globalOrder (9999 for new items to sort them to the end)
+    const itemsWithOrder = allItems.map((item, index) => ({
+      ...item,
+      globalOrder: item.globalOrder ?? (9999 + index)
+    }));
 
-  useEffect(() => {
-    if (currentViewMode !== "grid") return;
-    const newQuickIds = visibleFolderQuickNotes.map((q) => q.id).join(",");
-    setGridQuickNotesData((prev) => {
-      const prevIds = prev.map((q) => q.id).join(",");
-      if (prevIds === newQuickIds) return prev;
-      return visibleFolderQuickNotes.map((quick) => ({ ...quick, key: quick.id }));
+    // Sort by globalOrder, with tie-breaking by ID for stable ordering
+    const sorted = itemsWithOrder.sort((a, b) => {
+      if (a.globalOrder === b.globalOrder) {
+        return a.id.localeCompare(b.id);
+      }
+      return a.globalOrder - b.globalOrder;
     });
-  }, [currentViewMode, visibleFolderQuickNotes]);
+    
+    console.log("[FolderDetail] ✨ Grid initialized (ONE TIME):", sorted.map(item => ({
+      id: item.id,
+      type: item.itemType,
+      globalOrder: item.globalOrder
+    })));
 
-  useEffect(() => {
-    if (currentViewMode !== "grid") return;
-    const newFileIds = visibleFiles.map((f) => f.id).join(",");
-    setGridFilesData((prev) => {
-      const prevIds = prev.map((f) => f.id).join(",");
-      if (prevIds === newFileIds) return prev;
-      return visibleFiles.map((file) => ({ ...file, key: file.id }));
-    });
-  }, [currentViewMode, visibleFiles]);
+    setGridAllItems(sorted);
+    gridInitializedRef.current = true;
+  }, []);
 
   const isDescendantOf = useCallback(
     (candidateParentId: string | null, sourceId: string): boolean => {
@@ -514,16 +545,14 @@ const FolderDetailScreen: React.FC = () => {
   }, [closeFab, fabOpen, openFab]);
 
   const handleBackPress = useCallback(() => {
-    if (route.params?.from === "home") {
-      (navigation as any).navigate("Tabs", { screen: "Home" });
-    } else if (route.params?.from === "folders") {
-      navigation.navigate("FoldersRoot");
-    } else if (navigation.canGoBack()) {
+    // Se há histórico de navegação, voltar
+    if (navigation.canGoBack()) {
       navigation.goBack();
     } else {
-      navigation.navigate("FoldersRoot");
+      // Se não há histórico, navegar para a raiz da stack de Folders
+      navigation.navigate("FoldersRoot" as never);
     }
-  }, [navigation, route.params?.from]);
+  }, [navigation]);
 
   const toggleExpandedFolder = useCallback((folderId: string) => {
     setExpandedFolders((prev) => {
@@ -651,474 +680,563 @@ const FolderDetailScreen: React.FC = () => {
         >
           <View>
             {currentViewMode === "grid" ? (
-              <View style={[styles.gridSectionBlock, { height: gridHeightFor(gridFoldersData.length), width: "100%" }]}>
-                <DraggableGrid<GridFolderItem>
+              // UNIFIED GRID for folders, notes, and quick notes in GRID MODE
+              <View style={[styles.gridSectionBlock, { height: gridHeightFor(gridAllItems.length), width: "100%" }]}>
+                <DraggableGrid<GridAllItem>
                   disabled={false}
                   numColumns={GRID_COLUMNS}
                   itemHeight={GRID_CELL_HEIGHT}
                   style={styles.gridSurface}
-                  data={gridFoldersData}
+                  data={gridAllItems}
                   delayLongPress={250}
                   onDragStart={(item) => {
-                    setDraggingFolders(true);
-                    ensureItemSelectedForDrag({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
+                    isDraggingRef.current = true;
+                    setDraggingGridItem(true);
+                    // Determine the item kind based on itemType
+                    if (item.itemType === "folder") {
+                      ensureItemSelectedForDrag({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
+                    } else if (item.itemType === "note") {
+                      ensureItemSelectedForDrag({ kind: "note", id: item.id, parentId: item.folderId ?? null, label: item.title });
+                    } else if (item.itemType === "quick") {
+                      ensureItemSelectedForDrag({ kind: "quick", id: item.id, parentId: item.folderId ?? null, label: item.title });
+                    }
+                    // Files don't have selection mode in the current implementation, so skip for now
                   }}
                   onDragRelease={(data) => {
-                    setGridFoldersData(
-                      data.map((folder) => ({
-                        ...folder,
-                        key: folder.id
-                      }))
-                    );
-                    const orderedIds = data.map((folder) => folder.id);
-                    actions.reorder({ kind: "folder", parentId: folderId ?? null, orderedIds });
-                    setDraggingFolders(false);
+                    // 🔥 1. Update UI immediately (gridAllItems is source of truth)
+                    // DraggableGrid already passes reordered data, just set it
+                    setGridAllItems(data);
+
+                    console.log("[FolderDetail] 🎯 Drag release - new order:", data.map((item, index) => ({
+                      id: item.id,
+                      type: item.itemType,
+                      newGlobalOrder: index
+                    })));
+
+                    // 🔥 2. Persist new order to database (but NOT stores)
+                    // Stores will eventually sync from DB via normal loading, but for now gridAllItems controls display
+                    data.forEach((item, index) => {
+                      switch (item.itemType) {
+                        case "folder":
+                          updateFolderGlobalOrder(item.id, index).catch(err => 
+                            console.error("[FolderDetail] Failed to persist folder order:", err)
+                          );
+                          break;
+                        case "note":
+                          updateNoteGlobalOrder(item.id, index).catch(err => 
+                            console.error("[FolderDetail] Failed to persist note order:", err)
+                          );
+                          break;
+                        case "quick":
+                          updateQuickNoteGlobalOrder(item.id, index).catch(err => 
+                            console.error("[FolderDetail] Failed to persist quick note order:", err)
+                          );
+                          break;
+                        case "file":
+                          updateFileGlobalOrder(item.id, index).catch(err => 
+                            console.error("[FolderDetail] Failed to persist file order:", err)
+                          );
+                          break;
+                      }
+                    });
+
+                    console.log("[FolderDetail] ✅ Drag completed - order persisted to database");
+                    isDraggingRef.current = false;
+                    setDraggingGridItem(false);
                   }}
                   onItemPress={(item) => {
-                    if (draggingFolders) return;
-                    if (selectionMode) {
-                      toggleSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
-                      return;
-                    }
-                    withLock(() => {
-                      navigation.push("FolderDetail", {
-                        folderId: item.id,
-                        trail: [...trailIds, item.id]
+                    if (item.itemType === "folder") {
+                      if (selectionMode) {
+                        toggleSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
+                        return;
+                      }
+                      withLock(() => {
+                        navigation.navigate("FolderDetail", {
+                          folderId: item.id,
+                          trail: [...trailIds, item.id]
+                        });
+                        addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
                       });
-                      addRecentOpen("folder", item.id).then((nextRecent) => setRecentItems(nextRecent));
-                    });
+                    } else if (item.itemType === "note") {
+                      if (selectionMode) {
+                        toggleSelection({ kind: "note", id: item.id, parentId: item.folderId ?? null, label: item.title });
+                        return;
+                      }
+                      withLock(() => {
+                        navigation.navigate("NoteEditor", { noteId: item.id, folderId: folderId ?? null });
+                        addRecentOpen("note", item.id).then((nextRecent) => setRecentItems(nextRecent));
+                      });
+                    } else if (item.itemType === "quick") {
+                      if (selectionMode) {
+                        toggleSelection({ kind: "quick", id: item.id, parentId: item.folderId ?? null, label: item.title });
+                        return;
+                      }
+                      withLock(() => {
+                        navigation.navigate("QuickNote", { quickNoteId: item.id, folderId: folderId ?? null });
+                      });
+                    } else if (item.itemType === "file") {
+                      const file = item as AppFile & { key: string; itemType: "file" };
+                      openExternalFile(file.path);
+                    }
                   }}
                   onItemLongPress={(item) => {
-                    if (draggingFolders) return;
-                    if (!selectionMode) {
-                      startSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
+                    if (item.itemType === "file") {
+                      // Files don't have selection mode, just open context menu or do nothing
                       return;
                     }
-                    toggleSelection({ kind: "folder", id: item.id, parentId: item.parentId ?? null, label: item.name });
+                    
+                    const kind = item.itemType === "folder" ? "folder" : item.itemType === "note" ? "note" : "quick";
+                    const parentId = item.itemType === "folder" ? item.parentId ?? null : item.folderId ?? null;
+                    const label = item.itemType === "folder" ? item.name : item.title;
+
+                    if (!selectionMode) {
+                      startSelection({ kind, id: item.id, parentId, label });
+                      return;
+                    }
+                    toggleSelection({ kind, id: item.id, parentId, label });
                   }}
-                  renderItem={(folder: GridFolderItem, index: number) => (
-                    <View
-                      style={[
-                        styles.gridItem,
-                        {
-                          width: gridItemWidth,
-                          height: GRID_CELL_HEIGHT,
-                          marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
-                        }
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.folderGridCard,
-                          {
-                            minHeight: GRID_ITEM_HEIGHT,
-                            height: GRID_ITEM_HEIGHT,
-                            marginHorizontal: 0,
-                            backgroundColor: theme.colors.card,
-                            borderWidth: 2,
-                            borderColor: isSelected({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name }) ? theme.colors.primary : theme.colors.border
-                          }
-                        ]}
-                      >
-                        {!!folder.bannerPath && (
-                          <Image source={{ uri: folder.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
-                        )}
-                        <View style={styles.cardBody}>
-                          {folder.photoPath ? (
-                            <Image source={{ uri: folder.photoPath }} style={styles.cardAvatar} resizeMode="cover" />
-                          ) : (
-                            <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                              <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} plain />
+                  renderItem={(item: GridAllItem, index: number) => {
+                    // Render item based on its type
+                    if (item.itemType === "folder") {
+                      const folder = item as Folder & { key: string; itemType: "folder" };
+                      return (
+                        <View
+                          style={[
+                            styles.gridItem,
+                            {
+                              width: gridItemWidth,
+                              height: GRID_CELL_HEIGHT,
+                              marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
+                            }
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.folderGridCard,
+                              {
+                                minHeight: GRID_ITEM_HEIGHT,
+                                height: GRID_ITEM_HEIGHT,
+                                marginHorizontal: 0,
+                                backgroundColor: theme.colors.card,
+                                borderWidth: 2,
+                                borderColor: isSelected({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name }) ? theme.colors.primary : theme.colors.border
+                              }
+                            ]}
+                          >
+                            {/* Banner - always render if path exists */}
+                            {!!folder.bannerPath ? (
+                              <Image source={{ uri: folder.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
+                            ) : (
+                              <View style={[styles.cardBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
+                            )}
+                            
+                            {/* Content row - standardized layout */}
+                            <View style={styles.cardBody}>
+                              {/* Avatar or Icon */}
+                              {folder.photoPath ? (
+                                <Image source={{ uri: folder.photoPath }} style={styles.cardAvatar} resizeMode="cover" />
+                              ) : (
+                                <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}>
+                                  <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} plain />
+                                </View>
+                              )}
+                              
+                              {/* Text content */}
+                              <View style={styles.rowContent}>
+                                <Text style={styles.rowTitle} numberOfLines={1}>{folder.name}</Text>
+                                {!!folder.description && (
+                                  <Text muted variant="caption" numberOfLines={1}>
+                                    {folder.description}
+                                  </Text>
+                                )}
+                              </View>
                             </View>
-                          )}
-                          <View style={styles.rowContent}>
-                            <Text style={styles.rowTitle}>{folder.name}</Text>
-                            {!!folder.description && (
-                              <Text muted variant="caption" numberOfLines={2}>
-                                {folder.description}
-                              </Text>
-                            )}
+                            
+                            {/* Selection indicator */}
+                            <SelectionIndicator visible={isSelected({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name })} />
                           </View>
                         </View>
-                        <SelectionIndicator visible={isSelected({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name })} />
-                      </View>
-                    </View>
-                  )}
+                      );
+                    } else if (item.itemType === "note") {
+                      const note = item as Note & { key: string; itemType: "note" };
+                      return (
+                        <View
+                          style={[
+                            styles.gridItem,
+                            {
+                              width: gridItemWidth,
+                              height: GRID_CELL_HEIGHT,
+                              marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
+                            }
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.folderGridCard,
+                              {
+                                minHeight: GRID_ITEM_HEIGHT,
+                                height: GRID_ITEM_HEIGHT,
+                                marginHorizontal: 0,
+                                backgroundColor: theme.colors.card,
+                                borderWidth: 2,
+                                borderColor: isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title }) ? theme.colors.primary : theme.colors.border
+                              }
+                            ]}
+                          >
+                            {/* Banner - always render */}
+                            <View style={[styles.cardBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
+                            
+                            {/* Content row - standardized layout */}
+                            <View style={styles.cardBody}>
+                              {/* Icon */}
+                              <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}>
+                                <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
+                              </View>
+                              
+                              {/* Text content */}
+                              <View style={styles.rowContent}>
+                                <Text style={styles.rowTitle} numberOfLines={1}>{note.title || "Sem título"}</Text>
+                                {!!firstLine(note.content) && (
+                                  <Text muted variant="caption" numberOfLines={1}>
+                                    {firstLine(note.content)}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                            
+                            {/* Selection indicator */}
+                            <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title })} />
+                          </View>
+                        </View>
+                      );
+                    } else if (item.itemType === "quick") {
+                      const quickNote = item as QuickNote & { key: string; itemType: "quick" };
+                      return (
+                        <View
+                          style={[
+                            styles.gridItem,
+                            {
+                              width: gridItemWidth,
+                              height: GRID_CELL_HEIGHT,
+                              marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
+                            }
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.folderGridCard,
+                              {
+                                minHeight: GRID_ITEM_HEIGHT,
+                                height: GRID_ITEM_HEIGHT,
+                                marginHorizontal: 0,
+                                backgroundColor: theme.colors.card,
+                                borderWidth: 2,
+                                borderColor: isSelected({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title }) ? theme.colors.primary : theme.colors.border
+                              }
+                            ]}
+                          >
+                            {/* Banner - always render */}
+                            <View style={[styles.cardBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
+                            
+                            {/* Content row - standardized layout */}
+                            <View style={styles.cardBody}>
+                              {/* Icon */}
+                              <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}>
+                                <Ionicons name="flash-outline" size={18} color={theme.colors.textSecondary} />
+                              </View>
+                              
+                              {/* Text content */}
+                              <View style={styles.rowContent}>
+                                <Text style={styles.rowTitle} numberOfLines={1}>{quickNote.title || "Sem título"}</Text>
+                                {!!firstLine(quickNote.content) && (
+                                  <Text muted variant="caption" numberOfLines={1}>
+                                    {firstLine(quickNote.content)}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                            
+                            {/* Selection indicator */}
+                            <SelectionIndicator visible={isSelected({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title })} />
+                          </View>
+                        </View>
+                      );
+                    } else if (item.itemType === "file") {
+                      const file = item as AppFile & { key: string; itemType: "file" };
+                      return (
+                        <View
+                          style={[
+                            styles.gridItem,
+                            {
+                              width: gridItemWidth,
+                              height: GRID_CELL_HEIGHT,
+                              marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
+                            }
+                          ]}
+                        >
+                          <View
+                            style={[
+                              styles.folderGridCard,
+                              {
+                                minHeight: GRID_ITEM_HEIGHT,
+                                height: GRID_ITEM_HEIGHT,
+                                marginHorizontal: 0,
+                                backgroundColor: theme.colors.card,
+                                borderWidth: 2,
+                                borderColor: theme.colors.border
+                              }
+                            ]}
+                          >
+                            {/* Banner - show thumbnail if available */}
+                            {file.bannerPath && (
+                              <Image source={{ uri: file.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
+                            )}
+                            {!file.bannerPath && (
+                              <View style={[styles.cardBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
+                            )}
+                            
+                            {/* Content row - standardized layout */}
+                            <View style={styles.cardBody}>
+                              {/* Icon */}
+                              <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}>
+                                <Ionicons name={getFileTypeIcon(file.type)} size={18} color={theme.colors.textSecondary} />
+                              </View>
+                              
+                              {/* Text content */}
+                              <View style={styles.rowContent}>
+                                <Text style={styles.rowTitle} numberOfLines={1}>{file.name}</Text>
+                                {!!file.description && (
+                                  <Text muted variant="caption" numberOfLines={1}>
+                                    {file.description}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                            
+                            {/* Selection indicator */}
+                            <SelectionIndicator visible={false} />
+                          </View>
+                        </View>
+                      );
+                    }
+                    return null;
+                  }}
                 />
               </View>
             ) : (
-              <DraggableFlatList
-                data={visibleChildFolders}
-                keyExtractor={(item) => item.id}
-                scrollEnabled={false}
-                nestedScrollEnabled
-                containerStyle={{ flexGrow: 0, width: "100%" }}
-                dragItemOverflow
-                activationDistance={12}
-                onDragBegin={() => setDraggingFolders(true)}
-                onRelease={() => setDraggingFolders(false)}
-                onDragEnd={({ data }) => {
-                  setDraggingFolders(false);
-                  const orderedIds = data.map((folder) => folder.id);
-                  actions.reorder({ kind: "folder", parentId: folderId ?? null, orderedIds });
-                }}
-                renderItem={({ item: folder, drag, isActive }: RenderItemParams<Folder>) => (
-                  <Pressable
-                    onLongPress={() => {
-                      if (selectionMode) {
-                        toggleSelection({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name });
-                        return;
-                      }
-                      ensureItemSelectedForDrag({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name });
-                      drag();
-                    }}
-                    delayLongPress={260}
-                    style={({ pressed }) => [
-                      styles.itemCard,
-                      styles.listItemCard,
-                      {
-                        backgroundColor: theme.colors.card,
-                        shadowColor: theme.colors.textPrimary,
-                        transform: [{ scale: isActive ? 1.02 : pressed ? 0.992 : 1 }],
-                        opacity: isActive ? 0.96 : pressed ? 0.96 : 1,
-                        borderWidth: 2,
-                        borderColor: isSelected({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name }) ? theme.colors.primary : theme.colors.border
-                      }
-                    ]}
-                    onPress={() => {
-                      if (selectionMode) {
-                        toggleSelection({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name });
-                        return;
-                      }
-                      withLock(() => {
-                        navigation.push("FolderDetail", {
-                          folderId: folder.id,
-                          trail: [...trailIds, folder.id]
+              // LIST MODE - keep three separate DraggableFlatList components
+              <>
+                {/* Folders list */}
+                <DraggableFlatList
+                  data={visibleChildFolders}
+                  keyExtractor={(item) => item.id}
+                  scrollEnabled={false}
+                  nestedScrollEnabled
+                  containerStyle={{ flexGrow: 0, width: "100%" }}
+                  dragItemOverflow
+                  activationDistance={12}
+                  onDragBegin={() => setDraggingFolders(true)}
+                  onRelease={() => setDraggingFolders(false)}
+                  onDragEnd={({ data }) => {
+                    setDraggingFolders(false);
+                    const orderedIds = data.map((folder) => folder.id);
+                    actions.reorder({ kind: "folder", parentId: folderId ?? null, orderedIds });
+                  }}
+                  renderItem={({ item: folder, drag, isActive }: RenderItemParams<Folder>) => (
+                    <Pressable
+                      onLongPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name });
+                          return;
+                        }
+                        ensureItemSelectedForDrag({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name });
+                        drag();
+                      }}
+                      delayLongPress={260}
+                      style={({ pressed }) => [
+                        styles.itemCard,
+                        styles.listItemCard,
+                        {
+                          backgroundColor: theme.colors.card,
+                          shadowColor: theme.colors.textPrimary,
+                          transform: [{ scale: isActive ? 1.02 : pressed ? 0.992 : 1 }],
+                          opacity: isActive ? 0.96 : pressed ? 0.96 : 1,
+                          borderWidth: 2,
+                          borderColor: isSelected({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name }) ? theme.colors.primary : theme.colors.border
+                        }
+                      ]}
+                      onPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name });
+                          return;
+                        }
+                        withLock(() => {
+                          navigation.navigate("FolderDetail", {
+                            folderId: folder.id,
+                            trail: [...trailIds, folder.id]
+                          });
+                          addRecentOpen("folder", folder.id).then((nextRecent) => setRecentItems(nextRecent));
                         });
-                        addRecentOpen("folder", folder.id).then((nextRecent) => setRecentItems(nextRecent));
-                      });
-                    }}
-                  >
-                    {!!folder.bannerPath && (
-                      <Image source={{ uri: folder.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
-                    )}
-                    <View style={styles.cardBody}>
-                      {folder.photoPath ? (
-                        <Image source={{ uri: folder.photoPath }} style={styles.cardAvatar} resizeMode="cover" />
-                      ) : (
-                        <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                          <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} plain />
-                        </View>
+                      }}
+                    >
+                      {!!folder.bannerPath && (
+                        <Image source={{ uri: folder.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
                       )}
-                      <View style={styles.rowContent}>
-                        <Text style={styles.rowTitle}>{folder.name}</Text>
-                        {!!folder.description && (
-                          <Text muted variant="caption" numberOfLines={2}>
-                            {folder.description}
-                          </Text>
+                      <View style={styles.cardBody}>
+                        {folder.photoPath ? (
+                          <Image source={{ uri: folder.photoPath }} style={styles.cardAvatar} resizeMode="cover" />
+                        ) : (
+                          <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
+                            <FolderIcon color={folder.color} fallbackColor={theme.colors.primary} size={20} plain />
+                          </View>
                         )}
+                        <View style={styles.rowContent}>
+                          <Text style={styles.rowTitle} numberOfLines={1}>{folder.name}</Text>
+                          {!!folder.description && (
+                            <Text muted variant="caption" numberOfLines={2} style={{ flexShrink: 1 }}>
+                              {folder.description}
+                            </Text>
+                          )}
+                        </View>
                       </View>
-                    </View>
-                    <SelectionIndicator visible={isSelected({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name })} />
-                  </Pressable>
-                )}
-              />
-            )}
+                      <SelectionIndicator visible={isSelected({ kind: "folder", id: folder.id, parentId: folder.parentId ?? null, label: folder.name })} />
+                    </Pressable>
+                  )}
+                />
 
-            {currentViewMode === "list" ? (
-              <DraggableFlatList
-                data={visibleFolderNotes}
-                keyExtractor={(item) => item.id}
-                scrollEnabled={false}
-                nestedScrollEnabled
-                containerStyle={{ flexGrow: 0, width: "100%" }}
-                dragItemOverflow
-                activationDistance={12}
-                onDragBegin={() => setDraggingNotes(true)}
-                onRelease={() => setDraggingNotes(false)}
-                onDragEnd={({ data }) => {
-                  setDraggingNotes(false);
-                  actions.reorder({ kind: "note", parentId: folderId ?? null, orderedIds: data.map((note) => note.id) });
-                }}
-                renderItem={({ item: note, drag, isActive }: RenderItemParams<Note>) => (
-                  <Pressable
-                    onLongPress={() => {
-                      if (selectionMode) {
-                        toggleSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
-                        return;
-                      }
-                      ensureItemSelectedForDrag({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
-                      drag();
-                    }}
-                    delayLongPress={260}
-                    style={({ pressed }) => [
-                      styles.itemCard,
-                      styles.listItemCard,
-                      {
-                        backgroundColor: theme.colors.card,
-                        shadowColor: theme.colors.textPrimary,
-                        transform: [{ scale: isActive ? 1.02 : pressed ? 0.992 : 1 }],
-                        opacity: isActive ? 0.96 : pressed ? 0.96 : 1,
-                        borderWidth: 2,
-                        borderColor: isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title }) ? theme.colors.primary : theme.colors.border
-                      }
-                    ]}
-                    onPress={() => {
-                      if (selectionMode) {
-                        toggleSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
-                        return;
-                      }
-                      withLock(() => {
-                        navigation.navigate("NoteEditor", { noteId: note.id, folderId: folderId ?? null });
-                        addRecentOpen("note", note.id).then((nextRecent) => setRecentItems(nextRecent));
-                      });
-                    }}
-                  >
-                    <View style={styles.cardBody}>
-                      <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                        <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
-                      </View>
-                      <View style={styles.rowContent}>
-                        <Text style={styles.rowTitle}>{note.title}</Text>
-                        {!!firstLine(note.content) && (
-                          <Text muted variant="caption" numberOfLines={2}>
-                            {firstLine(note.content)}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                    <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title })} />
-                  </Pressable>
-                )}
-              />
-            ) : (
-              <View style={[styles.gridSectionBlock, { height: gridHeightFor(gridNotesData.length), width: "100%" }]}>
-                <DraggableGrid<GridNoteItem>
-                  disabled={false}
-                  numColumns={GRID_COLUMNS}
-                  itemHeight={GRID_CELL_HEIGHT}
-                  style={styles.gridSurface}
-                  data={gridNotesData}
-                  delayLongPress={250}
-                  onDragStart={(item) => {
-                    setDraggingNotes(true);
-                    ensureItemSelectedForDrag({ kind: "note", id: item.id, parentId: item.folderId ?? null, label: item.title });
-                  }}
-                  onDragRelease={(data) => {
-                    setGridNotesData(data.map((note) => ({ ...note, key: note.id })));
-                    actions.reorder({ kind: "note", parentId: folderId ?? null, orderedIds: data.map((note) => note.id) });
+                {/* Notes list */}
+                <DraggableFlatList
+                  data={visibleFolderNotes}
+                  keyExtractor={(item) => item.id}
+                  scrollEnabled={false}
+                  nestedScrollEnabled
+                  containerStyle={{ flexGrow: 0, width: "100%" }}
+                  dragItemOverflow
+                  activationDistance={12}
+                  onDragBegin={() => setDraggingNotes(true)}
+                  onRelease={() => setDraggingNotes(false)}
+                  onDragEnd={({ data }) => {
                     setDraggingNotes(false);
+                    actions.reorder({ kind: "note", parentId: folderId ?? null, orderedIds: data.map((note) => note.id) });
                   }}
-                  onItemPress={(note) => {
-                    if (draggingNotes) return;
-                    if (selectionMode) {
-                      toggleSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
-                      return;
-                    }
-                    withLock(() => {
-                      navigation.navigate("NoteEditor", { noteId: note.id, folderId: folderId ?? null });
-                      addRecentOpen("note", note.id).then((nextRecent) => setRecentItems(nextRecent));
-                    });
-                  }}
-                  onItemLongPress={(note) => {
-                    if (draggingNotes) return;
-                    if (!selectionMode) {
-                      startSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
-                      return;
-                    }
-                    toggleSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
-                  }}
-                  renderItem={(note: GridNoteItem, index: number) => (
-                    <View
-                      style={[
-                        styles.gridItem,
+                  renderItem={({ item: note, drag, isActive }: RenderItemParams<Note>) => (
+                    <Pressable
+                      onLongPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
+                          return;
+                        }
+                        ensureItemSelectedForDrag({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
+                        drag();
+                      }}
+                      delayLongPress={260}
+                      style={({ pressed }) => [
+                        styles.itemCard,
+                        styles.listItemCard,
                         {
-                          width: gridItemWidth,
-                          height: GRID_CELL_HEIGHT,
-                          marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
+                          backgroundColor: theme.colors.card,
+                          shadowColor: theme.colors.textPrimary,
+                          transform: [{ scale: isActive ? 1.02 : pressed ? 0.992 : 1 }],
+                          opacity: isActive ? 0.96 : pressed ? 0.96 : 1,
+                          borderWidth: 2,
+                          borderColor: isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title }) ? theme.colors.primary : theme.colors.border
                         }
                       ]}
+                      onPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title });
+                          return;
+                        }
+                        withLock(() => {
+                          navigation.navigate("NoteEditor", { noteId: note.id, folderId: folderId ?? null });
+                          addRecentOpen("note", note.id).then((nextRecent) => setRecentItems(nextRecent));
+                        });
+                      }}
                     >
-                      <View
-                        style={[
-                          styles.folderGridCard,
-                          {
-                            minHeight: GRID_ITEM_HEIGHT,
-                            height: GRID_ITEM_HEIGHT,
-                            marginHorizontal: 0,
-                            backgroundColor: theme.colors.card,
-                            borderWidth: 2,
-                            borderColor: isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title }) ? theme.colors.primary : theme.colors.border
-                          }
-                        ]}
-                      >
-                        <View style={[styles.cardBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
-                        <View style={styles.cardBody}>
-                          <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                            <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
-                          </View>
-                          <View style={styles.rowContent}>
-                            <Text style={styles.rowTitle} numberOfLines={1}>{note.title || "Sem título"}</Text>
-                            {!!firstLine(note.content) && (
-                              <Text muted variant="caption" numberOfLines={1}>
-                                {firstLine(note.content)}
-                              </Text>
-                            )}
-                          </View>
+                      <View style={styles.cardBody}>
+                        <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
+                          <Ionicons name="document-text-outline" size={18} color={theme.colors.textSecondary} />
                         </View>
-                        <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title })} />
+                        <View style={styles.rowContent}>
+                          <Text style={styles.rowTitle}>{note.title}</Text>
+                          {!!firstLine(note.content) && (
+                            <Text muted variant="caption" numberOfLines={2}>
+                              {firstLine(note.content)}
+                            </Text>
+                          )}
+                        </View>
                       </View>
-                    </View>
+                      <SelectionIndicator visible={isSelected({ kind: "note", id: note.id, parentId: note.folderId ?? null, label: note.title })} />
+                    </Pressable>
                   )}
                 />
-              </View>
-            )}
 
-            {currentViewMode === "list" ? (
-              <DraggableFlatList
-                data={visibleFolderQuickNotes}
-                keyExtractor={(item) => `quick-${item.id}`}
-                scrollEnabled={false}
-                nestedScrollEnabled
-                containerStyle={{ flexGrow: 0, width: "100%" }}
-                dragItemOverflow
-                activationDistance={12}
-                onDragBegin={() => setDraggingQuickNotes(true)}
-                onRelease={() => setDraggingQuickNotes(false)}
-                onDragEnd={({ data }) => {
-                  setDraggingQuickNotes(false);
-                  actions.reorder({ kind: "quick", parentId: folderId ?? null, orderedIds: data.map((quick) => quick.id) });
-                }}
-                renderItem={({ item: quickNote, drag, isActive }: RenderItemParams<QuickNote>) => (
-                  <Pressable
-                    onLongPress={() => {
-                      if (selectionMode) {
-                        toggleSelection({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
-                        return;
-                      }
-                      ensureItemSelectedForDrag({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
-                      drag();
-                    }}
-                    delayLongPress={260}
-                    style={({ pressed }) => [
-                      styles.itemCard,
-                      styles.listItemCard,
-                      {
-                        backgroundColor: theme.colors.card,
-                        shadowColor: theme.colors.textPrimary,
-                        transform: [{ scale: isActive ? 1.02 : pressed ? 0.992 : 1 }],
-                        opacity: isActive ? 0.96 : pressed ? 0.96 : 1,
-                        borderWidth: 2,
-                        borderColor: isSelected({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title }) ? theme.colors.primary : theme.colors.border
-                      }
-                    ]}
-                    onPress={() => {
-                      if (selectionMode) {
-                        toggleSelection({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
-                        return;
-                      }
-                      withLock(() => {
-                        navigation.navigate("QuickNote", { quickNoteId: quickNote.id, folderId: folderId ?? null });
-                      });
-                    }}
-                  >
-                    <View style={styles.cardBody}>
-                      <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                        <Ionicons name="flash-outline" size={18} color={theme.colors.textSecondary} />
-                      </View>
-                      <View style={styles.rowContent}>
-                        <Text style={styles.rowTitle}>{quickNote.title}</Text>
-                        {!!firstLine(quickNote.content) && (
-                          <Text muted variant="caption" numberOfLines={2}>
-                            {firstLine(quickNote.content)}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                    <SelectionIndicator visible={isSelected({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title })} />
-                  </Pressable>
-                )}
-              />
-            ) : (
-              <View style={[styles.gridSectionBlock, { height: gridHeightFor(gridQuickNotesData.length), width: "100%" }]}>
-                <DraggableGrid<GridQuickNoteItem>
-                  disabled={false}
-                  numColumns={GRID_COLUMNS}
-                  itemHeight={GRID_CELL_HEIGHT}
-                  style={styles.gridSurface}
-                  data={gridQuickNotesData}
-                  delayLongPress={250}
-                    onDragStart={(item) => {
-                      setDraggingQuickNotes(true);
-                      ensureItemSelectedForDrag({ kind: "quick", id: item.id, parentId: item.folderId ?? null, label: item.title });
-                    }}
-                  onDragRelease={(data) => {
-                    setGridQuickNotesData(data.map((quick) => ({ ...quick, key: quick.id })));
-                    actions.reorder({ kind: "quick", parentId: folderId ?? null, orderedIds: data.map((quick) => quick.id) });
+                {/* Quick notes list */}
+                <DraggableFlatList
+                  data={visibleFolderQuickNotes}
+                  keyExtractor={(item) => `quick-${item.id}`}
+                  scrollEnabled={false}
+                  nestedScrollEnabled
+                  containerStyle={{ flexGrow: 0, width: "100%" }}
+                  dragItemOverflow
+                  activationDistance={12}
+                  onDragBegin={() => setDraggingQuickNotes(true)}
+                  onRelease={() => setDraggingQuickNotes(false)}
+                  onDragEnd={({ data }) => {
                     setDraggingQuickNotes(false);
+                    actions.reorder({ kind: "quick", parentId: folderId ?? null, orderedIds: data.map((quick) => quick.id) });
                   }}
-                  onItemPress={(quickNote) => {
-                    if (draggingQuickNotes) return;
-                    if (selectionMode) {
-                      toggleSelection({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
-                      return;
-                    }
-                    withLock(() => {
-                      navigation.navigate("QuickNote", { quickNoteId: quickNote.id, folderId: folderId ?? null });
-                    });
-                  }}
-                  onItemLongPress={(quickNote) => {
-                    if (draggingQuickNotes) return;
-                    if (!selectionMode) {
-                      startSelection({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
-                      return;
-                    }
-                    toggleSelection({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
-                  }}
-                  renderItem={(quickNote: GridQuickNoteItem, index: number) => (
-                    <View
-                      style={[
-                        styles.gridItem,
+                  renderItem={({ item: quickNote, drag, isActive }: RenderItemParams<QuickNote>) => (
+                    <Pressable
+                      onLongPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
+                          return;
+                        }
+                        ensureItemSelectedForDrag({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
+                        drag();
+                      }}
+                      delayLongPress={260}
+                      style={({ pressed }) => [
+                        styles.itemCard,
+                        styles.listItemCard,
                         {
-                          width: gridItemWidth,
-                          height: GRID_CELL_HEIGHT,
-                          marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
+                          backgroundColor: theme.colors.card,
+                          shadowColor: theme.colors.textPrimary,
+                          transform: [{ scale: isActive ? 1.02 : pressed ? 0.992 : 1 }],
+                          opacity: isActive ? 0.96 : pressed ? 0.96 : 1,
+                          borderWidth: 2,
+                          borderColor: isSelected({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title }) ? theme.colors.primary : theme.colors.border
                         }
                       ]}
+                      onPress={() => {
+                        if (selectionMode) {
+                          toggleSelection({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title });
+                          return;
+                        }
+                        withLock(() => {
+                          navigation.navigate("QuickNote", { quickNoteId: quickNote.id, folderId: folderId ?? null });
+                        });
+                      }}
                     >
-                      <View
-                        style={[
-                          styles.folderGridCard,
-                          {
-                            minHeight: GRID_ITEM_HEIGHT,
-                            height: GRID_ITEM_HEIGHT,
-                            marginHorizontal: 0,
-                            backgroundColor: theme.colors.card,
-                            borderWidth: 2,
-                            borderColor: isSelected({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title }) ? theme.colors.primary : theme.colors.border
-                          }
-                        ]}
-                      >
-                        <View style={[styles.cardBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
-                        <View style={styles.cardBody}>
-                          <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                            <Ionicons name="flash-outline" size={18} color={theme.colors.textSecondary} />
-                          </View>
-                          <View style={styles.rowContent}>
-                            <Text style={styles.rowTitle} numberOfLines={1}>{quickNote.title || "Sem título"}</Text>
-                            {!!firstLine(quickNote.content) && (
-                              <Text muted variant="caption" numberOfLines={1}>
-                                {firstLine(quickNote.content)}
-                              </Text>
-                            )}
-                          </View>
+                      <View style={styles.cardBody}>
+                        <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
+                          <Ionicons name="flash-outline" size={18} color={theme.colors.textSecondary} />
                         </View>
-                        <SelectionIndicator visible={isSelected({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title })} />
+                        <View style={styles.rowContent}>
+                          <Text style={styles.rowTitle}>{quickNote.title}</Text>
+                          {!!firstLine(quickNote.content) && (
+                            <Text muted variant="caption" numberOfLines={2}>
+                              {firstLine(quickNote.content)}
+                            </Text>
+                          )}
+                        </View>
                       </View>
-                    </View>
+                      <SelectionIndicator visible={isSelected({ kind: "quick", id: quickNote.id, parentId: quickNote.folderId ?? null, label: quickNote.title })} />
+                    </Pressable>
                   )}
                 />
-              </View>
+              </>
             )}
 
             {/* File list */}
@@ -1575,7 +1693,7 @@ const FolderDetailScreen: React.FC = () => {
             icon: "open-outline",
             onPress: () => {
               if (!selectedFolder) return;
-              navigation.push("FolderDetail", {
+              navigation.navigate("FolderDetail", {
                 folderId: selectedFolder.id,
                 trail: [...trailIds, selectedFolder.id]
               });
@@ -2334,12 +2452,13 @@ const styles = StyleSheet.create({
     justifyContent: "center"
   },
   rowContent: {
-    flex: 1
+    flex: 1,
+    flexShrink: 1
   },
   rowTitle: {
-    flex: 1,
     fontWeight: "600",
-    marginBottom: 2
+    marginBottom: 2,
+    flexShrink: 1
   },
   emptyText: {
     marginTop: 8

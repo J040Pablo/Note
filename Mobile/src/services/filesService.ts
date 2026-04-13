@@ -144,11 +144,11 @@ export const getFilesByFolder = async (parentFolderId: ID | null): Promise<AppFi
   const db = await getDB();
   if (parentFolderId === null) {
     return db.getAllAsync<AppFile>(
-      "SELECT * FROM files WHERE parentFolderId IS NULL ORDER BY orderIndex ASC, createdAt DESC"
+      "SELECT * FROM files WHERE parentFolderId IS NULL ORDER BY COALESCE(globalOrder, 9999) ASC, id ASC"
     );
   }
   return db.getAllAsync<AppFile>(
-    "SELECT * FROM files WHERE parentFolderId = ? ORDER BY orderIndex ASC, createdAt DESC",
+    "SELECT * FROM files WHERE parentFolderId = ? ORDER BY COALESCE(globalOrder, 9999) ASC, id ASC",
     parentFolderId
   );
 };
@@ -172,16 +172,27 @@ export const updateFileDetails = async (file: AppFile): Promise<AppFile> => {
     const nextOrderIndex = parentChanged ? await getNextFileOrderIndex(db, file.parentFolderId ?? null) : file.orderIndex;
     const updatedFile: AppFile = { ...file, orderIndex: nextOrderIndex };
     await db.runAsync(
-      "UPDATE files SET name = ?, description = ?, thumbnailPath = ?, bannerPath = ?, parentFolderId = ?, orderIndex = ? WHERE id = ?",
+      "UPDATE files SET name = ?, description = ?, thumbnailPath = ?, bannerPath = ?, parentFolderId = ?, orderIndex = ?, globalOrder = ? WHERE id = ?",
       updatedFile.name,
       updatedFile.description ?? null,
       updatedFile.thumbnailPath ?? null,
       updatedFile.bannerPath ?? null,
       updatedFile.parentFolderId,
       updatedFile.orderIndex,
+      updatedFile.globalOrder ?? null,
       updatedFile.id
     );
     return updatedFile;
+  });
+};
+
+export const updateFileGlobalOrder = async (id: ID, globalOrder: number): Promise<void> => {
+  return withDbWriteTransaction("updateFileGlobalOrder", async (db) => {
+    await db.runAsync(
+      "UPDATE files SET globalOrder = ? WHERE id = ?",
+      globalOrder,
+      id
+    );
   });
 };
 

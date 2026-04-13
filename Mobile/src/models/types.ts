@@ -5,6 +5,8 @@ export interface Folder {
   name: string;
   parentId: ID | null;
   orderIndex: number;
+  /** Global order for mixed item sorting in grid view (folders, notes, quick notes together) */
+  globalOrder?: number;
   /** Optional display color for the folder (e.g. "blue", "green", "#FF9900") */
   color?: string | null;
   description?: string | null;
@@ -20,6 +22,8 @@ export interface Note {
   /** Serialized rich note document (JSON). Legacy plain text is still supported. */
   content: string;
   folderId: ID | null;
+  /** Global order for mixed item sorting in grid view (folders, notes, quick notes together) */
+  globalOrder?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -93,6 +97,8 @@ export interface QuickNote {
   title: string;
   content: string;
   folderId: ID | null;
+  /** Global order for mixed item sorting in grid view (folders, notes, quick notes together) */
+  globalOrder?: number;
   createdAt: number;
   updatedAt: number;
 }
@@ -218,6 +224,7 @@ export interface AppFile {
   createdAt: number;
   orderIndex: number;
   parentFolderId: ID | null;
+  globalOrder?: number;
   description?: string | null;
   thumbnailPath?: string | null;
   bannerPath?: string | null;

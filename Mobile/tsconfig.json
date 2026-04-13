@@ -1,64 +1,22 @@
 {
   "compilerOptions": {
-    "target": "esnext",
-    "module": "esnext",
-    "jsx": "react-native",
-    "strict": true,
-    "moduleResolution": "bundler",
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "skipLibCheck": true,
-    "resolveJsonModule": true,
-    "types": [
-      "react",
-      "react-native"
-    ],
     "baseUrl": ".",
     "paths": {
-      "@components/*": [
-        "src/components/*"
-      ],
-      "@screens/*": [
-        "src/screens/*"
-      ],
-      "@navigation/*": [
-        "src/navigation/*"
-      ],
-      "@store/*": [
-        "src/store/*"
-      ],
-      "@database/*": [
-        "src/database/*"
-      ],
-      "@db/*": [
-        "src/db/*"
-      ],
-      "@models/*": [
-        "src/models/*"
-      ],
-      "@domain/*": [
-        "src/domain/*"
-      ],
-      "@engines/*": [
-        "src/engines/*"
-      ],
-      "@adapters/*": [
-        "src/adapters/*"
-      ],
-      "@services/*": [
-        "src/services/*"
-      ],
-      "@hooks/*": [
-        "src/hooks/*"
-      ],
-      "@utils/*": [
-        "src/utils/*"
-      ]
+      "@components/*": ["src/components/*"],
+      "@screens/*": ["src/screens/*"],
+      "@navigation/*": ["src/navigation/*"],
+      "@store/*": ["src/store/*"],
+      "@database/*": ["src/database/*"],
+      "@db/*": ["src/db/*"],
+      "@models/*": ["src/models/*"],
+      "@services/*": ["src/services/*"],
+      "@hooks/*": ["src/hooks/*"],
+      "@utils/*": ["src/utils/*"],
+      "@engines/*": ["src/engines/*"],
+      "@domain/*": ["src/domain/*"],
+      "@adapters/*": ["src/adapters/*"],
+      "@config/*": ["src/config/*"]
     }
   },
-  "include": [
-    "src",
-    "App.tsx"
-  ],
   "extends": "expo/tsconfig.base"
 }

@@ -17,7 +17,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
-import { pickAndStoreImage } from "@utils/mediaPicker";
+import { pickAndSaveImage, deleteImage } from "@services/imageService";
 import {
   buildSectionItems,
   createEmptySection,
@@ -199,11 +199,15 @@ const ProfileScreen: React.FC = () => {
   const onPickImage = useCallback(
     async (target: "avatar" | "banner") => {
       if (!draft) return;
-      const picked = await pickAndStoreImage(target);
+      const picked = await pickAndSaveImage(target);
       if (!picked) return;
 
       setDraft((prev) => {
         if (!prev) return prev;
+        const oldPath = target === "avatar" ? prev.user.avatar : prev.user.banner;
+        if (oldPath) {
+          deleteImage(oldPath).catch(() => {});
+        }
         return {
           ...prev,
           user: {

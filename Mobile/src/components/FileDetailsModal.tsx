@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Modal, View, StyleSheet, TextInput, Pressable, Image, ScrollView } from "react-native";
 import { useTheme, spacing } from "@hooks/useTheme";
 import { Text } from "./Text";
-import { pickAndStoreImage } from "@utils/mediaPicker";
+import { pickAndSaveImage, deleteImage } from "@services/imageService";
 
 interface FileDetailsModalProps {
   visible: boolean;
@@ -73,8 +73,11 @@ export const FileDetailsModal: React.FC<FileDetailsModalProps> = ({
             <View style={styles.mediaRow}>
               <Pressable
                 onPress={async () => {
-                  const picked = await pickAndStoreImage("file-thumb");
-                  if (picked) setThumbnailPath(picked);
+                  const picked = await pickAndSaveImage("file-thumb");
+                  if (picked) {
+                    if (thumbnailPath) await deleteImage(thumbnailPath);
+                    setThumbnailPath(picked);
+                  }
                 }}
                 style={[styles.mediaButton, { borderColor: theme.colors.border }]}
               >
@@ -92,8 +95,11 @@ export const FileDetailsModal: React.FC<FileDetailsModalProps> = ({
             <View style={styles.mediaRow}>
               <Pressable
                 onPress={async () => {
-                  const picked = await pickAndStoreImage("file-banner");
-                  if (picked) setBannerPath(picked);
+                  const picked = await pickAndSaveImage("file-banner");
+                  if (picked) {
+                    if (bannerPath) await deleteImage(bannerPath);
+                    setBannerPath(picked);
+                  }
                 }}
                 style={[styles.mediaButton, { borderColor: theme.colors.border }]}
               >

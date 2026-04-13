@@ -16,7 +16,6 @@ export const useSyncListener = () => {
   useEffect(() => {
     // Handle task sync events
     const unsubscribeTaskEvents = subscribeTaskServerEvents((event: TaskServerEvent) => {
-      console.log("[useSyncListener] task event", event.type);
 
       if (event.type === "TASK_CREATED" || event.type === "TASK_UPDATED") {
         const { payload } = event;
@@ -51,7 +50,6 @@ export const useSyncListener = () => {
 
     // Handle entity sync events (notes, quickNotes, folders)
     const unsubscribeEntityEvents = subscribeEntityServerEvents((event: EntityServerEvent) => {
-      console.log("[useSyncListener] entity event", event.type);
 
       if (event.type === "UPSERT_NOTE") {
         const note: Note = {

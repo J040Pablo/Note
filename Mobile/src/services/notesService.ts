@@ -78,18 +78,20 @@ export const updateNote = async (note: Note): Promise<Note> => {
 
   if (safeFolderId === null) {
     await runDbWrite(
-      "UPDATE notes SET title = ?, content = ?, folderId = NULL, updatedAt = ? WHERE id = ?",
+      "UPDATE notes SET title = ?, content = ?, folderId = NULL, globalOrder = ?, updatedAt = ? WHERE id = ?",
       safeTitle,
       safeContent,
+      note.globalOrder ?? null,
       updatedAt,
       note.id
     );
   } else {
     await runDbWrite(
-      "UPDATE notes SET title = ?, content = ?, folderId = ?, updatedAt = ? WHERE id = ?",
+      "UPDATE notes SET title = ?, content = ?, folderId = ?, globalOrder = ?, updatedAt = ? WHERE id = ?",
       safeTitle,
       safeContent,
       safeFolderId,
+      note.globalOrder ?? null,
       updatedAt,
       note.id
     );
@@ -117,10 +119,10 @@ export const getNotesByFolder = async (folderId: ID | null): Promise<Note[]> => 
   const rows =
     folderId === null
       ? await db.getAllAsync<Note>(
-          "SELECT * FROM notes WHERE folderId IS NULL ORDER BY updatedAt DESC"
+          "SELECT * FROM notes WHERE folderId IS NULL ORDER BY COALESCE(globalOrder, 9999) ASC, id ASC"
         )
       : await db.getAllAsync<Note>(
-          "SELECT * FROM notes WHERE folderId = ? ORDER BY updatedAt DESC",
+          "SELECT * FROM notes WHERE folderId = ? ORDER BY COALESCE(globalOrder, 9999) ASC, id ASC",
           folderId
         );
 
@@ -255,15 +257,31 @@ export const updateQuickNote = async (id: ID, payload: { title: string; content:
   });
 };
 
+export const updateNoteGlobalOrder = async (id: ID, globalOrder: number): Promise<void> => {
+  await runDbWrite(
+    "UPDATE notes SET globalOrder = ? WHERE id = ?",
+    globalOrder,
+    id
+  );
+};
+
+export const updateQuickNoteGlobalOrder = async (id: ID, globalOrder: number): Promise<void> => {
+  await runDbWrite(
+    "UPDATE quick_notes SET globalOrder = ? WHERE id = ?",
+    globalOrder,
+    id
+  );
+};
+
 export const getQuickNotesByFolder = async (folderId: ID | null): Promise<QuickNote[]> => {
   const db = await getDB();
   const rows =
     folderId === null
       ? await db.getAllAsync<QuickNote>(
-          "SELECT * FROM quick_notes WHERE folderId IS NULL ORDER BY updatedAt DESC"
+          "SELECT * FROM quick_notes WHERE folderId IS NULL ORDER BY COALESCE(globalOrder, 9999) ASC, id ASC"
         )
       : await db.getAllAsync<QuickNote>(
-          "SELECT * FROM quick_notes WHERE folderId = ? ORDER BY updatedAt DESC",
+          "SELECT * FROM quick_notes WHERE folderId = ? ORDER BY COALESCE(globalOrder, 9999) ASC, id ASC",
           folderId
         );
   return rows;

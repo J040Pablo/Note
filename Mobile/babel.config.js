@@ -17,7 +17,11 @@ module.exports = function (api) {
             "@models": "./src/models",
             "@services": "./src/services",
             "@hooks": "./src/hooks",
-            "@utils": "./src/utils"
+            "@utils": "./src/utils",
+            "@engines": "./src/engines",
+            "@domain": "./src/domain",
+            "@adapters": "./src/adapters",
+            "@config": "./src/config"
           }
         }
       ],

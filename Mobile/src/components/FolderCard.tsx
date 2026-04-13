@@ -1,10 +1,11 @@
-import React, { memo } from "react";
+import React, { memo, useMemo } from "react";
 import { View, StyleSheet, Pressable, Image, ViewStyle } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@components/Text";
 import { FolderIcon } from "@components/FolderIcon";
 import { SelectionIndicator } from "@components/SelectionIndicator";
 import { useTheme } from "@hooks/useTheme";
+import { useValidatedImageUri } from "@hooks/useValidatedImageUri";
 import type { Folder } from "@models/types";
 
 interface FolderCardProps {
@@ -30,6 +31,8 @@ const FolderCard = memo(({
   selected = false
 }: FolderCardProps) => {
   const { theme } = useTheme();
+  const validatedBannerPath = useValidatedImageUri(folder.bannerPath);
+  const validatedPhotoPath = useValidatedImageUri(folder.photoPath);
 
 
   return (
@@ -53,9 +56,9 @@ const FolderCard = memo(({
       {/* Banner */}
       {variant !== "compact" && (
       <View style={{ height: BANNER_HEIGHT }}>
-        {folder.bannerPath ? (
+        {validatedBannerPath ? (
           <Image
-            source={{ uri: folder.bannerPath }}
+            source={{ uri: validatedBannerPath }}
             style={{ width: "100%", height: BANNER_HEIGHT }}
             resizeMode="cover"
           />
@@ -74,9 +77,9 @@ const FolderCard = memo(({
       {/* Content */}
       <View style={styles.content}>
         <View style={styles.iconRow}>
-          {folder.photoPath ? (
+          {validatedPhotoPath ? (
             <Image
-              source={{ uri: folder.photoPath }}
+              source={{ uri: validatedPhotoPath }}
               style={styles.icon}
               resizeMode="cover"
             />
