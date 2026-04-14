@@ -178,7 +178,6 @@ const FolderDetailScreen: React.FC = () => {
   const [gridAllItems, setGridAllItems] = useState<GridAllItem[]>([]);
   const [fileSortMode, setFileSortMode] = useState<FileSortMode>("custom");
   const [fileSizes, setFileSizes] = useState<Record<string, number>>({});
-  const [renderKey, setRenderKey] = useState(0);
   const [fabOpen, setFabOpen] = useState(false);
   const [folderSubmitting, setFolderSubmitting] = useState(false);
   const [noteSubmitting, setNoteSubmitting] = useState(false);
@@ -218,8 +217,6 @@ const FolderDetailScreen: React.FC = () => {
       ]);
       setPinnedItems(pinned);
       setFileSortMode(savedSort);
-      // Force re-render when folder changes
-      setRenderKey((prev) => prev + 1);
     })();
   }, [folderId, setPinnedItems, upsertFile, upsertFolder, upsertNote, upsertQuickNote]);
 
@@ -455,12 +452,6 @@ const FolderDetailScreen: React.FC = () => {
       return a.globalOrder - b.globalOrder;
     });
     
-    console.log("[FolderDetail] ✨ Grid initialized (ONE TIME):", sorted.map(item => ({
-      id: item.id,
-      type: item.itemType,
-      globalOrder: item.globalOrder
-    })));
-
     setGridAllItems(sorted);
     gridInitializedRef.current = true;
   }, []);
@@ -668,7 +659,7 @@ const FolderDetailScreen: React.FC = () => {
           </View>
         </View>
         <ScrollView
-          key={`${folderId}-${currentViewMode}-${renderKey}`}
+          key={`${folderId}-${currentViewMode}`}
           style={styles.sectionListContent}
           contentContainerStyle={[
             styles.sectionListContentContainer,
@@ -707,12 +698,6 @@ const FolderDetailScreen: React.FC = () => {
                     // DraggableGrid already passes reordered data, just set it
                     setGridAllItems(data);
 
-                    console.log("[FolderDetail] 🎯 Drag release - new order:", data.map((item, index) => ({
-                      id: item.id,
-                      type: item.itemType,
-                      newGlobalOrder: index
-                    })));
-
                     // 🔥 2. Persist new order to database (but NOT stores)
                     // Stores will eventually sync from DB via normal loading, but for now gridAllItems controls display
                     data.forEach((item, index) => {
@@ -740,7 +725,6 @@ const FolderDetailScreen: React.FC = () => {
                       }
                     });
 
-                    console.log("[FolderDetail] ✅ Drag completed - order persisted to database");
                     isDraggingRef.current = false;
                     setDraggingGridItem(false);
                   }}

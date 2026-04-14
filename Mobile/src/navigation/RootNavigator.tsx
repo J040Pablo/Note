@@ -1,7 +1,7 @@
 import React from "react";
-import { Platform } from "react-native";
+import { Easing } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { createStackNavigator } from "@react-navigation/stack";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 import HomeScreen from "@screens/HomeScreen";
 import SearchScreen from "@screens/SearchScreen";
@@ -46,9 +46,42 @@ export type TabsParamList = {
   Profile: undefined;
 };
 
-const RootStack = createNativeStackNavigator<RootStackParamList>();
-const FolderStack = createNativeStackNavigator<FoldersStackParamList>();
+const RootStack = createStackNavigator<RootStackParamList>();
+const FolderStack = createStackNavigator<FoldersStackParamList>();
 const Tab = createBottomTabNavigator<TabsParamList>();
+
+const FAST_OVERLAY_TRANSITION = {
+  gestureEnabled: true,
+  gestureDirection: "horizontal" as const,
+  transitionSpec: {
+    open: {
+      animation: "timing" as const,
+      config: {
+        duration: 200,
+        easing: Easing.out(Easing.poly(4))
+      }
+    },
+    close: {
+      animation: "timing" as const,
+      config: {
+        duration: 200,
+        easing: Easing.out(Easing.poly(4))
+      }
+    }
+  },
+  cardStyleInterpolator: ({ current, layouts }: { current: { progress: any }; layouts: { screen: { width: number } } }) => ({
+    cardStyle: {
+      transform: [
+        {
+          translateX: current.progress.interpolate({
+            inputRange: [0, 1],
+            outputRange: [layouts.screen.width, 0]
+          })
+        }
+      ]
+    }
+  })
+};
 
 const FoldersStackNavigator = () => {
   const { theme } = useTheme();
@@ -58,14 +91,11 @@ const FoldersStackNavigator = () => {
     <FolderStack.Navigator
       id="FolderStack"
       screenOptions={{
-        animation: "slide_from_right",
-        animationDuration: 40,
-        fullScreenGestureEnabled: true,
-        gestureEnabled: true,
+        ...FAST_OVERLAY_TRANSITION,
+        detachPreviousScreen: false,
         headerStyle: { backgroundColor: theme.colors.surface },
-        headerShadowVisible: true,
         headerTintColor: theme.colors.textPrimary,
-        contentStyle: { backgroundColor: theme.colors.background }
+        cardStyle: { backgroundColor: theme.colors.background }
       }}
     >
       <FolderStack.Screen
@@ -79,8 +109,8 @@ const FoldersStackNavigator = () => {
         options={{
           headerShown: false,
           title: "Folder",
-          animation: "slide_from_right",
-          animationDuration: 21.25
+          ...FAST_OVERLAY_TRANSITION,
+          detachPreviousScreen: false
         }}
       />
     </FolderStack.Navigator>
@@ -161,17 +191,11 @@ const RootNavigator = () => {
     <RootStack.Navigator
       id="RootStack"
       screenOptions={{
-        animation: "slide_from_right",
-        animationDuration: 40,
-        fullScreenGestureEnabled: true,
-        gestureEnabled: true,
-        animationTypeForReplace: "push",
+        ...FAST_OVERLAY_TRANSITION,
         presentation: "card",
         headerStyle: { backgroundColor: theme.colors.surface },
-        headerShadowVisible: true,
         headerTintColor: theme.colors.textPrimary,
-        headerBackVisible: true,
-        contentStyle: { backgroundColor: theme.colors.background }
+        cardStyle: { backgroundColor: theme.colors.background }
       }}
     >
       <RootStack.Screen
@@ -184,8 +208,7 @@ const RootNavigator = () => {
         component={SettingsScreen}
         options={{
           headerShown: true,
-          title: "Settings",
-          animation: "slide_from_right"
+          title: "Settings"
         }}
       />
       <RootStack.Screen
@@ -193,9 +216,7 @@ const RootNavigator = () => {
         component={NoteEditorScreen}
         options={{
           headerShown: false,
-          title: "Note",
-          animation: "slide_from_right",
-          animationDuration: 35
+          title: "Note"
         }}
       />
       <RootStack.Screen
@@ -203,33 +224,30 @@ const RootNavigator = () => {
         component={QuickNoteScreen}
         options={{
           headerShown: false,
-          title: "Quick Note",
-          animation: "slide_from_right",
-          animationDuration: 35
+          title: "Quick Note"
         }}
       />
       <RootStack.Screen
         name="PdfViewer"
         component={PdfViewerScreen}
-        options={{ title: "PDF", animation: "slide_from_right" }}
+        options={{ title: "PDF" }}
       />
       <RootStack.Screen
         name="ImageViewer"
         component={ImageViewerScreen}
-        options={{ title: "Image", animation: "slide_from_right" }}
+        options={{ title: "Image" }}
       />
       <RootStack.Screen
         name="SaveSharedFile"
         component={SaveSharedFileScreen}
-        options={{ title: "Save File", animation: "slide_from_bottom" }}
+        options={{ title: "Save File" }}
       />
       <RootStack.Screen
         name="ImportFolderPackage"
         component={ImportFolderPackageScreen}
         options={{
           title: "Import Package",
-          presentation: "modal",
-          animation: "slide_from_bottom"
+          presentation: "modal"
         }}
       />
       <RootStack.Screen
@@ -237,8 +255,7 @@ const RootNavigator = () => {
         component={NotificationsScreen}
         options={{
           headerShown: true,
-          title: "Notifications",
-          animation: "slide_from_right"
+          title: "Notifications"
         }}
       />
     </RootStack.Navigator>
