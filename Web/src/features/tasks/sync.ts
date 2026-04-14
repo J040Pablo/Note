@@ -96,7 +96,18 @@ export type SyncIncomingMessage =
     }
   | { type: "TASK_CREATED"; payload: SyncTask }
   | { type: "TASK_UPDATED"; payload: SyncTask }
-  | { type: "TASK_DELETED"; payload: { id: string; updatedAt: number } };
+  | { type: "TASK_DELETED"; payload: { id: string; updatedAt: number } }
+  | {
+      type: "ACK";
+      id?: string;
+      payload?: {
+        id?: string;
+        receivedAt?: number;
+        appliedAt?: number;
+        status?: "OK" | "ERROR";
+      };
+    }
+  | { type: "FULL_SYNC_ACK"; payload?: { id?: string; confirmedAt?: number } };
 
 export type TaskSyncEventType = "TASK_CREATE" | "TASK_UPDATE" | "TASK_DELETE" | "TASK_TOGGLE";
 
@@ -112,6 +123,21 @@ type SyncStatus = "disconnected" | "connecting" | "connected";
 type MessageListener = (message: SyncIncomingMessage) => void;
 type StatusListener = (status: SyncStatus) => void;
 
+type ReliableMessage = {
+  id: string;
+  type: string;
+  payload: Record<string, unknown>;
+  sentAt: number;
+  ackRequired: true;
+};
+
+type PendingMessageState = {
+  message: ReliableMessage;
+  sentAt: number;
+  lastSentAt: number;
+  retryCount: number;
+};
+
 let socket: WebSocket | null = null;
 let status: SyncStatus = "disconnected";
 let activeUrl = "";
@@ -121,7 +147,13 @@ let reconnectTimer: number | null = null;
 
 // Message queue for offline support + retry
 const messageQueue = new MessageQueue();
-const pendingMessages = new Map<string, unknown>();
+const pendingQueue = new Map<string, PendingMessageState>();
+const processedIncomingIds = new Set<string>();
+const MAX_PROCESSED_IDS = 2000;
+
+const ACK_TIMEOUT_MS = 3000;
+const ACK_RETRY_INTERVAL_MS = 1000;
+let ackRetryTimer: number | null = null;
 
 const messageListeners = new Set<MessageListener>();
 const statusListeners = new Set<StatusListener>();
@@ -150,6 +182,67 @@ const clearReconnectTimer = () => {
   }
 };
 
+const pruneProcessedIncomingIds = () => {
+  if (processedIncomingIds.size <= MAX_PROCESSED_IDS) return;
+  const keep = Array.from(processedIncomingIds).slice(-Math.floor(MAX_PROCESSED_IDS / 2));
+  processedIncomingIds.clear();
+  keep.forEach((id) => processedIncomingIds.add(id));
+};
+
+const startAckRetryLoop = () => {
+  if (ackRetryTimer !== null) {
+    window.clearInterval(ackRetryTimer);
+    ackRetryTimer = null;
+  }
+
+  ackRetryTimer = window.setInterval(() => {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+
+    const now = Date.now();
+    pendingQueue.forEach((pending, messageId) => {
+      if (now - pending.lastSentAt < ACK_TIMEOUT_MS) return;
+
+      try {
+        socket?.send(JSON.stringify(pending.message));
+        pending.lastSentAt = now;
+        pending.retryCount += 1;
+        console.log("[SYNC][SEND]", pending.message.id, pending.message.type);
+      } catch (error) {
+        console.log("[SYNC][ERROR]", messageId, error);
+      }
+    });
+  }, ACK_RETRY_INTERVAL_MS);
+};
+
+const stopAckRetryLoop = () => {
+  if (ackRetryTimer !== null) {
+    window.clearInterval(ackRetryTimer);
+    ackRetryTimer = null;
+  }
+};
+
+const resolveAckId = (incoming: SyncIncomingMessage): string | null => {
+  if (incoming.type !== "ACK") return null;
+
+  const payloadId = incoming.payload?.id;
+  if (typeof payloadId === "string" && payloadId.trim().length > 0) {
+    return payloadId.trim();
+  }
+
+  if (typeof incoming.id === "string" && incoming.id.trim().length > 0) {
+    return incoming.id.trim();
+  }
+
+  return null;
+};
+
+const getIncomingId = (incoming: SyncIncomingMessage): string | null => {
+  const maybe = (incoming as SyncIncomingMessage & { id?: unknown }).id;
+  if (typeof maybe !== "string") return null;
+  const trimmed = maybe.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
 const replayQueuedMessages = () => {
   console.log("[sync] replaying queued messages, count:", messageQueue.size());
   while (!messageQueue.isEmpty()) {
@@ -161,13 +254,35 @@ const replayQueuedMessages = () => {
       break;
     }
 
-    messageQueue.dequeue();
     try {
-      socket.send(JSON.stringify(queued));
+      const rawPayload = queued.payload as unknown;
+      const envelope =
+        rawPayload && typeof rawPayload === "object" && "type" in (rawPayload as Record<string, unknown>)
+          ? (rawPayload as Record<string, unknown>)
+          : {
+              id: queued.id,
+              type: queued.type,
+              payload: queued.payload,
+              sentAt: queued.timestamp,
+              ackRequired: true,
+            };
+
+      socket.send(JSON.stringify(envelope));
+      messageQueue.dequeue();
       console.log("[sync] replayed message:", queued.id);
+
+      if ((envelope as { ackRequired?: unknown }).ackRequired === true && typeof (envelope as { id?: unknown }).id === "string") {
+        const envelopeId = String((envelope as { id?: unknown }).id);
+        pendingQueue.set(envelopeId, {
+          message: envelope as unknown as ReliableMessage,
+          sentAt: Number((envelope as { sentAt?: unknown }).sentAt ?? Date.now()),
+          lastSentAt: Date.now(),
+          retryCount: 0,
+        });
+        console.log("[SYNC][SEND]", envelopeId, String((envelope as { type?: unknown }).type ?? "UNKNOWN"));
+      }
     } catch (error) {
       console.warn("[sync] replay error", error);
-      messageQueue.enqueue(queued);
       break;
     }
   }
@@ -299,28 +414,54 @@ const safeParseIncoming = (raw: string): SyncIncomingMessage | null => {
   }
 };
 
-const sendRaw = (payload: unknown) => {
+const sendControlMessage = (payload: unknown) => {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
-    // Queue message for later delivery
-    const msgId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return false;
+  }
+
+  try {
+    socket.send(JSON.stringify(payload));
+    return true;
+  } catch (error) {
+    console.log("[SYNC][ERROR]", "-", error);
+    return false;
+  }
+};
+
+const sendReliableMessage = (message: ReliableMessage) => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
     messageQueue.enqueue({
-      id: msgId,
-      type: (payload as Record<string, unknown>)?.type as string || "UNKNOWN",
-      payload,
-      maxRetries: 3,
+      id: message.id,
+      type: message.type,
+      payload: message,
+      maxRetries: 5,
     });
-    console.log("[sync] queued message:", msgId);
+    console.log("[sync] queued message:", message.id);
     return;
   }
 
   try {
-    const msgId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    socket.send(JSON.stringify(payload));
-    pendingMessages.set(msgId, payload);
-    console.log("[sync] sent message:", msgId);
+    socket.send(JSON.stringify(message));
+    pendingQueue.set(message.id, {
+      message,
+      sentAt: message.sentAt,
+      lastSentAt: Date.now(),
+      retryCount: 0,
+    });
+    console.log("[SYNC][SEND]", message.id, message.type);
   } catch (error) {
-    console.warn("[sync] send error", error);
+    console.log("[SYNC][ERROR]", message.id, error);
+    messageQueue.enqueue({
+      id: message.id,
+      type: message.type,
+      payload: message,
+      maxRetries: 5,
+    });
   }
+};
+
+const sendRaw = (payload: unknown) => {
+  return sendControlMessage(payload);
 };
 
 const normalizePayload = (payload?: Record<string, unknown>) => {
@@ -395,6 +536,8 @@ export const connectTaskSync = (url: string) => {
   socket.onopen = () => {
     reconnectAttempts = 0;
     emitStatus("connected");
+    console.log("[SYNC][CONNECT] Web connected");
+    startAckRetryLoop();
     // Send INIT_SYNC to match what Mobile server expects
     sendRaw({ type: "INIT_SYNC" });
     // Replay any queued messages
@@ -407,9 +550,61 @@ export const connectTaskSync = (url: string) => {
     const incoming = safeParseIncoming(String(event.data));
     if (!incoming) return;
 
+    const incomingId = getIncomingId(incoming);
+    console.log("[SYNC][RECEIVE]", incomingId ?? "-", incoming.type);
+
+    if (incoming.type === "ACK") {
+      const ackId = resolveAckId(incoming);
+      if (!ackId) return;
+
+      const pending = pendingQueue.get(ackId);
+      if (!pending) {
+        console.log("[SYNC][ACK]", ackId, "latency:", "n/a");
+        return;
+      }
+
+      const ackStatus = incoming.payload?.status;
+      if (ackStatus === "ERROR") {
+        console.log("[SYNC][ERROR]", ackId, "ACK status ERROR");
+        return;
+      }
+
+      const latency = Date.now() - pending.sentAt;
+      pendingQueue.delete(ackId);
+      console.log("[SYNC][ACK]", ackId, "latency:", latency);
+      console.log("[SYNC][LATENCY]", latency);
+      if (latency > 500) {
+        console.warn("[SYNC][SLOW]", latency);
+      }
+      return;
+    }
+
+    if (incomingId) {
+      if (processedIncomingIds.has(incomingId)) {
+        return;
+      }
+      processedIncomingIds.add(incomingId);
+      pruneProcessedIncomingIds();
+    }
+
+    if (incoming.type === "FULL_SYNC" && incomingId) {
+      const confirmed = sendRaw({
+        type: "FULL_SYNC_ACK",
+        payload: {
+          id: incomingId,
+          confirmedAt: Date.now(),
+        },
+      });
+      if (!confirmed) {
+        console.log("[SYNC][ERROR]", incomingId, "FULL_SYNC_ACK failed");
+        return;
+      }
+    }
+
     // All messages go through conflict-aware processing → emit to listeners
     const normalized = applyConflictAware(incoming);
     if (!normalized) return;
+    console.log("[SYNC][APPLY]", incomingId ?? "-");
     emitMessage(normalized);
   };
 
@@ -426,11 +621,13 @@ export const connectTaskSync = (url: string) => {
   };
 
   socket.onerror = () => {
+    console.log("[SYNC][ERROR]", "-", "WebSocket error");
     emitStatus("disconnected");
     scheduleReconnect();
   };
 
   socket.onclose = () => {
+    stopAckRetryLoop();
     socket = null;
     emitStatus("disconnected");
     scheduleReconnect();
@@ -441,6 +638,7 @@ export const disconnectTaskSync = () => {
   shouldReconnect = false;
   reconnectAttempts = 0;
   clearReconnectTimer();
+  stopAckRetryLoop();
   if (socket) {
     socket.close();
     socket = null;
@@ -463,13 +661,19 @@ export const subscribeTaskSyncStatus = (listener: StatusListener) => {
 };
 
 export const dispatchTaskSyncEvent = (event: Omit<TaskSyncEvent, "timestamp">) => {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  const sentAt = Date.now();
+
   if (event.type === "TASK_DELETE") {
-    sendRaw({
+    sendReliableMessage({
+      id,
       type: "TASK_DELETE",
       payload: {
         id: event.taskId,
         updatedAt: Date.now(),
       },
+      sentAt,
+      ackRequired: true,
     });
     return;
   }
@@ -477,25 +681,37 @@ export const dispatchTaskSyncEvent = (event: Omit<TaskSyncEvent, "timestamp">) =
   const payload = normalizeOutgoingTask(event.taskId, event.payload);
 
   if (event.type === "TASK_CREATE") {
-    sendRaw({ type: "TASK_CREATE", payload });
+    sendReliableMessage({
+      id,
+      type: "TASK_CREATE",
+      payload,
+      sentAt,
+      ackRequired: true,
+    });
     return;
   }
 
   if (event.type === "TASK_TOGGLE") {
-    sendRaw({
+    sendReliableMessage({
+      id,
       type: "TASK_TOGGLE",
       payload: {
         id: payload.id,
         completed: payload.completed,
         updatedAt: payload.updatedAt,
       },
+      sentAt,
+      ackRequired: true,
     });
     return;
   }
 
-  sendRaw({
+  sendReliableMessage({
+    id,
     type: "TASK_UPDATE",
     payload,
+    sentAt,
+    ackRequired: true,
   });
 };
 
@@ -511,8 +727,12 @@ export const dispatchEntitySyncEvent = (event: {
     | "DELETE_APP_META";
   payload: Record<string, unknown>;
 }) => {
-  sendRaw({
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  sendReliableMessage({
+    id,
     type: event.type,
     payload: event.payload,
+    sentAt: Date.now(),
+    ackRequired: true,
   });
 };

@@ -32,6 +32,7 @@ type ServerInstance = {
 
 type SyncIncomingMessage =
   | { type: "INIT_SYNC" | "REQUEST_SYNC" }
+  | { type: "FULL_SYNC_ACK"; payload?: { id?: string; confirmedAt?: number } }
   | {
       type: "TASK_CREATE";
       payload?: Partial<SyncTask> & {
@@ -119,6 +120,9 @@ type SyncTaskPayload = {
 };
 
 type SyncFullDataMessage = {
+  id?: string;
+  sentAt?: number;
+  ackRequired?: boolean;
   type: "FULL_SYNC";
   payload: {
     notes: unknown[];
@@ -135,14 +139,47 @@ let serverUrl: string | null = null;
 let unsubscribeTaskBroadcast: (() => void) | null = null;
 let unsubscribeEntityBroadcast: (() => void) | null = null;
 const clients = new Map<string, SocketClient>();
+const processedMessageIds = new Map<string, number>();
+const pendingFullSyncIds = new Set<string>();
+const MAX_PROCESSED_MESSAGE_IDS = 4000;
 
 let hasLoggedExpoGoWsUnsupported = false;
 
 const getSocketId = (socket: SocketClient): string => String(socket.id);
 
+const createMessageId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+const rememberProcessedMessage = (messageId: string) => {
+  processedMessageIds.set(messageId, Date.now());
+  if (processedMessageIds.size <= MAX_PROCESSED_MESSAGE_IDS) return;
+
+  const sorted = Array.from(processedMessageIds.entries()).sort((a, b) => a[1] - b[1]);
+  const dropCount = Math.floor(MAX_PROCESSED_MESSAGE_IDS / 2);
+  for (let index = 0; index < dropCount; index += 1) {
+    const entry = sorted[index];
+    if (!entry) continue;
+    processedMessageIds.delete(entry[0]);
+  }
+};
+
 const sendToClient = (socket: SocketClient, message: unknown) => {
   try {
-    socket.send(JSON.stringify(message));
+    const normalized =
+      message && typeof message === "object"
+        ? ({
+            id: (message as { id?: string }).id ?? createMessageId(),
+            sentAt: (message as { sentAt?: number }).sentAt ?? Date.now(),
+            ...message,
+          } as Record<string, unknown>)
+        : message;
+
+    if (normalized && typeof normalized === "object") {
+      const type = String((normalized as { type?: string }).type ?? "UNKNOWN");
+      const id = String((normalized as { id?: string }).id ?? "-");
+      console.log("[SYNC][SEND]", id, type);
+    }
+
+    socket.send(JSON.stringify(normalized));
   } catch (error) {
     console.warn("[sync] failed to send message", error);
   }
@@ -181,9 +218,28 @@ const getIncomingMessageId = (message: SyncIncomingMessage): string | null => {
   return trimmed.length > 0 ? trimmed : null;
 };
 
-const sendAck = (socket: SocketClient, messageId: string) => {
-  sendToClient(socket, { type: "ACK", id: messageId, payload: { id: messageId } });
+const sendAck = (
+  socket: SocketClient,
+  messageId: string,
+  receivedAt: number,
+  appliedAt: number,
+  status: "OK" | "ERROR" = "OK"
+) => {
+  sendToClient(socket, {
+    type: "ACK",
+    id: messageId,
+    payload: {
+      id: messageId,
+      receivedAt,
+      appliedAt,
+      status,
+    },
+  });
+  console.log("[SYNC][ACK]", messageId, status);
 };
+
+const hasOwn = (value: unknown, key: string): boolean =>
+  !!value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, key);
 
 const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Task => {
   const nextPriority =
@@ -191,29 +247,88 @@ const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Tas
       ? fromSyncPriority(payload.priority as SyncPriority)
       : existing.priority;
 
-  const hasDate = payload && "date" in payload;
+  const hasTitle = hasOwn(payload, "title") || hasOwn(payload, "text");
+  const incomingTitle = hasOwn(payload, "title") ? payload?.title : payload?.text;
   const nextTitle =
-    payload && typeof payload.title === "string"
-      ? payload.title
-      : payload && typeof payload.text === "string"
-      ? payload.text
+    !hasTitle || incomingTitle === undefined
+      ? existing.text
+      : incomingTitle === null
+      ? ""
+      : typeof incomingTitle === "string"
+      ? incomingTitle.trim()
       : existing.text;
-  const nextDate =
-    typeof payload?.scheduledDate === "string"
-      ? payload.scheduledDate
-      : hasDate
-      ? (payload.date ?? null)
-      : existing.scheduledDate ?? null;
-  const nextTime =
-    typeof payload?.scheduledTime === "string"
-      ? payload.scheduledTime
-      : hasDate
+
+  const hasScheduledDate = hasOwn(payload, "scheduledDate");
+  const hasDate = hasOwn(payload, "date");
+  const nextDate = hasScheduledDate
+    ? payload?.scheduledDate === undefined
+      ? existing.scheduledDate ?? null
+      : payload?.scheduledDate === null
       ? null
-      : existing.scheduledTime ?? null;
-  const nextReminders =
-    Array.isArray(payload?.reminders) && payload.reminders.length > 0
+      : typeof payload?.scheduledDate === "string"
+      ? payload.scheduledDate
+      : existing.scheduledDate ?? null
+    : hasDate
+    ? payload?.date === undefined
+      ? existing.scheduledDate ?? null
+      : payload?.date === null
+      ? null
+      : typeof payload?.date === "string"
+      ? payload.date
+      : existing.scheduledDate ?? null
+    : existing.scheduledDate ?? null;
+
+  const hasScheduledTime = hasOwn(payload, "scheduledTime");
+  const nextTime = hasScheduledTime
+    ? payload?.scheduledTime === undefined
+      ? existing.scheduledTime ?? null
+      : payload?.scheduledTime === null
+      ? null
+      : typeof payload?.scheduledTime === "string"
+      ? payload.scheduledTime
+      : existing.scheduledTime ?? null
+    : nextDate === null
+    ? null
+    : existing.scheduledTime ?? null;
+
+  const nextCompleted = hasOwn(payload, "completed")
+    ? payload?.completed === undefined
+      ? existing.completed
+      : payload?.completed === null
+      ? false
+      : Boolean(payload?.completed)
+    : existing.completed;
+
+  const nextParentId = hasOwn(payload, "parentId")
+    ? payload?.parentId === undefined
+      ? existing.parentId ?? null
+      : payload?.parentId === null
+      ? null
+      : typeof payload?.parentId === "string"
+      ? payload.parentId
+      : existing.parentId ?? null
+    : existing.parentId ?? null;
+
+  const nextNoteId = hasOwn(payload, "noteId")
+    ? payload?.noteId === undefined
+      ? existing.noteId ?? null
+      : payload?.noteId === null
+      ? null
+      : typeof payload?.noteId === "string"
+      ? payload.noteId
+      : existing.noteId ?? null
+    : existing.noteId ?? null;
+
+  const nextReminders = hasOwn(payload, "reminders")
+    ? payload?.reminders === undefined
+      ? existing.reminders
+      : payload?.reminders === null
+      ? []
+      : Array.isArray(payload?.reminders)
       ? payload.reminders
-      : existing.reminders;
+      : existing.reminders
+    : existing.reminders;
+
   const nextNotificationIds =
     Array.isArray(payload?.notificationIds) && payload.notificationIds.length > 0
       ? payload.notificationIds
@@ -221,11 +336,8 @@ const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Tas
 
   return {
     ...existing,
-    text: nextTitle.trim() || existing.text,
-    completed:
-      payload && "completed" in payload && typeof payload.completed === "boolean"
-        ? payload.completed
-        : existing.completed,
+    text: nextTitle,
+    completed: nextCompleted,
     priority: nextPriority,
     scheduledDate: nextDate,
     scheduledTime: nextTime,
@@ -234,8 +346,8 @@ const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Tas
     reminders: nextReminders,
     notificationIds: nextNotificationIds,
     orderIndex: typeof payload?.order === "number" ? payload.order : existing.orderIndex,
-    parentId: typeof payload?.parentId === "string" ? payload.parentId : existing.parentId ?? null,
-    noteId: typeof payload?.noteId === "string" ? payload.noteId : existing.noteId ?? null,
+    parentId: nextParentId,
+    noteId: nextNoteId,
     updatedAt: Date.now(),
   };
 };
@@ -276,6 +388,9 @@ const sendInitialData = async (socket: SocketClient) => {
   });
 
   const message: SyncFullDataMessage = {
+    id: createMessageId(),
+    sentAt: Date.now(),
+    ackRequired: true,
     type: "FULL_SYNC",
     payload: {
       notes,
@@ -284,6 +399,10 @@ const sendInitialData = async (socket: SocketClient) => {
       folders,
     },
   };
+
+  if (typeof message.id === "string" && message.id.length > 0) {
+    pendingFullSyncIds.add(message.id);
+  }
 
   console.log("[SYNC] SENDING FULL_SYNC");
   sendToClient(socket, message);
@@ -362,6 +481,15 @@ const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "T
 const handleIncomingMessage = async (socket: SocketClient, message: SyncIncomingMessage) => {
   if (message.type === "INIT_SYNC" || message.type === "REQUEST_SYNC") {
     await sendInitialData(socket);
+    return;
+  }
+
+  if (message.type === "FULL_SYNC_ACK") {
+    const syncId = String(message.payload?.id ?? "").trim();
+    if (syncId) {
+      pendingFullSyncIds.delete(syncId);
+      console.log("[SYNC][ACK]", syncId, "FULL_SYNC");
+    }
     return;
   }
 
@@ -628,6 +756,7 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
     clients.set(socketId, socket);
     console.log(`[sync] client connected: ${socketId}`);
     console.log("[SYNC] CLIENT CONNECTED");
+    console.log("[SYNC][CONNECT] Mobile connected");
     console.log("[SYNC] CALLING sendInitialData");
     sendInitialData(socket)
       .then(() => {
@@ -642,15 +771,28 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
       if (!incoming) return;
 
       const incomingId = getIncomingMessageId(incoming);
-      console.log("[SYNC][MOBILE] RECEIVED:", incoming.type, incomingId ?? "-");
+      const receivedAt = Date.now();
+      console.log("[SYNC][RECEIVE]", incomingId ?? "-", incoming.type);
+
+      if (incomingId && processedMessageIds.has(incomingId)) {
+        console.log("[SYNC][APPLY]", incomingId, "duplicate-ignored");
+        sendAck(socket, incomingId, receivedAt, Date.now(), "OK");
+        return;
+      }
 
       try {
         await handleIncomingMessage(socket, incoming);
+        const appliedAt = Date.now();
+        console.log("[SYNC][APPLY]", incomingId ?? "-", incoming.type);
         if (incomingId) {
-          sendAck(socket, incomingId);
-          console.log("[SYNC][MOBILE] ACK SENT:", incomingId);
+          rememberProcessedMessage(incomingId);
+          sendAck(socket, incomingId, receivedAt, appliedAt, "OK");
         }
       } catch (error) {
+        console.log("[SYNC][ERROR]", incomingId ?? "-", error);
+        if (incomingId) {
+          sendAck(socket, incomingId, receivedAt, Date.now(), "ERROR");
+        }
         console.warn("[sync] failed handling message", error);
       }
     });
