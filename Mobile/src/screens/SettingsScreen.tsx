@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, StyleSheet, Pressable, Alert, Share, ScrollView, TextInput, LayoutAnimation } from "react-native";
+import { View, StyleSheet, Pressable, Alert, Share, ScrollView, TextInput, LayoutAnimation, Switch } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import ColorPicker from "react-native-wheel-color-picker";
@@ -13,6 +13,7 @@ import { getAllTasks } from "@services/tasksService";
 import { getAllFiles } from "@services/filesService";
 import { getPinnedItems, getRecentItems } from "@services/appMetaService";
 import { getTaskPreferences, saveTaskPreferences } from "@services/settingsService";
+import { usePomodoroStore } from "@store/usePomodoroStore";
 
 const PRESET_COLORS = [
   "#FFFFFF",
@@ -48,6 +49,9 @@ const SettingsScreen: React.FC = () => {
   const [editing, setEditing] = useState<"primary" | "secondary">("primary");
   const [customHex, setCustomHex] = useState(primaryColor);
   const [openScanner, setOpenScanner] = useState(false);
+  const pomodoroVisible = usePomodoroStore((state) => state.isVisible);
+  const openPomodoro = usePomodoroStore((state) => state.openPomodoro);
+  const closePomodoro = usePomodoroStore((state) => state.closePomodoro);
 
   useEffect(() => {
     (async () => {
@@ -344,6 +348,23 @@ const SettingsScreen: React.FC = () => {
             <Text style={{ flex: 1 }}>Calendar starts on Monday</Text>
             <Ionicons name={prefs.startWeekOnMonday ? "toggle" : "toggle-outline"} size={24} color={theme.colors.primary} />
           </Pressable>
+        </View>
+
+        <View style={[styles.section, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
+          <View style={styles.sectionHeader}>
+            <Ionicons name="time-outline" size={16} color={theme.colors.textSecondary} />
+            <Text variant="subtitle">Pomodoro</Text>
+          </View>
+
+          <View style={[styles.actionRow, { borderColor: theme.colors.border, marginBottom: 0 }]}> 
+            <Text style={{ flex: 1 }}>Enable Pomodoro</Text>
+            <Switch
+              value={pomodoroVisible}
+              onValueChange={(next) => (next ? openPomodoro() : closePomodoro())}
+              thumbColor={pomodoroVisible ? theme.colors.onPrimary : undefined}
+              trackColor={{ true: theme.colors.primary, false: theme.colors.border }}
+            />
+          </View>
         </View>
 
         <View style={[styles.section, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 

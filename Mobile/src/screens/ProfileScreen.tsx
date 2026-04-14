@@ -30,6 +30,7 @@ import {
   type ProfileSectionType,
   type ProfileState
 } from "@services/profileService";
+import { usePomodoroStore } from "@store/usePomodoroStore";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -338,6 +339,11 @@ const ProfileScreen: React.FC = () => {
     }
   }, [closeMenu, navigation]);
 
+  const openPomodoro = useCallback(() => {
+    closeMenu();
+    usePomodoroStore.getState().openPomodoro();
+  }, [closeMenu]);
+
   const heatmapColumns = useMemo(() => {
     if (!profile) return [] as ContributionDay[][];
     return buildContributionColumns(profile.contributions, 17);
@@ -592,6 +598,15 @@ const ProfileScreen: React.FC = () => {
             >
               <Ionicons name="settings-outline" size={16} color={theme.colors.textPrimary} />
               <Text style={{ flex: 1 }}>Configurações</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+            </Pressable>
+
+            <Pressable
+              onPress={openPomodoro}
+              style={[styles.menuItem, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}
+            >
+              <Ionicons name="timer-outline" size={16} color={theme.colors.textPrimary} />
+              <Text style={{ flex: 1 }}>Pomodoro</Text>
               <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
             </Pressable>
 

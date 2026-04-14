@@ -1,39 +1,58 @@
 import { NativeModules, Platform } from 'react-native';
+import type { Task } from '@models/types';
 
-const TaskWidgetModule: any = NativeModules.TaskWidgetModule;
+const WidgetBridge: any = NativeModules.WidgetBridge ?? NativeModules.TaskWidgetModule;
 
 export interface TaskData {
   date: string;
   count: number;
 }
 
-export interface Task {
-  id?: string;
-  completed?: boolean;
-  completedAt?: string | Date;
-  dueDate?: string | Date;
-  date?: string | Date;
-  [key: string]: any;
-}
-
 export class WidgetSyncService {
-  
-  static groupTasksByDate(tasks: Task[] = []): Record<string, number> {
-    const grouped: Record<string, number> = {};
+  static getLast30DayKeys(): string[] {
+    const keys: string[] = [];
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
 
-    for (const task of tasks) {
-      if (!task.completed) continue;
-      
-      const dateStr = task.completedAt || task.dueDate || task.date;
-      if (!dateStr) continue;
-      
-      const normalized = this.normalizeDate(dateStr);
-      grouped[normalized] = (grouped[normalized] || 0) + 1;
+    for (let i = 29; i >= 0; i -= 1) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - i);
+      keys.push(this.normalizeDate(d));
     }
 
-    return grouped;
+    return keys;
   }
 
+  static generateHeatmapData(tasks: Task[] = []): Record<string, number> {
+    const keys = this.getLast30DayKeys();
+    const heatmap: Record<string, number> = {};
+    keys.forEach((k) => {
+      heatmap[k] = 0;
+    });
+
+    for (const task of tasks) {
+      const completedDates = Array.isArray(task.completedDates) ? task.completedDates : [];
+
+      if (completedDates.length > 0) {
+        for (const key of completedDates) {
+          if (key in heatmap) {
+            heatmap[key] = (heatmap[key] || 0) + 1;
+          }
+        }
+        continue;
+      }
+
+      if (task.completed) {
+        const fallbackDate = task.scheduledDate ?? this.normalizeDate(new Date(task.updatedAt || Date.now()));
+        if (fallbackDate in heatmap) {
+          heatmap[fallbackDate] = (heatmap[fallbackDate] || 0) + 1;
+        }
+      }
+    }
+
+    return heatmap;
+  }
+  
   static normalizeDate(dateInput: string | Date | null | undefined): string {
     if (!dateInput) return new Date().toISOString().split('T')[0];
     
@@ -50,43 +69,50 @@ export class WidgetSyncService {
     return `${year}-${month}-${day}`;
   }
 
+  static async updateWidgetData(heatmapJson: string): Promise<void> {
+    if (Platform.OS !== 'android' || !WidgetBridge?.updateWidgetData) {
+      return;
+    }
+
+    await WidgetBridge.updateWidgetData(heatmapJson);
+  }
+
   static async updateWidgetWithTasks(tasks: Task[] = []): Promise<void> {
-    if (Platform.OS !== 'android' || !TaskWidgetModule?.updateHeatmapData) {
+    if (Platform.OS !== 'android' || !WidgetBridge?.updateWidgetData) {
       return;
     }
 
     try {
-      const groupedData = this.groupTasksByDate(tasks);
-      const taskDataArray = Object.entries(groupedData).map(([date, count]) => ({
-        date,
-        count,
-      }));
-
-      await TaskWidgetModule.updateHeatmapData(taskDataArray);
+      const groupedData = this.generateHeatmapData(tasks);
+      await this.updateWidgetData(JSON.stringify(groupedData));
     } catch (error) {
       console.error('[Widget] Sync error:', error);
     }
   }
 
   static async updateWidgetWithTaskData(taskData: TaskData[] = []): Promise<void> {
-    if (Platform.OS !== 'android' || !TaskWidgetModule?.updateHeatmapData) {
+    if (Platform.OS !== 'android' || !WidgetBridge?.updateWidgetData) {
       return;
     }
 
     try {
-      await TaskWidgetModule.updateHeatmapData(taskData);
+      const map: Record<string, number> = {};
+      for (const item of taskData) {
+        map[item.date] = item.count;
+      }
+      await this.updateWidgetData(JSON.stringify(map));
     } catch (error) {
       console.error('[Widget] Update error:', error);
     }
   }
 
   static async getHeatmapData(): Promise<Record<string, number>> {
-    if (Platform.OS !== 'android' || !TaskWidgetModule?.getHeatmapData) {
+    if (Platform.OS !== 'android' || !WidgetBridge?.getHeatmapData) {
       return {};
     }
 
     try {
-      const jsonString = await TaskWidgetModule.getHeatmapData();
+      const jsonString = await WidgetBridge.getHeatmapData();
       return JSON.parse(jsonString);
     } catch (error) {
       console.error('[Widget] Get error:', error);
@@ -95,24 +121,24 @@ export class WidgetSyncService {
   }
 
   static async clearWidgetData(): Promise<void> {
-    if (Platform.OS !== 'android' || !TaskWidgetModule?.clearHeatmapData) {
+    if (Platform.OS !== 'android' || !WidgetBridge?.clearHeatmapData) {
       return;
     }
 
     try {
-      await TaskWidgetModule.clearHeatmapData();
+      await WidgetBridge.clearHeatmapData();
     } catch (error) {
       console.error('[Widget] Clear error:', error);
     }
   }
 
   static async refreshWidget(): Promise<void> {
-    if (Platform.OS !== 'android' || !TaskWidgetModule?.refreshWidget) {
+    if (Platform.OS !== 'android' || !WidgetBridge?.refreshWidget) {
       return;
     }
 
     try {
-      await TaskWidgetModule.refreshWidget();
+      await WidgetBridge.refreshWidget();
     } catch (error) {
       console.error('[Widget] Refresh error:', error);
     }

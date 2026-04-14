@@ -110,6 +110,8 @@ type SyncTaskPayload = {
   scheduledTime?: string | null;
   repeatDays?: number[];
   completedDates?: string[];
+  reminders?: string[];
+  notificationIds?: string[];
   order?: number;
   parentId?: string | null;
   noteId?: string | null;
@@ -208,6 +210,14 @@ const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Tas
       : hasDate
       ? null
       : existing.scheduledTime ?? null;
+  const nextReminders =
+    Array.isArray(payload?.reminders) && payload.reminders.length > 0
+      ? payload.reminders
+      : existing.reminders;
+  const nextNotificationIds =
+    Array.isArray(payload?.notificationIds) && payload.notificationIds.length > 0
+      ? payload.notificationIds
+      : existing.notificationIds;
 
   return {
     ...existing,
@@ -221,6 +231,8 @@ const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Tas
     scheduledTime: nextTime,
     repeatDays: Array.isArray(payload?.repeatDays) ? payload.repeatDays : existing.repeatDays,
     completedDates: Array.isArray(payload?.completedDates) ? payload.completedDates : existing.completedDates,
+    reminders: nextReminders,
+    notificationIds: nextNotificationIds,
     orderIndex: typeof payload?.order === "number" ? payload.order : existing.orderIndex,
     parentId: typeof payload?.parentId === "string" ? payload.parentId : existing.parentId ?? null,
     noteId: typeof payload?.noteId === "string" ? payload.noteId : existing.noteId ?? null,
@@ -300,6 +312,7 @@ const handleTaskCreate = async (payload: Extract<SyncIncomingMessage, { type: "T
     scheduledDate: payload?.scheduledDate ?? payload?.date ?? null,
     scheduledTime: payload?.scheduledTime ?? null,
     repeatDays: Array.isArray(payload?.repeatDays) ? payload.repeatDays : [],
+    reminders: Array.isArray((payload as any)?.reminders) ? (payload as any).reminders : undefined,
     parentId: typeof payload?.parentId === "string" ? payload.parentId : null,
     noteId: typeof payload?.noteId === "string" ? payload.noteId : null,
     updatedAt: Number(payload?.updatedAt ?? Date.now()),

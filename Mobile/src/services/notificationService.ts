@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, PermissionsAndroid } from 'react-native';
 import type { Task } from '@models/types';
 import type { TaskReminderType } from '@models/types';
 import { isExpoGo, shouldLogDev } from '@utils/runtimeEnv';
@@ -20,16 +20,15 @@ if (isExpoGo) {
           shouldShowAlert: true,
           shouldPlaySound: true,
           shouldSetBadge: true,
-          shouldShowBanner: true,
-          shouldShowList: true,
         }),
       });
       notificationsAvailable = true;
     } catch (error) {
       if (shouldLogDev) {
-        console.warn('[Notifications] Service not fully available. Using fallback mode.');
+        console.warn('[Notifications] Handler registration failed. Continuing with module fallback mode.');
       }
-      notificationsAvailable = false;
+      // Keep notifications enabled if module exists; handler options can vary by SDK.
+      notificationsAvailable = true;
     }
   } catch (error) {
     if (shouldLogDev) {
@@ -56,9 +55,37 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   }
 
   try {
-    const { status } = await Notifications.requestPermissionsAsync();
+    const current = await Notifications.getPermissionsAsync();
     if (shouldLogDev) {
-      console.info(`[Notifications] Permission request result: ${status}`);
+      console.info(`[NOTIF][PERMISSION] Current permission: status=${current.status}, canAskAgain=${String(current.canAskAgain)}`);
+    }
+
+    if (current.status === 'granted') {
+      return true;
+    }
+
+    if (Platform.OS === 'android' && Number(Platform.Version) >= 33) {
+      try {
+        const androidResult = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.POST_NOTIFICATIONS
+        );
+        if (shouldLogDev) {
+          console.info(`[NOTIF][PERMISSION] Android POST_NOTIFICATIONS: ${androidResult}`);
+        }
+      } catch (androidPermissionError) {
+        console.warn('[Notifications] Android POST_NOTIFICATIONS request failed:', androidPermissionError);
+      }
+    }
+
+    const { status } = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
+    if (shouldLogDev) {
+      console.info(`[NOTIF][PERMISSION] Permission request result: ${status}`);
     }
     if (status !== 'granted') {
       console.warn('[Notifications] Permission denied by user - notifications will not work');
@@ -134,9 +161,14 @@ const normalizeTaskReminders = (task: Task): TaskReminderType[] => {
   const source = Array.isArray(raw) ? raw : defaultReminder;
 
   const deduped = Array.from(new Set(source.map(String)));
-  return deduped
+  const normalized = deduped
     .filter((value): value is TaskReminderType => value in REMINDER_OFFSETS)
     .slice(0, 4);
+
+  if (normalized.length === 0 && shouldLogDev) {
+    console.info('[NOTIF][SCHEDULE] No valid reminders found, defaulting to [AT_TIME]');
+  }
+  return normalized.length > 0 ? normalized : defaultReminder;
 };
 
 /**
@@ -157,26 +189,34 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
     await ensureTaskNotificationChannel();
 
     let hasPermission = await hasNotificationPermission();
+    if (shouldLogDev) {
+      console.info(`[NOTIF][PERMISSION] Before scheduling task=${task.id}: ${String(hasPermission)}`);
+    }
     if (!hasPermission) {
       hasPermission = await requestNotificationPermission();
     }
 
     if (!hasPermission) {
-      console.warn('[Notifications] Permission not granted');
+      console.warn(`[NOTIF][PERMISSION] Permission not granted. Skipping schedule for task=${task.id}`);
       return [];
     }
 
     if (!task.scheduledDate || !task.scheduledTime || task.completed) {
-      if (shouldLogDev) {
-        console.info('[Notifications] Skipped scheduling: missing date/time or task already completed.');
-      }
+      const reason = !task.scheduledDate || !task.scheduledTime
+        ? 'missing scheduledDate/scheduledTime'
+        : 'task is completed';
+      console.info(`[NOTIF][SCHEDULE] Skipped scheduling for task=${task.id}: ${reason}`);
       return [];
     }
 
     const triggerDate = buildTriggerDate(task.scheduledDate, task.scheduledTime);
     if (!triggerDate) {
-      console.warn('[Notifications] Invalid scheduled date/time');
+      console.warn(`[NOTIF][SCHEDULE] Invalid scheduled date/time for task=${task.id} date=${task.scheduledDate} time=${task.scheduledTime}`);
       return [];
+    }
+
+    if (shouldLogDev) {
+      console.info(`[NOTIF][SCHEDULE] Base trigger for task=${task.id}: ${triggerDate.toISOString()}`);
     }
 
     // Validate trigger is in future (including time of day for today)
@@ -185,10 +225,8 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
     const isPastTime = isToday && triggerDate.getTime() <= now.getTime();
     
     if (triggerDate.getTime() <= Date.now() || isPastTime) {
-      if (shouldLogDev) {
-        const reason = isToday ? 'time already passed today' : 'date is in the past';
-        console.info(`[Notifications] Skipped scheduling: ${reason}.`);
-      }
+      const reason = isToday ? 'time already passed today' : 'date is in the past';
+      console.info(`[NOTIF][SCHEDULE] Skipped scheduling for task=${task.id}: ${reason}`);
       return [];
     }
 
@@ -207,13 +245,23 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
       const reminderTs = reminderDate.getTime();
 
       if (reminderTs <= nowMs) {
+        if (shouldLogDev) {
+          console.info(`[NOTIF][SCHEDULE] Skipped reminder=${reminder} for task=${task.id}: trigger already in the past (${reminderDate.toISOString()})`);
+        }
         continue;
       }
 
       if (seenTimestamps.has(reminderTs)) {
+        if (shouldLogDev) {
+          console.info(`[NOTIF][SCHEDULE] Skipped reminder=${reminder} for task=${task.id}: duplicate trigger timestamp`);
+        }
         continue;
       }
       seenTimestamps.add(reminderTs);
+
+      if (shouldLogDev) {
+        console.info(`[NOTIF][SCHEDULE] Scheduling reminder=${reminder} for task=${task.id} at ${reminderDate.toISOString()}`);
+      }
 
       const notificationId = await Notifications.scheduleNotificationAsync({
         content: {
@@ -223,17 +271,32 @@ export const scheduleTaskNotifications = async (task: Task): Promise<string[]> =
           data: { taskId: task.id },
           ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
         },
-        trigger: reminderDate as any,
+        trigger: {
+          date: reminderDate,
+          ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
+        } as any,
       });
 
       notificationIds.push(String(notificationId));
       if (shouldLogDev) {
-        console.info(`[Notifications] Scheduled successfully: id=${notificationId}, trigger=${reminderDate.toISOString()}`);
+        console.info(`[NOTIF][SCHEDULE] Scheduled successfully: id=${notificationId}, trigger=${reminderDate.toISOString()}`);
       }
     }
 
     if (shouldLogDev && notificationIds.length === 0) {
-      console.info('[Notifications] No reminders scheduled (all reminders resolved to past timestamps).');
+      console.info(`[NOTIF][SCHEDULE] No reminders scheduled for task=${task.id} (all reminders resolved to past timestamps).`);
+    }
+
+    if (shouldLogDev) {
+      const allScheduled = await getScheduledNotifications();
+      console.info(`[NOTIF][SCHEDULE] Total scheduled notifications on device: ${allScheduled.length}`);
+      allScheduled.forEach((item: any, idx: number) => {
+        const identifier = item?.identifier ?? `index-${idx}`;
+        const date = item?.trigger?.value ? new Date(item.trigger.value).toISOString() : 'unknown';
+        const channelId = item?.content?.channelId ?? item?.request?.content?.channelId ?? 'unknown';
+        const taskId = item?.content?.data?.taskId ?? item?.request?.content?.data?.taskId ?? 'unknown';
+        console.info(`[NOTIF][SCHEDULE] [${idx}] id=${identifier} trigger=${date} taskId=${String(taskId)} channelId=${String(channelId)}`);
+      });
     }
 
     return notificationIds;
@@ -253,6 +316,9 @@ export const cancelNotificationById = async (notificationId: string): Promise<vo
 
   try {
     await Notifications.cancelScheduledNotificationAsync(notificationId);
+    if (shouldLogDev) {
+      console.info(`[NOTIF][CANCEL] Canceled notification id=${notificationId}`);
+    }
   } catch (error) {
     console.error(`Error canceling notification ${notificationId}:`, error);
   }
@@ -268,7 +334,14 @@ export const cancelTaskNotifications = async (notificationIds?: string[]): Promi
 
   try {
     if (!notificationIds || notificationIds.length === 0) {
+      if (shouldLogDev) {
+        console.info('[NOTIF][CANCEL] No notification IDs to cancel.');
+      }
       return;
+    }
+
+    if (shouldLogDev) {
+      console.info(`[NOTIF][CANCEL] Canceling ${notificationIds.length} notifications.`);
     }
 
     for (const id of notificationIds) {
@@ -319,6 +392,24 @@ export const getScheduledNotifications = async (): Promise<any[]> => {
   }
 };
 
+export const logScheduledNotificationsDetailed = async (): Promise<void> => {
+  if (!__DEV__) return;
+
+  const items = await getScheduledNotifications();
+  console.info(`[NOTIF][SCHEDULE] Detailed scheduled notifications count=${items.length}`);
+  items.forEach((item: any, idx: number) => {
+    const identifier = item?.identifier ?? item?.request?.identifier ?? `index-${idx}`;
+    const timestamp = item?.trigger?.value ?? item?.request?.trigger?.value ?? null;
+    const triggerIso = timestamp ? new Date(timestamp).toISOString() : 'unknown';
+    const content = item?.content ?? item?.request?.content ?? {};
+    const taskId = content?.data?.taskId ?? 'unknown';
+    const channelId = content?.channelId ?? item?.trigger?.channelId ?? item?.request?.trigger?.channelId ?? 'unknown';
+    console.info(
+      `[NOTIF][SCHEDULE] [${idx}] id=${String(identifier)} trigger=${triggerIso} taskId=${String(taskId)} channelId=${String(channelId)}`
+    );
+  });
+};
+
 /**
  * Check if notifications are available in current environment
  */
@@ -326,9 +417,109 @@ export const areNotificationsAvailable = (): boolean => {
   return notificationsAvailable;
 };
 
+/**
+ * Schedule a test notification in ~5 seconds for debugging.
+ * Useful to validate permission, channel setup and runtime delivery.
+ */
+export const scheduleTestNotification = async (): Promise<string | null> => {
+  if (!notificationsAvailable || !Notifications) {
+    logNotificationsUnavailableOnce();
+    return null;
+  }
+
+  try {
+    await ensureTaskNotificationChannel();
+
+    let hasPermission = await hasNotificationPermission();
+    if (!hasPermission) {
+      hasPermission = await requestNotificationPermission();
+    }
+
+    if (!hasPermission) {
+      console.warn('[Notifications] Test notification skipped: permission not granted.');
+      return null;
+    }
+
+    const triggerDate = new Date(Date.now() + 5000);
+    const id = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Notification test',
+        body: 'If you see this, local notifications are working.',
+        sound: true,
+        data: { type: 'test-notification' },
+        ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
+      },
+      trigger: {
+        date: triggerDate,
+        ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
+      } as any,
+    });
+
+    if (shouldLogDev) {
+      console.info(`[Notifications] Test notification scheduled: id=${id}, trigger=${triggerDate.toISOString()}`);
+      const allScheduled = await getScheduledNotifications();
+      console.info(`[Notifications] Total scheduled notifications on device after test schedule: ${allScheduled.length}`);
+    }
+
+    return String(id);
+  } catch (error) {
+    console.error('[Notifications] Error scheduling test notification:', error);
+    return null;
+  }
+};
+
 export const addNotificationResponseListener = (callback: (response: any) => void) => {
   if (!notificationsAvailable || !Notifications) {
     return { remove: () => {} };
   }
   return Notifications.addNotificationResponseReceivedListener(callback);
+};
+
+export const getLastNotificationResponse = async (): Promise<any | null> => {
+  if (!notificationsAvailable || !Notifications) {
+    return null;
+  }
+
+  try {
+    return await Notifications.getLastNotificationResponseAsync();
+  } catch (error) {
+    console.error('[Notifications] Error getting last notification response:', error);
+    return null;
+  }
+};
+
+export const sendPomodoroModeSwitchNotification = async (enteredMode: "focus" | "break"): Promise<void> => {
+  if (!notificationsAvailable || !Notifications) {
+    return;
+  }
+
+  try {
+    await ensureTaskNotificationChannel();
+
+    let hasPermission = await hasNotificationPermission();
+    if (!hasPermission) {
+      hasPermission = await requestNotificationPermission();
+    }
+
+    if (!hasPermission) {
+      return;
+    }
+
+    const body = enteredMode === "break"
+      ? "Focus time ended. Time for a break!"
+      : "Break finished. Back to focus!";
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Pomodoro",
+        body,
+        sound: true,
+        data: { type: "pomodoro-mode-switch", mode: enteredMode },
+        ...(Platform.OS === "android" ? { channelId: "tasks" } : {})
+      },
+      trigger: null
+    });
+  } catch (error) {
+    console.error("[Notifications] Error sending Pomodoro mode notification:", error);
+  }
 };

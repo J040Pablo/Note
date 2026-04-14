@@ -1,4 +1,5 @@
 import type { Task } from "@models/types";
+import type { TaskReminderType } from "@models/types";
 
 export type SyncPriority = "low" | "medium" | "high";
 
@@ -13,6 +14,8 @@ export type SyncTask = {
   scheduledTime?: string | null;
   repeatDays?: number[];
   completedDates?: string[];
+  reminders?: TaskReminderType[];
+  notificationIds?: string[];
   order?: number;
   createdAt?: number;
   parentId?: string | null;
@@ -43,6 +46,8 @@ export const toSyncTask = (task: Task): SyncTask => ({
   scheduledTime: task.scheduledTime ?? null,
   repeatDays: Array.isArray(task.repeatDays) ? task.repeatDays : [],
   completedDates: Array.isArray(task.completedDates) ? task.completedDates : [],
+  reminders: Array.isArray(task.reminders) ? task.reminders : ["AT_TIME"],
+  notificationIds: Array.isArray(task.notificationIds) ? task.notificationIds : [],
   order: Number(task.orderIndex ?? 0),
   createdAt: Number(task.updatedAt ?? Date.now()),
   parentId: typeof task.parentId === "string" ? task.parentId : null,

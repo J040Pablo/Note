@@ -2,18 +2,23 @@ import React from "react";
 import { NavigationContainer, DefaultTheme, DarkTheme, createNavigationContainerRef } from "@react-navigation/native";
 import { Linking as RNLinking } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { setAudioModeAsync } from "expo-audio";
 import RootNavigator from "@navigation/RootNavigator";
 import { ThemeProvider, useTheme } from "@hooks/useTheme";
 import { DatabaseProvider } from "@database/DatabaseProvider";
 import { FeedbackProvider } from "@components/FeedbackProvider";
+import FloatingPomodoro from "@components/FloatingPomodoro";
 import { ThemeAwareStatusBar } from "@components/ThemeAwareStatusBar";
 import { useNotificationSetup } from "@hooks/useNotificationSetup";
 import { useTaskSyncServer } from "@hooks/useTaskSyncServer";
 import { useSyncListener } from "@hooks/useSyncListener";
 import { useInitializeStores } from "@hooks/useInitializeStores";
-import { addNotificationResponseListener } from "@services/notificationService";
+import { usePomodoroTimer } from "@hooks/usePomodoroTimer";
+import { addNotificationResponseListener, getLastNotificationResponse } from "@services/notificationService";
+import { usePomodoroStore } from "@store/usePomodoroStore";
 import { useTasksStore } from "@store/useTasksStore";
 import type { RootStackParamList } from "@navigation/RootNavigator";
+import { shouldLogDev } from "@utils/runtimeEnv";
 
 const navRef = createNavigationContainerRef<RootStackParamList>();
 
@@ -51,6 +56,84 @@ const ThemedNavigation: React.FC = () => {
   useInitializeStores(); // Pre-load stores to prevent race conditions with notifications
 
   React.useEffect(() => {
+    const handledKeys = new Set<string>();
+    const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+
+    const handleNotificationTap = (response: any) => {
+      try {
+        const identifier = String(
+          response?.notification?.request?.identifier ??
+          "unknown-id"
+        );
+        const taskId = String(response?.notification?.request?.content?.data?.taskId ?? "");
+        const triggerDate = String(
+          response?.notification?.request?.trigger?.value ??
+          response?.notification?.request?.trigger?.date ??
+          "unknown-trigger"
+        );
+        const dedupeKey = `${identifier}-${taskId || "no-task"}-${triggerDate}`;
+
+        if (shouldLogDev) {
+          console.info(`[NOTIF][TAP] Received response id=${identifier} taskId=${taskId || "none"} trigger=${triggerDate}`);
+        }
+
+        if (handledKeys.has(dedupeKey)) {
+          if (shouldLogDev) {
+            console.info(`[NOTIF][TAP] Duplicate response ignored key=${dedupeKey}`);
+          }
+          return;
+        }
+
+        if (!taskId) {
+          if (shouldLogDev) {
+            console.info('[NOTIF][TAP] Ignored response without taskId');
+          }
+          return;
+        }
+
+        const navigateToTask = (attempt = 0) => {
+          if (!navRef.isReady()) {
+            if (attempt >= 15) {
+              console.warn('[NOTIF][NAVIGATION] Navigation not ready after retries; notification tap dropped.');
+              return;
+            }
+            const retryTimer = setTimeout(() => {
+              pendingTimers.delete(retryTimer);
+              navigateToTask(attempt + 1);
+            }, 200);
+            pendingTimers.add(retryTimer);
+            if (shouldLogDev) {
+              console.info(`[NOTIF][NAVIGATION] Waiting nav ready attempt=${attempt + 1}`);
+            }
+            return;
+          }
+
+          handledKeys.add(dedupeKey);
+
+          const tasks = useTasksStore.getState().tasks;
+          if (tasks && tasks[taskId]) {
+            if (shouldLogDev) {
+              console.info(`[NOTIF][NAVIGATION] Navigating to task ${taskId}`);
+            }
+            navRef.navigate("Tabs", { screen: "Tasks", params: { focusTaskId: taskId } });
+          } else {
+            console.warn('[NOTIF] Task not found in store:', taskId);
+            if (shouldLogDev) {
+              console.info('[NOTIF][NAVIGATION] Navigating to Tasks fallback');
+            }
+            navRef.navigate("Tabs", { screen: "Tasks" });
+          }
+        };
+
+        navigateToTask();
+      } catch (error) {
+        console.error('[NOTIF] Error handling notification response:', error);
+        if (navRef.isReady()) {
+          navRef.navigate("Tabs", { screen: "Tasks" });
+        }
+      }
+    };
+
     const handleUrl = (incoming: string | null) => {
       if (!incoming || !navRef.isReady()) return;
       const parsed = parseDeepLinkToRoute(incoming);
@@ -60,32 +143,25 @@ const ThemedNavigation: React.FC = () => {
 
     RNLinking.getInitialURL().then(handleUrl).catch(() => undefined);
 
+    // Cold-start recovery: user tapped notification while app was terminated
+    getLastNotificationResponse()
+      .then((response) => {
+        if (!response) return;
+        handleNotificationTap(response);
+      })
+      .catch((error) => {
+        console.error('[NOTIF] Error reading last notification response:', error);
+      });
+
     const sub = RNLinking.addEventListener("url", ({ url }) => handleUrl(url));
 
     const notificationSub = addNotificationResponseListener((response) => {
-      try {
-        const taskId = response?.notification?.request?.content?.data?.taskId;
-        if (!taskId || !navRef.isReady()) return;
-
-        // Validate taskId exists in store before navigating
-        const tasks = useTasksStore.getState().tasks;
-        if (tasks && tasks[taskId]) {
-          navRef.navigate("Tabs", { screen: "Tasks", params: { focusTaskId: taskId } });
-        } else {
-          console.warn('[NOTIF] Task not found in store:', taskId);
-          // Navigate to Tasks tab anyway so user sees something
-          navRef.navigate("Tabs", { screen: "Tasks" });
-        }
-      } catch (error) {
-        console.error('[NOTIF] Error handling notification response:', error);
-        // Always navigate to Tasks to prevent blank screen
-        if (navRef.isReady()) {
-          navRef.navigate("Tabs", { screen: "Tasks" });
-        }
-      }
+      handleNotificationTap(response);
     });
 
     return () => {
+      pendingTimers.forEach((timer) => clearTimeout(timer));
+      pendingTimers.clear();
       sub.remove();
       if (notificationSub && notificationSub.remove) {
         notificationSub.remove();
@@ -131,13 +207,36 @@ const ThemedNavigation: React.FC = () => {
   );
 };
 
+const PomodoroOverlay: React.FC = () => {
+  const isPomodoroVisible = usePomodoroStore((state) => state.isVisible);
+
+  if (!isPomodoroVisible) {
+    return null;
+  }
+
+  return <FloatingPomodoro />;
+};
+
 export default function App() {
+  usePomodoroTimer();
+
+  React.useEffect(() => {
+    void setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: false,
+      allowsRecording: false,
+      interruptionMode: "duckOthers",
+      shouldRouteThroughEarpiece: false
+    });
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <ThemeProvider>
         <FeedbackProvider>
           <DatabaseProvider>
             <ThemedNavigation />
+            <PomodoroOverlay />
           </DatabaseProvider>
         </FeedbackProvider>
       </ThemeProvider>

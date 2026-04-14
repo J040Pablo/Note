@@ -19,6 +19,9 @@ export const useSyncListener = () => {
 
       if (event.type === "TASK_CREATED" || event.type === "TASK_UPDATED") {
         const { payload } = event;
+        const prev = useTasksStore.getState().tasks[payload.id];
+        const incomingReminders = (payload as any).reminders;
+        const incomingNotificationIds = (payload as any).notificationIds;
         // Map priority from string to number (0 | 1 | 2)
         let priority = 1;
         if (payload.priority === "low") priority = 0;
@@ -29,16 +32,20 @@ export const useSyncListener = () => {
           text: payload.text || payload.title || "Untitled task",
           completed: Boolean(payload.completed),
           priority,
-          scheduledDate: payload.scheduledDate ?? null,
-          scheduledTime: payload.scheduledTime ?? null,
-          repeatDays: Array.isArray(payload.repeatDays) ? payload.repeatDays : [],
-          completedDates: Array.isArray(payload.completedDates) ? payload.completedDates : [],
-          orderIndex: payload.order ?? 0,
-          updatedAt: payload.updatedAt,
-          parentId: payload.parentId ?? null,
-          noteId: payload.noteId ?? null,
-          reminders: [],
-          notificationIds: [],
+          scheduledDate: payload.scheduledDate ?? prev?.scheduledDate ?? null,
+          scheduledTime: payload.scheduledTime ?? prev?.scheduledTime ?? null,
+          repeatDays: Array.isArray(payload.repeatDays) ? payload.repeatDays : prev?.repeatDays ?? [],
+          completedDates: Array.isArray(payload.completedDates) ? payload.completedDates : prev?.completedDates ?? [],
+          orderIndex: payload.order ?? prev?.orderIndex ?? 0,
+          updatedAt: payload.updatedAt ?? prev?.updatedAt ?? Date.now(),
+          parentId: payload.parentId ?? prev?.parentId ?? null,
+          noteId: payload.noteId ?? prev?.noteId ?? null,
+          reminders: Array.isArray(incomingReminders) && incomingReminders.length > 0
+            ? incomingReminders
+            : prev?.reminders ?? ["AT_TIME"],
+          notificationIds: Array.isArray(incomingNotificationIds) && incomingNotificationIds.length > 0
+            ? incomingNotificationIds
+            : prev?.notificationIds ?? [],
         };
         useTasksStore.getState().upsertTask(task);
       }

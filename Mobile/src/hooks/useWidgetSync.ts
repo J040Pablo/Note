@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { useTasksStore } from '@store/useTasksStore';
 import WidgetSyncService from '@services/WidgetSyncService';
@@ -7,16 +7,17 @@ export const useWidgetSync = (
   syncIntervalMs: number = 60000,
   onTasksLoaded?: (count: number) => void
 ) => {
-  const tasks = useTasksStore((state) => Object.values(state.tasks));
+  const tasksMap = useTasksStore((state) => state.tasks);
+  const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
 
     const syncTasks = async () => {
       try {
-        const completedTasks = tasks.filter((t) => t?.completed);
+        const completedTasks = tasks.filter((t) => t?.completed || (Array.isArray(t?.completedDates) && t.completedDates.length > 0));
         if (onTasksLoaded) onTasksLoaded(completedTasks.length);
-        await WidgetSyncService.updateWidgetWithTasks(completedTasks);
+        await WidgetSyncService.updateWidgetWithTasks(tasks);
       } catch (error) {
         console.error('[useWidgetSync] Error:', error);
       }
@@ -37,8 +38,7 @@ export const useWidgetSync = (
       'change',
       (state: AppStateStatus) => {
         if (state === 'active') {
-          const completedTasks = tasks.filter((t) => t?.completed);
-          WidgetSyncService.updateWidgetWithTasks(completedTasks).catch((e) =>
+          WidgetSyncService.updateWidgetWithTasks(tasks).catch((e) =>
             console.error('[useWidgetSync] App open sync error:', e)
           );
         }
@@ -49,10 +49,7 @@ export const useWidgetSync = (
   }, [tasks]);
 
   return {
-    syncNow: () =>
-      WidgetSyncService.updateWidgetWithTasks(
-        tasks.filter((t) => t?.completed)
-      ),
+    syncNow: () => WidgetSyncService.updateWidgetWithTasks(tasks),
     clearWidget: () => WidgetSyncService.clearWidgetData(),
     getHeatmapData: () => WidgetSyncService.getHeatmapData(),
   };

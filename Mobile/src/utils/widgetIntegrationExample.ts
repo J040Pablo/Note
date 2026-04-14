@@ -7,7 +7,7 @@
 
 import { useTasksStore } from '@store/useTasksStore';
 import WidgetSyncService from '@services/WidgetSyncService';
-import { useEffect, useCallback } from 'react';
+import { useEffect, useMemo } from 'react';
 
 /**
  * Hook para sincronizar automaticamente tasks com o widget
@@ -21,7 +21,8 @@ import { useEffect, useCallback } from 'react';
  * }
  */
 export const useWidgetTaskSync = () => {
-  const tasks = useTasksStore((state) => Object.values(state.tasks));
+  const tasksMap = useTasksStore((state) => state.tasks);
+  const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
 
   // Sincronizar quando tasks mudam
   useEffect(() => {
@@ -76,7 +77,7 @@ async function syncTasksToWidget(tasks: any[]) {
  * Use no seu debug/development
  */
 export const debugWidgetSync = async () => {
-  const tasks = useTasksStore((state) => Object.values(state.tasks));
+  const tasks = Object.values(useTasksStore.getState().tasks);
 
   console.log('📊 Tasks totais:', tasks.length);
   console.log('✅ Tasks completadas:', tasks.filter((t) => t.completed).length);

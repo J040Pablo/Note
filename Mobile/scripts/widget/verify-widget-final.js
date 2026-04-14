@@ -16,7 +16,15 @@ const checks = {
   },
   'widget_layout.xml': {
     path: '../../android/app/src/main/res/layout/widget_layout.xml',
-    verify: (content) => content.includes('widget_title') && content.includes('widget_content')
+    verify: (content) => content.includes('widget_title') && content.includes('widget_grid') && content.includes('cell_29')
+  },
+  'WidgetDataRepository.kt': {
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataRepository.kt',
+    verify: (content) => content.includes('saveHeatmapData') && content.includes('getHeatmapData')
+  },
+  'WidgetBridgeModule.kt': {
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetBridgeModule.kt',
+    verify: (content) => content.includes('class WidgetBridgeModule') && content.includes('updateWidgetData')
   },
   'ProGuard Rules': {
     path: '../../android/app/proguard-rules.pro',
@@ -60,7 +68,9 @@ const manifestFullPath = path.join(__dirname, manifestPath);
 
 if (fs.existsSync(manifestFullPath)) {
   const manifestContent = fs.readFileSync(manifestFullPath, 'utf-8');
-  const hasReceiver = manifestContent.includes('com.example.lifeorganizer.AppWidgetProvider');
+  const hasReceiver =
+    manifestContent.includes('com.example.lifeorganizer.AppWidgetProvider') ||
+    manifestContent.includes('android:name=".AppWidgetProvider"');
   
   if (!hasReceiver) {
     console.log('ℹ️  AndroidManifest.xml: Receiver will be added by plugin during prebuild');

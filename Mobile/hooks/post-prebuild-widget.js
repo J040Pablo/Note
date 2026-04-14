@@ -2,61 +2,54 @@
 
 const fs = require('fs');
 const path = require('path');
-const xml2js = require('xml2js');
 
-const MANIFEST_PATH = path.join(__dirname, 'android/app/src/main/AndroidManifest.xml');
-const RECEIVER_NAME = 'com.example.lifeorganizer.AppWidgetProvider';
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const MANIFEST_PATH = path.join(PROJECT_ROOT, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
+const RECEIVER_SIMPLE = '.AppWidgetProvider';
+const RECEIVER_FULL = 'com.example.lifeorganizer.AppWidgetProvider';
+const ACTION = 'android.appwidget.action.APPWIDGET_UPDATE';
+const META_NAME = 'android.appwidget.provider';
+const META_RESOURCE = '@xml/widget_info';
 
-async function verifyAndInjectReceiver() {
+function verifyAndInjectReceiver() {
   console.log('[POST-PREBUILD-HOOK] Verifying widget receiver in final manifest...');
-  
-  try {
-    const manifestContent = fs.readFileSync(MANIFEST_PATH, 'utf-8');
-    
-    if (!manifestContent.includes(RECEIVER_NAME)) {
-      console.log('[POST-PREBUILD-HOOK] ⚠️  Receiver not found in manifest - attempting injection');
-      
-      const parser = new xml2js.Parser();
-      const builder = new xml2js.Builder();
-      
-      const manifest = await parser.parseStringPromise(manifestContent);
-      
-      if (!manifest.manifest.application[0].receiver) {
-        manifest.manifest.application[0].receiver = [];
-      }
-      
-      manifest.manifest.application[0].receiver.push({
-        $: {
-          'android:name': RECEIVER_NAME,
-          'android:exported': 'true',
-          'android:label': '@string/app_name'
-        },
-        'intent-filter': [{
-          action: [{
-            $: { 'android:name': 'android.appwidget.action.APPWIDGET_UPDATE' }
-          }]
-        }],
-        'meta-data': [{
-          $: {
-            'android:name': 'android.appwidget.provider',
-            'android:resource': '@xml/widget_info'
-          }
-        }]
-      });
-      
-      const updated = builder.buildObject(manifest);
-      fs.writeFileSync(MANIFEST_PATH, updated);
-      
-      console.log('[POST-PREBUILD-HOOK] ✅ Receiver injected successfully');
-    } else {
-      console.log('[POST-PREBUILD-HOOK] ✅ Widget receiver verified in manifest');
-    }
-  } catch (error) {
-    console.log('[POST-PREBUILD-HOOK] ✅ Manifest structure is valid (no action needed)');
+  console.log(`[POST-PREBUILD-HOOK] Target manifest: ${MANIFEST_PATH}`);
+
+  if (!fs.existsSync(MANIFEST_PATH)) {
+    console.error('[POST-PREBUILD-HOOK] ❌ Manifest not found. Aborting.');
+    process.exit(1);
   }
+
+  const manifestContent = fs.readFileSync(MANIFEST_PATH, 'utf-8');
+
+  const hasReceiver =
+    manifestContent.includes(`android:name="${RECEIVER_SIMPLE}"`) ||
+    manifestContent.includes(`android:name="${RECEIVER_FULL}"`);
+  const hasAction = manifestContent.includes(`android:name="${ACTION}"`);
+  const hasMeta =
+    manifestContent.includes(`android:name="${META_NAME}"`) &&
+    manifestContent.includes(`android:resource="${META_RESOURCE}"`);
+
+  if (hasReceiver && hasAction && hasMeta) {
+    console.log('[POST-PREBUILD-HOOK] ✅ Widget receiver already present. No changes needed.');
+    return;
+  }
+
+  const receiverBlock = `\n    <receiver android:name="${RECEIVER_SIMPLE}" android:exported="true">\n      <intent-filter>\n        <action android:name="${ACTION}"/>\n      </intent-filter>\n      <meta-data android:name="${META_NAME}" android:resource="${META_RESOURCE}"/>\n    </receiver>`;
+
+  if (!manifestContent.includes('</application>')) {
+    console.error('[POST-PREBUILD-HOOK] ❌ Invalid manifest: missing </application> tag.');
+    process.exit(1);
+  }
+
+  const updated = manifestContent.replace('</application>', `${receiverBlock}\n  </application>`);
+  fs.writeFileSync(MANIFEST_PATH, updated, 'utf-8');
+  console.log('[POST-PREBUILD-HOOK] ✅ Receiver injected successfully.');
 }
 
-verifyAndInjectReceiver().catch(error => {
+try {
+  verifyAndInjectReceiver();
+} catch (error) {
   console.error('[POST-PREBUILD-HOOK] Error:', error);
   process.exit(1);
-});
+}

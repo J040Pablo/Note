@@ -27,9 +27,9 @@ export const useNotificationSetup = () => {
         const granted = await hasNotificationPermission();
         if (!granted) {
           const result = await requestNotificationPermission();
-          console.log('[NOTIF] Permission status:', result);
+          console.log('[NOTIF][PERMISSION] Permission status:', result);
         } else {
-          console.log('[NOTIF] Permission already granted');
+          console.log('[NOTIF][PERMISSION] Permission already granted');
         }
 
         await ensureTaskNotificationChannel();

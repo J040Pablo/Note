@@ -5,6 +5,16 @@ const path = require('path');
 
 const checks = [
   {
+    name: 'AndroidManifest.xml widget receiver',
+    path: '../../android/app/src/main/AndroidManifest.xml',
+    validate: (content) => {
+      const receiverRegex = /<receiver[^>]*android:name="(\.AppWidgetProvider|com\.example\.lifeorganizer\.AppWidgetProvider)"[^>]*android:exported="true"[^>]*>/s;
+      const actionRegex = /<action[^>]*android:name="android\.appwidget\.action\.APPWIDGET_UPDATE"\s*\/>/s;
+      const metadataRegex = /<meta-data[^>]*android:name="android\.appwidget\.provider"[^>]*android:resource="@xml\/widget_info"\s*\/>/s;
+      return receiverRegex.test(content) && actionRegex.test(content) && metadataRegex.test(content);
+    }
+  },
+  {
     name: 'widget_info.xml',
     path: '../../android/app/src/main/res/xml/widget_info.xml',
     validate: (content) => {
@@ -19,8 +29,9 @@ const checks = [
     path: '../../android/app/src/main/res/layout/widget_layout.xml',
     validate: (content) => {
       return content.includes('widget_title') &&
-             content.includes('widget_content') &&
-             content.includes('widget_button');
+             content.includes('widget_grid') &&
+             content.includes('cell_0') &&
+             content.includes('cell_29');
     }
   },
   {
@@ -28,8 +39,27 @@ const checks = [
     path: '../../android/app/src/main/java/com/example/lifeorganizer/AppWidgetProvider.kt',
     validate: (content) => {
       return content.includes('class AppWidgetProvider') &&
-             content.includes('AppWidgetManager.ACTION_APPWIDGET_UPDATE') &&
-             content.includes('R.layout.widget_layout');
+             content.includes('updateAllWidgets') &&
+             content.includes('R.layout.widget_layout') &&
+             content.includes('WidgetDataRepository.getHeatmapData');
+    }
+  },
+  {
+    name: 'WidgetDataRepository.kt',
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataRepository.kt',
+    validate: (content) => {
+      return content.includes('saveHeatmapData') &&
+             content.includes('getHeatmapData') &&
+             content.includes('widget_data');
+    }
+  },
+  {
+    name: 'WidgetBridgeModule.kt',
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetBridgeModule.kt',
+    validate: (content) => {
+      return content.includes('class WidgetBridgeModule') &&
+             content.includes('updateWidgetData') &&
+             content.includes('AppWidgetProvider.updateAllWidgets');
     }
   },
   {
@@ -37,8 +67,7 @@ const checks = [
     path: '../../android/app/src/main/res/values/strings.xml',
     validate: (content) => {
       return content.includes('widget_description') &&
-             content.includes('widget_content') &&
-             content.includes('widget_button_text');
+             content.includes('widget_title');
     }
   }
 ];
