@@ -128,6 +128,8 @@ const FolderDetailScreen: React.FC = () => {
   const folderId = route.params?.folderId ?? null;
   const routeTrail = route.params?.trail;
 
+  console.log("Current route:", route.name, route.params);
+
   const folders = useAppStore((s) => s.folders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);
   const removeFolder = useAppStore((s) => s.removeFolder);
@@ -171,11 +173,6 @@ const FolderDetailScreen: React.FC = () => {
   const [draggingQuickNotes, setDraggingQuickNotes] = useState(false);
   const [draggingFiles, setDraggingFiles] = useState(false);
   const [draggingGridItem, setDraggingGridItem] = useState(false);
-  const [gridFoldersData, setGridFoldersData] = useState<GridFolderItem[]>([]);
-  const [gridNotesData, setGridNotesData] = useState<GridNoteItem[]>([]);
-  const [gridQuickNotesData, setGridQuickNotesData] = useState<GridQuickNoteItem[]>([]);
-  const [gridFilesData, setGridFilesData] = useState<GridFileItem[]>([]);
-  const [gridAllItems, setGridAllItems] = useState<GridAllItem[]>([]);
   const [fileSortMode, setFileSortMode] = useState<FileSortMode>("custom");
   const [fileSizes, setFileSizes] = useState<Record<string, number>>({});
   const [fabOpen, setFabOpen] = useState(false);
@@ -184,7 +181,6 @@ const FolderDetailScreen: React.FC = () => {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
   const fabAnim = useRef(new Animated.Value(0)).current;
   const isDraggingRef = useRef(false);
-  const gridInitializedRef = useRef(false);
 
   const currentFolder = folderId ? folders[folderId] : undefined;
   const currentViewMode = folderViewModes[folderId ?? "root"] ?? "grid";
@@ -325,7 +321,7 @@ const FolderDetailScreen: React.FC = () => {
       return;
     }
     withLock(() => {
-      navigation.navigate("QuickNote", { quickNoteId: item.id, folderId: folderId ?? null });
+      navigation.push("QuickNote", { quickNoteId: item.id, folderId: folderId ?? null });
     });
   }, [folderId, folders, handleClearSelection, navigation, notes, selectedItems, withLock]);
 
@@ -409,11 +405,8 @@ const FolderDetailScreen: React.FC = () => {
     [folderQuickNotes]
   );
 
-  // 🔥 CRITICAL: Initialize grid ONLY ONCE from stores
-  // After this, gridAllItems is the single source of truth for order
-  useEffect(() => {
-    if (gridInitializedRef.current) return;
-    if (currentViewMode !== "grid") return;
+  const gridAllItems = useMemo(() => {
+    if (currentViewMode !== "grid") return [];
 
     const allItems: GridAllItem[] = [
       ...visibleChildFolders.map((folder) => ({
@@ -445,16 +438,13 @@ const FolderDetailScreen: React.FC = () => {
     }));
 
     // Sort by globalOrder, with tie-breaking by ID for stable ordering
-    const sorted = itemsWithOrder.sort((a, b) => {
+    return itemsWithOrder.sort((a, b) => {
       if (a.globalOrder === b.globalOrder) {
         return a.id.localeCompare(b.id);
       }
       return a.globalOrder - b.globalOrder;
     });
-    
-    setGridAllItems(sorted);
-    gridInitializedRef.current = true;
-  }, []);
+  }, [currentViewMode, visibleChildFolders, visibleFolderNotes, visibleFolderQuickNotes, visibleFiles]);
 
   const isDescendantOf = useCallback(
     (candidateParentId: string | null, sourceId: string): boolean => {
@@ -560,7 +550,7 @@ const FolderDetailScreen: React.FC = () => {
   const handleSelectNoteFromMenu = useCallback(
     (noteId: string) => {
       withLock(() => {
-        navigation.navigate("NoteEditor", { noteId, folderId: folderId ?? null });
+        navigation.push("NoteEditor", { noteId, folderId: folderId ?? null });
         addRecentOpen("note", noteId).then((nextRecent) => setRecentItems(nextRecent));
       });
     },
@@ -570,7 +560,7 @@ const FolderDetailScreen: React.FC = () => {
   const handleSelectQuickNoteFromMenu = useCallback(
     (quickNoteId: string) => {
       withLock(() => {
-        navigation.navigate("QuickNote", { quickNoteId, folderId: folderId ?? null });
+        navigation.push("QuickNote", { quickNoteId, folderId: folderId ?? null });
       });
     },
     [folderId, navigation, withLock]
@@ -694,33 +684,31 @@ const FolderDetailScreen: React.FC = () => {
                     // Files don't have selection mode in the current implementation, so skip for now
                   }}
                   onDragRelease={(data) => {
-                    // 🔥 1. Update UI immediately (gridAllItems is source of truth)
-                    // DraggableGrid already passes reordered data, just set it
-                    setGridAllItems(data);
-
-                    // 🔥 2. Persist new order to database (but NOT stores)
-                    // Stores will eventually sync from DB via normal loading, but for now gridAllItems controls display
                     data.forEach((item, index) => {
                       switch (item.itemType) {
                         case "folder":
                           updateFolderGlobalOrder(item.id, index).catch(err => 
                             console.error("[FolderDetail] Failed to persist folder order:", err)
                           );
+                          upsertFolder({ ...(item as Folder), globalOrder: index });
                           break;
                         case "note":
                           updateNoteGlobalOrder(item.id, index).catch(err => 
                             console.error("[FolderDetail] Failed to persist note order:", err)
                           );
+                          upsertNote({ ...(item as Note), globalOrder: index });
                           break;
                         case "quick":
                           updateQuickNoteGlobalOrder(item.id, index).catch(err => 
                             console.error("[FolderDetail] Failed to persist quick note order:", err)
                           );
+                          upsertQuickNote({ ...(item as QuickNote), globalOrder: index });
                           break;
                         case "file":
                           updateFileGlobalOrder(item.id, index).catch(err => 
                             console.error("[FolderDetail] Failed to persist file order:", err)
                           );
+                          upsertFile({ ...(item as AppFile), globalOrder: index });
                           break;
                       }
                     });
@@ -735,7 +723,7 @@ const FolderDetailScreen: React.FC = () => {
                         return;
                       }
                       withLock(() => {
-                        navigation.navigate("FolderDetail", {
+                        navigation.push("FolderDetail", {
                           folderId: item.id,
                           trail: [...trailIds, item.id]
                         });
@@ -747,7 +735,7 @@ const FolderDetailScreen: React.FC = () => {
                         return;
                       }
                       withLock(() => {
-                        navigation.navigate("NoteEditor", { noteId: item.id, folderId: folderId ?? null });
+                        navigation.push("NoteEditor", { noteId: item.id, folderId: folderId ?? null });
                         addRecentOpen("note", item.id).then((nextRecent) => setRecentItems(nextRecent));
                       });
                     } else if (item.itemType === "quick") {
@@ -756,7 +744,7 @@ const FolderDetailScreen: React.FC = () => {
                         return;
                       }
                       withLock(() => {
-                        navigation.navigate("QuickNote", { quickNoteId: item.id, folderId: folderId ?? null });
+                        navigation.push("QuickNote", { quickNoteId: item.id, folderId: folderId ?? null });
                       });
                     } else if (item.itemType === "file") {
                       const file = item as AppFile & { key: string; itemType: "file" };
@@ -1025,6 +1013,7 @@ const FolderDetailScreen: React.FC = () => {
                     setDraggingFolders(false);
                     const orderedIds = data.map((folder) => folder.id);
                     actions.reorder({ kind: "folder", parentId: folderId ?? null, orderedIds });
+                    data.forEach((item, index) => upsertFolder({ ...item, globalOrder: index }));
                   }}
                   renderItem={({ item: folder, drag, isActive }: RenderItemParams<Folder>) => (
                     <Pressable
@@ -1055,7 +1044,7 @@ const FolderDetailScreen: React.FC = () => {
                           return;
                         }
                         withLock(() => {
-                          navigation.navigate("FolderDetail", {
+                          navigation.push("FolderDetail", {
                             folderId: folder.id,
                             trail: [...trailIds, folder.id]
                           });
@@ -1101,7 +1090,9 @@ const FolderDetailScreen: React.FC = () => {
                   onRelease={() => setDraggingNotes(false)}
                   onDragEnd={({ data }) => {
                     setDraggingNotes(false);
-                    actions.reorder({ kind: "note", parentId: folderId ?? null, orderedIds: data.map((note) => note.id) });
+                    const orderedIds = data.map((note) => note.id);
+                    actions.reorder({ kind: "note", parentId: folderId ?? null, orderedIds });
+                    data.forEach((note, index) => upsertNote({ ...note, globalOrder: index }));
                   }}
                   renderItem={({ item: note, drag, isActive }: RenderItemParams<Note>) => (
                     <Pressable
@@ -1132,7 +1123,7 @@ const FolderDetailScreen: React.FC = () => {
                           return;
                         }
                         withLock(() => {
-                          navigation.navigate("NoteEditor", { noteId: note.id, folderId: folderId ?? null });
+                          navigation.push("NoteEditor", { noteId: note.id, folderId: folderId ?? null });
                           addRecentOpen("note", note.id).then((nextRecent) => setRecentItems(nextRecent));
                         });
                       }}
@@ -1168,7 +1159,9 @@ const FolderDetailScreen: React.FC = () => {
                   onRelease={() => setDraggingQuickNotes(false)}
                   onDragEnd={({ data }) => {
                     setDraggingQuickNotes(false);
-                    actions.reorder({ kind: "quick", parentId: folderId ?? null, orderedIds: data.map((quick) => quick.id) });
+                    const orderedIds = data.map((quick) => quick.id);
+                    actions.reorder({ kind: "quick", parentId: folderId ?? null, orderedIds });
+                    data.forEach((quick, index) => upsertQuickNote({ ...quick, globalOrder: index }));
                   }}
                   renderItem={({ item: quickNote, drag, isActive }: RenderItemParams<QuickNote>) => (
                     <Pressable
@@ -1199,7 +1192,7 @@ const FolderDetailScreen: React.FC = () => {
                           return;
                         }
                         withLock(() => {
-                          navigation.navigate("QuickNote", { quickNoteId: quickNote.id, folderId: folderId ?? null });
+                          navigation.push("QuickNote", { quickNoteId: quickNote.id, folderId: folderId ?? null });
                         });
                       }}
                     >
@@ -1224,7 +1217,7 @@ const FolderDetailScreen: React.FC = () => {
             )}
 
             {/* File list */}
-            {currentViewMode === "list" ? (
+            {currentViewMode === "list" && visibleFiles.length > 0 && (
               <DraggableFlatList
                 data={visibleFiles}
                 keyExtractor={(item) => `file-${item.id}`}
@@ -1275,11 +1268,11 @@ const FolderDetailScreen: React.FC = () => {
                     onPress={() =>
                       withLock(() => {
                         if (item.type === "pdf") {
-                          navigation.navigate("PdfViewer", { path: item.path, name: item.name });
+                          navigation.push("PdfViewer", { path: item.path, name: item.name });
                           return;
                         }
                         if (item.type === "image") {
-                          navigation.navigate("ImageViewer", { path: item.path, name: item.name });
+                          navigation.push("ImageViewer", { path: item.path, name: item.name });
                           return;
                         }
                         openExternalFile(item.path);
@@ -1313,95 +1306,6 @@ const FolderDetailScreen: React.FC = () => {
                   </Pressable>
                 )}
               />
-            ) : (
-              <View style={[styles.gridSectionBlock, { height: gridHeightFor(gridFilesData.length), width: "100%" }]}>
-                <DraggableGrid<GridFileItem>
-                  disabled={false}
-                  numColumns={GRID_COLUMNS}
-                  itemHeight={GRID_CELL_HEIGHT}
-                  style={styles.gridSurface}
-                  data={gridFilesData}
-                  delayLongPress={250}
-                    onDragStart={(item) => {
-                      setDraggingFiles(true);
-                      if (selectionMode && !isSelected({ kind: "quick", id: item.id, parentId: item.parentFolderId ?? null, label: item.name })) {
-                        // files are not part of global selection, but keep the gesture consistent by opening the file action menu on long press separately.
-                      }
-                    }}
-                  onDragRelease={(data) => {
-                    setGridFilesData(data.map((file) => ({ ...file, key: file.id })));
-                    const orderedIds = data.map((file) => file.id);
-                    reorderFilesInStore(orderedIds as ID[]);
-                    reorderFiles(folderId ?? null, orderedIds as ID[]);
-                    if (fileSortMode !== "custom") {
-                      setFileSortMode("custom");
-                      saveSortPreference(fileSortScopeForFolder(folderId), "custom");
-                    }
-                    setDraggingFiles(false);
-                  }}
-                  onItemPress={(item) => {
-                    if (draggingFiles) return;
-                    withLock(() => {
-                      if (item.type === "pdf") {
-                        navigation.navigate("PdfViewer", { path: item.path, name: item.name });
-                        return;
-                      }
-                      if (item.type === "image") {
-                        navigation.navigate("ImageViewer", { path: item.path, name: item.name });
-                        return;
-                      }
-                      openExternalFile(item.path);
-                    });
-                  }}
-                  renderItem={(item: GridFileItem, index: number) => (
-                    <View
-                      style={[
-                        styles.gridItem,
-                        {
-                          width: gridItemWidth,
-                          height: GRID_CELL_HEIGHT,
-                          marginRight: index % GRID_COLUMNS === GRID_COLUMNS - 1 ? 0 : GRID_GAP
-                        }
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.folderGridCard,
-                          {
-                            minHeight: GRID_ITEM_HEIGHT,
-                            height: GRID_ITEM_HEIGHT,
-                            marginHorizontal: 0,
-                            borderColor: theme.colors.border,
-                            backgroundColor: theme.colors.card
-                          }
-                        ]}
-                      >
-                        {item.bannerPath ? (
-                          <Image source={{ uri: item.bannerPath }} style={styles.cardBanner} resizeMode="cover" />
-                        ) : (
-                          <View style={[styles.cardBanner, { backgroundColor: theme.colors.surfaceElevated }]} />
-                        )}
-                        <View style={styles.cardBody}>
-                          {item.thumbnailPath ? (
-                            <Image source={{ uri: item.thumbnailPath }} style={styles.cardAvatar} resizeMode="cover" />
-                          ) : (
-                            <View style={[styles.noteIconWrap, { backgroundColor: theme.colors.surfaceElevated }]}> 
-                              <FileIcon type={item.type} size={18} />
-                            </View>
-                          )}
-                          <View style={styles.rowContent}>
-                            <Text style={styles.rowTitle} numberOfLines={1}>{item.name || "Sem título"}</Text>
-                            <Text muted variant="caption" numberOfLines={1}>
-                              {item.type.toUpperCase()}
-                            </Text>
-                          </View>
-                          <Ionicons name={getFileTypeIcon(item.type)} size={16} color={theme.colors.textSecondary} />
-                        </View>
-                      </View>
-                    </View>
-                  )}
-                />
-              </View>
             )}
 
             {childFolders.length === 0 && folderNotes.length === 0 && folderQuickNotes.length === 0 && folderFiles.length === 0 && (
@@ -1677,7 +1581,7 @@ const FolderDetailScreen: React.FC = () => {
             icon: "open-outline",
             onPress: () => {
               if (!selectedFolder) return;
-              navigation.navigate("FolderDetail", {
+              navigation.push("FolderDetail", {
                 folderId: selectedFolder.id,
                 trail: [...trailIds, selectedFolder.id]
               });
@@ -1759,7 +1663,7 @@ const FolderDetailScreen: React.FC = () => {
             icon: "open-outline",
             onPress: () => {
               if (!selectedNote) return;
-              navigation.navigate("NoteEditor", { noteId: selectedNote.id, folderId: folderId ?? null });
+              navigation.push("NoteEditor", { noteId: selectedNote.id, folderId: folderId ?? null });
             }
           },
           {
@@ -1821,11 +1725,11 @@ const FolderDetailScreen: React.FC = () => {
             onPress: async () => {
               if (!selectedFile) return;
               if (selectedFile.type === "pdf") {
-                navigation.navigate("PdfViewer", { path: selectedFile.path, name: selectedFile.name });
+                navigation.push("PdfViewer", { path: selectedFile.path, name: selectedFile.name });
                 return;
               }
               if (selectedFile.type === "image") {
-                navigation.navigate("ImageViewer", { path: selectedFile.path, name: selectedFile.name });
+                navigation.push("ImageViewer", { path: selectedFile.path, name: selectedFile.name });
                 return;
               }
               await openExternalFile(selectedFile.path);
