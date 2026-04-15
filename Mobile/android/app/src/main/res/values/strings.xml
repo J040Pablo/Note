@@ -1,0 +1,9 @@
+<resources>
+  <string name="app_name">Life Organizer</string>
+  <string name="expo_splash_screen_resize_mode" translatable="false">contain</string>
+  <string name="expo_splash_screen_status_bar_translucent" translatable="false">false</string>
+  <string name="contribution_widget_title">Task Contributions</string>
+  <string name="contribution_widget_description">Shows your completed tasks as a GitHub-style heatmap</string>
+  <string name="contribution_widget_subtitle">%1$d tasks this week</string>
+  <string name="contribution_widget_no_data">Complete tasks to see your heatmap</string>
+</resources>

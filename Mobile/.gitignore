@@ -20,6 +20,5 @@ Thumbs.db
 # Expo / React Native
 *.expo
 *.expo.*
-android/
-ios/
+
 

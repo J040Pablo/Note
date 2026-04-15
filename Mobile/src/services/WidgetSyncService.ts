@@ -1,147 +1,141 @@
-import { NativeModules, Platform } from 'react-native';
-import type { Task } from '@models/types';
+/**
+ * WidgetSyncService
+ *
+ * Facade over the low-level widgetSync module.
+ * Keeps the same public API as before (updateWidgetWithTasks, etc.) so existing
+ * callers don't break, while internally delegating to the corrected architecture.
+ *
+ * Architecture:
+ *  updateWidgetWithTasks()  → full sync (app start / foreground restore)
+ *  updateTodayCount()       → incremental sync (single task toggle)
+ *  refreshWidget()          → force redraw with existing SharedPreferences data
+ *  getHeatmapData()         → read current stored map (debug)
+ *  clearWidgetData()        → wipe widget data
+ */
 
-const WidgetBridge: any = NativeModules.WidgetBridge ?? NativeModules.TaskWidgetModule;
+import { Platform } from 'react-native';
+import type { Task } from '@models/types';
+import {
+  fullWidgetSync,
+  incrementalWidgetSync,
+  debouncedIncrementalSync,
+  debouncedFullSync,
+  refreshWidget as nativeRefresh,
+  getStoredHeatmap,
+  clearWidgetData as nativeClear,
+} from '../widgets/contribution-widget/widgetSync';
+import {
+  buildContributionMap,
+  countCompletedToday,
+  toDateKey,
+  todayKey,
+  type ContributionMap,
+} from '../widgets/contribution-widget/contributionData';
+
+export type { ContributionMap };
 
 export interface TaskData {
   date: string;
   count: number;
 }
 
-export class WidgetSyncService {
-  static getLast30DayKeys(): string[] {
-    const keys: string[] = [];
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+class WidgetSyncService {
 
-    for (let i = 29; i >= 0; i -= 1) {
-      const d = new Date(now);
-      d.setDate(now.getDate() - i);
-      keys.push(this.normalizeDate(d));
-    }
+  // ── Date helpers (kept for backward-compat callers) ──────────────────
 
-    return keys;
-  }
-
-  static generateHeatmapData(tasks: Task[] = []): Record<string, number> {
-    const keys = this.getLast30DayKeys();
-    const heatmap: Record<string, number> = {};
-    keys.forEach((k) => {
-      heatmap[k] = 0;
-    });
-
-    for (const task of tasks) {
-      const completedDates = Array.isArray(task.completedDates) ? task.completedDates : [];
-
-      if (completedDates.length > 0) {
-        for (const key of completedDates) {
-          if (key in heatmap) {
-            heatmap[key] = (heatmap[key] || 0) + 1;
-          }
-        }
-        continue;
-      }
-
-      if (task.completed) {
-        const fallbackDate = task.scheduledDate ?? this.normalizeDate(new Date(task.updatedAt || Date.now()));
-        if (fallbackDate in heatmap) {
-          heatmap[fallbackDate] = (heatmap[fallbackDate] || 0) + 1;
-        }
-      }
-    }
-
-    return heatmap;
-  }
-  
   static normalizeDate(dateInput: string | Date | null | undefined): string {
-    if (!dateInput) return new Date().toISOString().split('T')[0];
-    
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
-    
-    if (isNaN(date.getTime())) {
-      return new Date().toISOString().split('T')[0];
-    }
-
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-
-    return `${year}-${month}-${day}`;
+    return toDateKey(dateInput as any);
   }
 
-  static async updateWidgetData(heatmapJson: string): Promise<void> {
-    if (Platform.OS !== 'android' || !WidgetBridge?.updateWidgetData) {
-      return;
-    }
-
-    await WidgetBridge.updateWidgetData(heatmapJson);
+  static todayKey(): string {
+    return todayKey();
   }
 
+  // ── Heatmap generation (pure, no side effects) ───────────────────────
+
+  static generateHeatmapData(tasks: Task[] = []): ContributionMap {
+    return buildContributionMap(tasks, 70);
+  }
+
+  // ── Sync methods ─────────────────────────────────────────────────────
+
+  /**
+   * Full sync — sends all 70 days to native.
+   * Use on app start or foreground restore.
+   */
   static async updateWidgetWithTasks(tasks: Task[] = []): Promise<void> {
-    if (Platform.OS !== 'android' || !WidgetBridge?.updateWidgetData) {
-      return;
-    }
+    if (Platform.OS !== 'android') return;
+    await fullWidgetSync(tasks);
+  }
 
-    try {
-      const groupedData = this.generateHeatmapData(tasks);
-      await this.updateWidgetData(JSON.stringify(groupedData));
-    } catch (error) {
-      console.error('[Widget] Sync error:', error);
+  /**
+   * Incremental sync — only updates today's count.
+   * Use immediately after a task is toggled.
+   */
+  static async updateTodayCount(tasks: Task[]): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    await incrementalWidgetSync(tasks);
+  }
+
+  /**
+   * Debounced incremental sync (500 ms).
+   * Safe to call in a Zustand subscription or useEffect without flooding.
+   */
+  static debouncedUpdate(tasks: Task[]): void {
+    if (Platform.OS !== 'android') return;
+    debouncedIncrementalSync(tasks);
+  }
+
+  /**
+   * Debounced full sync (1 sec).
+   * Use when many tasks may change at once.
+   */
+  static debouncedFullUpdate(tasks: Task[]): void {
+    if (Platform.OS !== 'android') return;
+    debouncedFullSync(tasks);
+  }
+
+  /**
+   * Legacy method — alias for updateWidgetWithTasks.
+   * Kept for backward compatibility.
+   */
+  static async updateWidgetData(heatmapJson: string): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    const { NativeModules } = require('react-native');
+    const Bridge = NativeModules.WidgetBridge;
+    if (Bridge?.updateWidgetData) {
+      await Bridge.updateWidgetData(heatmapJson);
     }
   }
 
-  static async updateWidgetWithTaskData(taskData: TaskData[] = []): Promise<void> {
-    if (Platform.OS !== 'android' || !WidgetBridge?.updateWidgetData) {
-      return;
-    }
-
-    try {
-      const map: Record<string, number> = {};
-      for (const item of taskData) {
-        map[item.date] = item.count;
-      }
-      await this.updateWidgetData(JSON.stringify(map));
-    } catch (error) {
-      console.error('[Widget] Update error:', error);
-    }
+  /**
+   * Returns today's completed task count from the task list.
+   */
+  static countToday(tasks: Task[]): number {
+    return countCompletedToday(tasks);
   }
 
-  static async getHeatmapData(): Promise<Record<string, number>> {
-    if (Platform.OS !== 'android' || !WidgetBridge?.getHeatmapData) {
-      return {};
-    }
+  // ── Native bridge pass-throughs ──────────────────────────────────────
 
-    try {
-      const jsonString = await WidgetBridge.getHeatmapData();
-      return JSON.parse(jsonString);
-    } catch (error) {
-      console.error('[Widget] Get error:', error);
-      return {};
-    }
+  static async refreshWidget(): Promise<void> {
+    if (Platform.OS !== 'android') return;
+    await nativeRefresh();
+  }
+
+  static async getHeatmapData(): Promise<ContributionMap> {
+    if (Platform.OS !== 'android') return {};
+    return getStoredHeatmap();
   }
 
   static async clearWidgetData(): Promise<void> {
-    if (Platform.OS !== 'android' || !WidgetBridge?.clearHeatmapData) {
-      return;
-    }
-
-    try {
-      await WidgetBridge.clearHeatmapData();
-    } catch (error) {
-      console.error('[Widget] Clear error:', error);
-    }
+    if (Platform.OS !== 'android') return;
+    await nativeClear();
   }
 
-  static async refreshWidget(): Promise<void> {
-    if (Platform.OS !== 'android' || !WidgetBridge?.refreshWidget) {
-      return;
-    }
+  // ── Legacy groupTasksByDate (kept for widgetIntegrationExample.ts) ───
 
-    try {
-      await WidgetBridge.refreshWidget();
-    } catch (error) {
-      console.error('[Widget] Refresh error:', error);
-    }
+  static groupTasksByDate(tasks: Task[]): ContributionMap {
+    return buildContributionMap(tasks, 70);
   }
 }
 

@@ -1,0 +1,15 @@
+<resources>
+  <color name="splashscreen_background">#0f172a</color>
+  <color name="iconBackground">#0f172a</color>
+  <color name="colorPrimary">#023c69</color>
+  <color name="colorPrimaryDark">#0f172a</color>
+  <!-- Widget contribution heatmap: light mode -->
+  <color name="widget_bg">#CC0F172A</color>
+  <color name="widget_text_primary">#F1F5F9</color>
+  <color name="widget_text_secondary">#94A3B8</color>
+  <color name="widget_cell_empty">#2D3748</color>
+  <color name="widget_cell_level1">#0E4429</color>
+  <color name="widget_cell_level2">#006D32</color>
+  <color name="widget_cell_level3">#26A641</color>
+  <color name="widget_cell_level4">#39D353</color>
+</resources>
