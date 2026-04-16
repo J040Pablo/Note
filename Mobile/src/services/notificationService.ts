@@ -1,12 +1,32 @@
 import { Platform, PermissionsAndroid } from 'react-native';
 import type { Task } from '@models/types';
 import type { TaskReminderType } from '@models/types';
+import { useNotificationsStore } from '@store/useNotificationsStore';
 import { isExpoGo, shouldLogDev } from '@utils/runtimeEnv';
 
 // Dynamically import expo-notifications with error handling
 let Notifications: any = null;
 let notificationsAvailable = false;
 let hasLoggedNotificationsUnavailable = false;
+
+// Module-level lock ensures JS thread serialization against instantaneous duplicate triggers
+const schedulingLocks = new Map<string, number>();
+
+// Normalise Expo's dual notification payload shape (differs between SDK versions / platforms)
+const getTaskIdFromNotification = (n: any): string | undefined =>
+  n?.content?.data?.taskId ?? n?.request?.content?.data?.taskId;
+
+const getTriggerTs = (n: any) => {
+  const t = n?.trigger?.value ?? n?.request?.trigger?.value;
+  return typeof t === 'number'
+    ? t
+    : t instanceof Date
+      ? t.getTime()
+      : 0;
+};
+
+// Channel is created only once per app session — no need to call on every scheduling request
+let channelInitialized = false;
 
 if (isExpoGo) {
   notificationsAvailable = false;
@@ -179,132 +199,219 @@ const normalizeTaskReminders = (task: Task): TaskReminderType[] => {
  * Expo Go on SDK 53+ does not support notifications.
  */
 export const scheduleTaskNotifications = async (task: Task): Promise<string[]> => {
+  const traceId = Math.random().toString(36).substring(7);
+  if (shouldLogDev) console.info(`[TRACE ${traceId}] Starting scheduleTaskNotifications for task=${task.id}`);
+
   // If notifications not available, return empty array
   if (!notificationsAvailable || !Notifications) {
     if (task.scheduledDate && task.scheduledTime) logNotificationsUnavailableOnce();
     return [];
   }
 
-  try {
-    await ensureTaskNotificationChannel();
+  // ─── PRE-LOCK PHASE ────────────────────────────────────────────────────────
+  // All slow async I/O runs here, before acquiring the lock.
+  // This prevents long lock contention caused by permission dialogs or OS calls.
 
-    let hasPermission = await hasNotificationPermission();
-    if (shouldLogDev) {
-      console.info(`[NOTIF][PERMISSION] Before scheduling task=${task.id}: ${String(hasPermission)}`);
-    }
-    if (!hasPermission) {
-      hasPermission = await requestNotificationPermission();
-    }
-
-    if (!hasPermission) {
-      console.warn(`[NOTIF][PERMISSION] Permission not granted. Skipping schedule for task=${task.id}`);
-      return [];
-    }
-
-    if (!task.scheduledDate || !task.scheduledTime || task.completed) {
-      const reason = !task.scheduledDate || !task.scheduledTime
-        ? 'missing scheduledDate/scheduledTime'
-        : 'task is completed';
-      console.info(`[NOTIF][SCHEDULE] Skipped scheduling for task=${task.id}: ${reason}`);
-      return [];
-    }
-
-    const triggerDate = buildTriggerDate(task.scheduledDate, task.scheduledTime);
-    if (!triggerDate) {
-      console.warn(`[NOTIF][SCHEDULE] Invalid scheduled date/time for task=${task.id} date=${task.scheduledDate} time=${task.scheduledTime}`);
-      return [];
-    }
-
-    if (shouldLogDev) {
-      console.info(`[NOTIF][SCHEDULE] Base trigger for task=${task.id}: ${triggerDate.toISOString()}`);
-    }
-
-    // Validate trigger is in future (including time of day for today)
-    const now = new Date();
-    const isToday = triggerDate.toDateString() === now.toDateString();
-    const isPastTime = isToday && triggerDate.getTime() <= now.getTime();
-    
-    if (triggerDate.getTime() <= Date.now() || isPastTime) {
-      const reason = isToday ? 'time already passed today' : 'date is in the past';
-      console.info(`[NOTIF][SCHEDULE] Skipped scheduling for task=${task.id}: ${reason}`);
-      return [];
-    }
-
-    const reminders = normalizeTaskReminders(task);
-    if (reminders.length === 0) {
-      return [];
-    }
-
-    const nowMs = Date.now();
-    const seenTimestamps = new Set<number>();
-    const notificationIds: string[] = [];
-
-    for (const reminder of reminders) {
-      const offsetMs = REMINDER_OFFSETS[reminder];
-      const reminderDate = new Date(triggerDate.getTime() - offsetMs);
-      const reminderTs = reminderDate.getTime();
-
-      if (reminderTs <= nowMs) {
-        if (shouldLogDev) {
-          console.info(`[NOTIF][SCHEDULE] Skipped reminder=${reminder} for task=${task.id}: trigger already in the past (${reminderDate.toISOString()})`);
-        }
-        continue;
-      }
-
-      if (seenTimestamps.has(reminderTs)) {
-        if (shouldLogDev) {
-          console.info(`[NOTIF][SCHEDULE] Skipped reminder=${reminder} for task=${task.id}: duplicate trigger timestamp`);
-        }
-        continue;
-      }
-      seenTimestamps.add(reminderTs);
-
-      if (shouldLogDev) {
-        console.info(`[NOTIF][SCHEDULE] Scheduling reminder=${reminder} for task=${task.id} at ${reminderDate.toISOString()}`);
-      }
-
-      const notificationId = await Notifications.scheduleNotificationAsync({
-        content: {
-          title: 'Task reminder',
-          body: `You need to: ${task.text}`,
-          sound: true,
-          data: { taskId: task.id },
-          ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
-        },
-        trigger: {
-          date: reminderDate,
-          ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
-        } as any,
-      });
-
-      notificationIds.push(String(notificationId));
-      if (shouldLogDev) {
-        console.info(`[NOTIF][SCHEDULE] Scheduled successfully: id=${notificationId}, trigger=${reminderDate.toISOString()}`);
-      }
-    }
-
-    if (shouldLogDev && notificationIds.length === 0) {
-      console.info(`[NOTIF][SCHEDULE] No reminders scheduled for task=${task.id} (all reminders resolved to past timestamps).`);
-    }
-
-    if (shouldLogDev) {
-      const allScheduled = await getScheduledNotifications();
-      console.info(`[NOTIF][SCHEDULE] Total scheduled notifications on device: ${allScheduled.length}`);
-      allScheduled.forEach((item: any, idx: number) => {
-        const identifier = item?.identifier ?? `index-${idx}`;
-        const date = item?.trigger?.value ? new Date(item.trigger.value).toISOString() : 'unknown';
-        const channelId = item?.content?.channelId ?? item?.request?.content?.channelId ?? 'unknown';
-        const taskId = item?.content?.data?.taskId ?? item?.request?.content?.data?.taskId ?? 'unknown';
-        console.info(`[NOTIF][SCHEDULE] [${idx}] id=${identifier} trigger=${date} taskId=${String(taskId)} channelId=${String(channelId)}`);
-      });
-    }
-
-    return notificationIds;
-  } catch (error) {
-    console.error('Error scheduling task notifications:', error);
+  // Basic field validation
+  if (!task.scheduledDate || !task.scheduledTime || task.completed) {
+    const reason = !task.scheduledDate || !task.scheduledTime
+      ? 'missing scheduledDate/scheduledTime'
+      : 'task is completed';
+    console.info(`[TRACE ${traceId}] Skipped scheduling for task=${task.id}: ${reason}`);
     return [];
   }
+
+  // Permission check (may show a dialog — must NOT be inside the lock)
+  if (!channelInitialized) {
+    await ensureTaskNotificationChannel();
+    channelInitialized = true;
+  }
+  let hasPermission = await hasNotificationPermission();
+  if (shouldLogDev) {
+    console.info(`[TRACE ${traceId}] Permission before scheduling task=${task.id}: ${String(hasPermission)}`);
+  }
+  if (!hasPermission) {
+    hasPermission = await requestNotificationPermission();
+  }
+  if (!hasPermission) {
+    console.warn(`[TRACE ${traceId}] Permission not granted. Skipping schedule for task=${task.id}`);
+    return [];
+  }
+
+  // Build and validate the trigger date (pure computation — no I/O)
+  const triggerDate = buildTriggerDate(task.scheduledDate, task.scheduledTime);
+  if (!triggerDate) {
+    console.warn(`[TRACE ${traceId}] Invalid scheduled date/time for task=${task.id} date=${task.scheduledDate} time=${task.scheduledTime}`);
+    return [];
+  }
+  if (shouldLogDev) {
+    console.info(`[TRACE ${traceId}] Base trigger for task=${task.id}: ${triggerDate.toISOString()}`);
+  }
+  if (triggerDate.getTime() <= Date.now()) {
+    console.info(`[TRACE ${traceId}] Skipped scheduling for task=${task.id}: triggerDate is in the past`);
+    return [];
+  }
+
+  const reminders = normalizeTaskReminders(task);
+  if (reminders.length === 0) {
+    return [];
+  }
+
+  // ─── LOCK ACQUISITION ──────────────────────────────────────────────────────
+  const existingLock = schedulingLocks.get(task.id);
+  if (existingLock !== undefined) {
+    if (Date.now() - existingLock > 10000) {
+      console.warn(`[TRACE ${traceId}] Stale lock detected (>10s) — overriding for task:`, task.id);
+      schedulingLocks.delete(task.id);
+    } else {
+      console.log(`[TRACE ${traceId}] Lock active, skipping concurrent call for task:`, task.id);
+      const live = await getScheduledNotifications();
+      return live.filter((n: any) => getTaskIdFromNotification(n) === task.id).map((n: any) => n.identifier);
+    }
+  }
+
+  schedulingLocks.set(task.id, Date.now());
+  if (__DEV__) {
+    console.info(`[TRACE ${traceId}] Acquired lock for task:`, task.id);
+  }
+
+  try {
+    try {
+      const resultingNotificationMap = new Map<number, string>();
+      const MIN_SAFE_DELAY_MS = 5000;
+      const MAX_FUTURE_MS = 365 * 24 * 60 * 60 * 1000;
+      const reserved = new Set<number>();
+
+      // Native validation layer: Fetch ALL scheduled notifications directly inside lock
+      // NO CACHE: we must be absolutely certain about device sync
+      const nativeScheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const taskNativeNotifs = nativeScheduled.filter((n: any) => getTaskIdFromNotification(n) === task.id);
+
+      for (const reminder of reminders) {
+        const offsetMs = REMINDER_OFFSETS[reminder];
+        const reminderDate = new Date(triggerDate.getTime() - offsetMs);
+        const reminderTs = reminderDate.getTime();
+
+        const now = Date.now();
+        const deltaMs = reminderTs - now;
+        const isValidDate = reminderDate instanceof Date && !isNaN(reminderDate.getTime());
+
+        if (!isValidDate) {
+          console.error(`[TRACE ${traceId}] Invalid reminderDate — skipping`, { reminder, reminderDate });
+          continue;
+        }
+
+        if (offsetMs > 0 && Math.abs(reminderDate.getTime() - triggerDate.getTime()) < offsetMs * 0.8) {
+          console.warn(`[TRACE ${traceId}] REMINDER COLLAPSED INTO BASE TIME`, { offsetMs, reminderDate: reminderDate.toISOString(), triggerDate: triggerDate.toISOString() });
+        }
+
+        if (deltaMs <= MIN_SAFE_DELAY_MS) {
+          console.error(`[TRACE ${traceId}] COLLAPSE: Reminder is in the past or dangerously close`, {
+            reminder, reminderDate: reminderDate.toISOString(), deltaMs
+          });
+          continue;
+        }
+
+        if (deltaMs > MAX_FUTURE_MS) {
+          console.warn(`[TRACE ${traceId}] Too far in the future — Android OEM safety limit exceeded`, {
+            reminder, reminderDate: reminderDate.toISOString(), deltaMs
+          });
+          continue;
+        }
+
+        // --- Idempotency Check ---
+        // A notification is uniquely identified by: taskId + reminderTimestamp + reminderType
+        const existingNative = taskNativeNotifs.find((n: any) => {
+          const nReminder = n?.content?.data?.reminderType ?? n?.request?.content?.data?.reminderType;
+          return getTriggerTs(n) === reminderTs && nReminder === reminder;
+        });
+
+        if (existingNative || reserved.has(reminderTs)) {
+          if (shouldLogDev) {
+            console.info(`[TRACE ${traceId}] existingNativeFound=${Boolean(existingNative)} reserved=${reserved.has(reminderTs)} reminderType=${reminder} reminderTs=${reminderTs}`);
+          }
+          if (existingNative) resultingNotificationMap.set(reminderTs, existingNative.identifier);
+          continue;
+        }
+
+        reserved.add(reminderTs);
+
+        // Last-mile re-check: guard against drift between validation and scheduling
+        if (reminderTs <= Date.now()) {
+          console.warn(`[TRACE ${traceId}] Became past before scheduling (async drift)`, { reminderTs });
+          continue;
+        }
+
+        if (__DEV__) {
+          console.log(`[TRACE ${traceId}] Scheduling fresh reminder:`, {
+            taskId: task.id,
+            reminderType: reminder,
+            reminderTs,
+            triggerDateIso: triggerDate.toISOString(),
+            deltaMs,
+          });
+        }
+
+        // Missing! -> Schedule it
+        const payload = {
+          content: {
+            title: 'Task reminder',
+            body: `You need to: ${task.text || 'Complete your task'}`,
+            sound: true,
+            data: {
+              taskId: task.id,
+              reminderType: reminder,
+              uid: `${task.id}-${reminder}-${reminderTs}`
+            },
+            ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
+          },
+          trigger: {
+            date: new Date(reminderDate.getTime()),
+            ...(Platform.OS === 'android' ? { channelId: 'tasks' } : {}),
+          } as any,
+        };
+
+        let notificationId = await Notifications.scheduleNotificationAsync(payload);
+
+        // POST-VERIFY OS WRITE
+        let verifySchedule = await Notifications.getAllScheduledNotificationsAsync();
+        let isScheduled = verifySchedule.some((n: any) => n.identifier === String(notificationId));
+        if (!isScheduled) {
+          console.warn(`[TRACE ${traceId}] Silent fail detected! Retrying schedule...`);
+          notificationId = await Notifications.scheduleNotificationAsync(payload);
+        }
+
+        resultingNotificationMap.set(reminderTs, String(notificationId));
+
+        if (shouldLogDev) {
+          console.info(`[TRACE ${traceId}] createdId=${notificationId} reminderTs=${reminderTs}`);
+        }
+
+        // Anti-batching micro-delay to prevent Android alarm grouping
+        await new Promise(r => setTimeout(r, 120));
+      }
+
+      const finalIds = Array.from(resultingNotificationMap.values());
+
+      if (shouldLogDev && finalIds.length === 0) {
+        console.info(`[TRACE ${traceId}] No actionable reminders for task=${task.id}`);
+      }
+
+      // Canonical mapping preserves exactly the correctly matched set
+      return finalIds;
+    } catch (error) {
+      console.error(`[TRACE ${traceId}] Error scheduling task notifications:`, error);
+      const live = await getScheduledNotifications();
+      return live.filter((n: any) => getTaskIdFromNotification(n) === task.id).map((n: any) => n.identifier);
+    }
+  } finally {
+    schedulingLocks.delete(task.id);
+    if (__DEV__) {
+      console.log(`[TRACE ${traceId}] Released lock for task:`, task.id);
+    }
+  }
 };
+
 
 /**
  * Cancel specific notification by ID
@@ -325,27 +432,38 @@ export const cancelNotificationById = async (notificationId: string): Promise<vo
 };
 
 /**
- * Cancel all notifications for a task
+ * Cancel all notifications natively bound to a task by taskId
  */
-export const cancelTaskNotifications = async (notificationIds?: string[]): Promise<void> => {
+export const cancelTaskNotifications = async (taskId: string): Promise<void> => {
   if (!notificationsAvailable || !Notifications) {
     return;
   }
 
   try {
-    if (!notificationIds || notificationIds.length === 0) {
-      if (shouldLogDev) {
-        console.info('[NOTIF][CANCEL] No notification IDs to cancel.');
-      }
+    const live = await getScheduledNotifications();
+    const idsToCancel = live
+      .filter((n: any) => getTaskIdFromNotification(n) === taskId)
+      .map((n: any) => n.identifier);
+
+    if (idsToCancel.length === 0) {
+      if (shouldLogDev) console.info(`[NOTIF][CANCEL] No notifications found for task=${taskId}.`);
       return;
     }
 
     if (shouldLogDev) {
-      console.info(`[NOTIF][CANCEL] Canceling ${notificationIds.length} notifications.`);
+      console.info(`[NOTIF][CANCEL] Canceling ${idsToCancel.length} notifications for task=${taskId}.`);
     }
 
-    for (const id of notificationIds) {
+    for (const id of idsToCancel) {
       await cancelNotificationById(id);
+    }
+
+    // Flush + Verify Loop
+    for (let i = 0; i < 3; i++) {
+      const verifyLive = await getScheduledNotifications();
+      const stillAlive = verifyLive.some((n: any) => getTaskIdFromNotification(n) === taskId);
+      if (!stillAlive) break;
+      await new Promise(r => setTimeout(r, 75));
     }
   } catch (error) {
     console.error('Error canceling task notifications:', error);
@@ -362,10 +480,11 @@ export const rescheduleTaskNotifications = async (task: Task): Promise<string[]>
   }
 
   try {
-    // Cancel old notifications if they exist
-    if (task.notificationIds && task.notificationIds.length > 0) {
-      await cancelTaskNotifications(task.notificationIds);
-    }
+    // Rely exclusively on OS to shred anything matching the task
+    await cancelTaskNotifications(task.id);
+
+    // allow native layer to settle
+    await new Promise(res => setTimeout(res, 50));
 
     // Schedule new notifications
     const newNotificationIds = await scheduleTaskNotifications(task);
@@ -468,9 +587,58 @@ export const scheduleTestNotification = async (): Promise<string | null> => {
   }
 };
 
+export const setupNotificationHistoryListeners = () => {
+  if (!notificationsAvailable || !Notifications) return { remove: () => { } };
+
+  const receivedSub = Notifications.addNotificationReceivedListener((notification: any) => {
+    const content = notification?.request?.content;
+    const identifier = notification?.request?.identifier ?? `${Date.now()}-${Math.random()}`;
+
+    useNotificationsStore.getState().addNotification({
+      id: identifier,
+      title: content?.title ?? "Notification",
+      body: content?.body ?? "",
+      taskId: content?.data?.taskId,
+      receivedAt: Date.now(),
+    });
+  });
+
+  // Tap listener (Response)
+  const responseSub = Notifications.addNotificationResponseReceivedListener((response: any) => {
+    const content = response?.notification?.request?.content;
+    const identifier = response?.notification?.request?.identifier ?? `${Date.now()}-${Math.random()}`;
+
+    const state = useNotificationsStore.getState();
+    const existing = state.notifications.find((n) => n.id === identifier);
+
+    if (existing) {
+      if (existing.read === 0) {
+        state.markAsRead(identifier);
+      }
+    } else {
+      // Race condition: tap received before 'received' event
+      state.addNotification({
+        id: identifier,
+        title: content?.title ?? "Notification",
+        body: content?.body ?? "",
+        taskId: content?.data?.taskId,
+        receivedAt: Date.now(),
+        read: 1, // Add as already read
+      });
+    }
+  });
+
+  return {
+    remove: () => {
+      receivedSub.remove();
+      responseSub.remove();
+    }
+  };
+};
+
 export const addNotificationResponseListener = (callback: (response: any) => void) => {
   if (!notificationsAvailable || !Notifications) {
-    return { remove: () => {} };
+    return { remove: () => { } };
   }
   return Notifications.addNotificationResponseReceivedListener(callback);
 };

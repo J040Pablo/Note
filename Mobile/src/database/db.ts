@@ -92,6 +92,13 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
   await ensureColumn(db, "quick_notes", "globalOrder", "INTEGER");
   await ensureColumn(db, "files", "globalOrder", "INTEGER");
 
+  // Notifications
+  await ensureColumn(db, "notifications", "title", "TEXT");
+  await ensureColumn(db, "notifications", "body", "TEXT");
+  await ensureColumn(db, "notifications", "taskId", "TEXT");
+  await ensureColumn(db, "notifications", "read", "INTEGER DEFAULT 0");
+  await ensureColumn(db, "notifications", "receivedAt", "INTEGER");
+
   // Fix existing NULL globalOrder values - set to 9999 (will sort to end, maintains legacy order)
   await db.execAsync?.(`
     UPDATE folders SET globalOrder = 9999 WHERE globalOrder IS NULL;
@@ -186,9 +193,12 @@ const enqueueWrite = async <T>(scope: string, operation: (db: SQLite.SQLiteDatab
   return task;
 };
 
-export const runDbWrite = async (sql: string, ...params: SQLite.SQLiteBindValue[]): Promise<void> => {
+export const runDbWrite = async (
+  sql: string,
+  ...params: SQLite.SQLiteBindValue[]
+): Promise<SQLite.SQLiteRunResult> => {
   const normalized = normalizeBindParams(params);
-  await enqueueWrite(`write: ${sql}`, (db) => db.runAsync(sql, ...normalized).then(() => undefined));
+  return enqueueWrite(`write: ${sql}`, (db) => db.runAsync(sql, ...normalized));
 };
 
 export const withDbWriteTransaction = async <T>(

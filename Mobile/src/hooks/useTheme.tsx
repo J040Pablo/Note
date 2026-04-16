@@ -64,7 +64,11 @@ const LEGACY_STORAGE_ACCENT_KEY = "settings.theme.accent";
 
 export const colorPresets = [
   "#FFFFFF",
+  "#F3F4F6",
+  "#9CA3AF",
   "#6B7280",
+  "#1F2937",
+  "#111827",
   "#000000",
   "#7C3AED",
   "#3B82F6",
@@ -78,9 +82,9 @@ export const colorPresets = [
 export const primaryPresets = colorPresets;
 export const secondaryPresets = colorPresets;
 
-const DEFAULT_THEME_MODE: ThemeMode = "dark";
-const DEFAULT_PRIMARY = "#7C3AED";
-const DEFAULT_SECONDARY = "#22C55E";
+const DEFAULT_THEME_MODE: ThemeMode = "light";
+const DEFAULT_PRIMARY = "#FFFFFF";
+const DEFAULT_SECONDARY = "#111827";
 
 interface PersistedThemeSettings {
   themeMode: ThemeMode;
@@ -246,27 +250,40 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const setAccentColor = setSecondaryColor;
 
   const theme: Theme = useMemo(() => {
-    // Keep light/dark visually different regardless of selected primary color.
-    const backgroundBase = mode === "light" ? adjustColor(primaryColor, 12) : adjustColor(primaryColor, -16);
-    const primaryIsLight = isLightColor(backgroundBase);
-    const textPrimary = getContrastColor(backgroundBase);
-    const textSecondary = primaryIsLight
+    const isNeutralLight = mode === "light" && primaryColor.toUpperCase() === "#FFFFFF";
+
+    let backgroundBase = mode === "light" ? adjustColor(primaryColor, 12) : adjustColor(primaryColor, -16);
+    let primaryIsLight = isLightColor(backgroundBase);
+    let textPrimary: string = getContrastColor(backgroundBase);
+    let textSecondary = primaryIsLight
       ? adjustColor(backgroundBase, -110)
       : adjustColor(backgroundBase, 110);
 
-    const background = backgroundBase;
-    const surface = mode === "light"
+    let background = backgroundBase;
+    let surface = mode === "light"
       ? adjustColor(backgroundBase, -16)
       : adjustColor(backgroundBase, 18);
-    const surfaceElevated = mode === "light"
+    let surfaceElevated = mode === "light"
       ? adjustColor(backgroundBase, -24)
       : adjustColor(backgroundBase, 28);
-    const card = mode === "light"
+    let card = mode === "light"
       ? adjustColor(backgroundBase, -20)
       : adjustColor(backgroundBase, 24);
-    const border = mode === "light"
+    let border = mode === "light"
       ? adjustColor(backgroundBase, -34)
       : adjustColor(backgroundBase, 34);
+
+    if (isNeutralLight) {
+      backgroundBase = "#FFFFFF";
+      primaryIsLight = true;
+      background = "#FFFFFF";
+      surface = "#F3F4F6";
+      surfaceElevated = "#E5E7EB";
+      card = "#F9FAFB";
+      border = "#E5E7EB";
+      textPrimary = "#111827";
+      textSecondary = "#6B7280";
+    }
 
     let actionColor = secondaryColor;
 

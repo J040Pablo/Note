@@ -252,3 +252,12 @@ export interface Attachment {
   noteId: ID;
 }
 
+export interface Notification {
+  id: string;
+  title: string;
+  body: string;
+  taskId?: string | null;
+  read: number; // 0 or 1
+  receivedAt: number;
+}
+

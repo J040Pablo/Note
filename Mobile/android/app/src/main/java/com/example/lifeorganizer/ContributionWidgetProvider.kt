@@ -111,8 +111,6 @@ class ContributionWidgetProvider : AppWidgetProvider() {
 
         val data = readContributionData(context)
         val sortedKeys = data.keys.sorted()
-        var weekTaskCount = 0
-
         for (colIdx in 0 until COLS) {
             for (rowIdx in 0 until ROWS) {
                 val dayIndex = colIdx * ROWS + rowIdx
@@ -121,8 +119,6 @@ class ContributionWidgetProvider : AppWidgetProvider() {
                 } else {
                     0
                 }
-
-                if (colIdx == COLS - 1) weekTaskCount += count
 
                 val resId = context.resources.getIdentifier(
                     "cell_${colIdx}_${rowIdx}", "id", context.packageName
@@ -133,13 +129,11 @@ class ContributionWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        val subtitle = context.getString(R.string.contribution_widget_subtitle, weekTaskCount)
-        views.setTextViewText(R.id.widget_subtitle, subtitle)
-
         val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
         if (intent != null) {
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
             val pendingIntent = android.app.PendingIntent.getActivity(
-                context, 0, intent,
+                context, widgetId, intent,
                 android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
             )
             views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)

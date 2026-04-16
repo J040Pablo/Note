@@ -58,9 +58,9 @@ const ZOOM_MAX = 3;
 const HISTORY_LIMIT = 80;
 const FLOATING_TOOLBAR_H = 46;
 const FONT_FAMILIES = ["System", "sans-serif", "serif", "monospace", "cursive"] as const;
-const TEXT_COLORS = ["#111827", "#FFFFFF", "#EF4444", "#3B82F6", "#22C55E", "#EAB308", "#EC4899"];
+const TEXT_COLORS = ["#111827", "#4B5563", "#9CA3AF", "#FFFFFF", "#EF4444", "#22C55E", "#3B82F6", "#7C3AED", "#EAB308", "#EC4899"];
 const TEXT_SIZE_PRESETS = [12, 14, 16, 18, 21, 24, 28, 32, 40, 48];
-const DRAW_COLORS = ["#F9FAFB", "#A78BFA", "#F472B6", "#60A5FA", "#34D399", "#FBBF24", "#FB7185"];
+const DRAW_COLORS = ["#F9FAFB", "#9CA3AF", "#4B5563", "#111827", "#A78BFA", "#F472B6", "#60A5FA", "#34D399", "#FBBF24", "#FB7185"];
 const DRAW_SIZES = [2, 4, 6, 8, 12];
 const DRAW_OPACITIES = [0.35, 0.55, 0.75, 1];
 const DRAW_SMOOTH_LEVELS = [0, 0.25, 0.45, 0.65, 0.82];
@@ -88,6 +88,7 @@ interface CanvasNoteEditorProps {
   editable?: boolean;
   centerSignal?: number;
   isViewMode?: boolean;  // 🔥 NEW: true = view/read-only mode, false = editor mode
+  onInteractionStateChange?: (active: boolean) => void;
 }
 
 interface ElementInteraction {
@@ -717,7 +718,8 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   toolbarVisible = true,
   editable = true,
   centerSignal = 0,
-  isViewMode = false  // 🔥 true = read-only view, false = editor
+  isViewMode = false,  // 🔥 true = read-only view, false = editor
+  onInteractionStateChange
 }) => {
   const { theme } = useTheme();
   const defaultTextColor = "#FFFFFF";
@@ -1110,6 +1112,13 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
   useEffect(() => {
     isDraggingPageRef.current = isDraggingPage;
   }, [isDraggingPage]);
+
+  const canvasInteractionActive = overviewMode || isDraggingPage || isElementDragging || !!drawingMode || textInteractionMode === "editing" || nextPageIndex !== null;
+
+  useEffect(() => {
+    onInteractionStateChange?.(canvasInteractionActive);
+    return () => onInteractionStateChange?.(false);
+  }, [canvasInteractionActive, onInteractionStateChange]);
 
   useEffect(() => {
     Animated.timing(animatedIndex, {
@@ -3708,7 +3717,7 @@ const styles = StyleSheet.create({
     zIndex: 1
   },
   pageTrackViewport: {
-    overflow: "visible"
+    overflow: "hidden"
   },
   pageTrack: {
     flexDirection: "row",

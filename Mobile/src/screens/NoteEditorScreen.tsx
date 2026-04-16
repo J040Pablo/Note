@@ -35,6 +35,7 @@ const NoteEditorScreen: React.FC = () => {
   const [lastSavedContent, setLastSavedContent] = useState(existing?.content ?? initialContentRef.current);
   const [saving, setSaving] = useState(false);
   const [isReadMode, setIsReadMode] = useState(false);
+  const [isCanvasGestureActive, setIsCanvasGestureActive] = useState(false);
   const [centerSignal, setCenterSignal] = useState(0);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
@@ -188,6 +189,12 @@ const NoteEditorScreen: React.FC = () => {
   }, [folderId, navigation]);
 
   useEffect(() => {
+    navigation.setOptions({
+      gestureEnabled: isReadMode && !isCanvasGestureActive
+    });
+  }, [isCanvasGestureActive, isReadMode, navigation]);
+
+  useEffect(() => {
     const unsub = navigation.addListener("beforeRemove", (e) => {
       if (skipBeforeRemoveRef.current || savingRef.current) return;
       if (hasPendingChanges && persistNoteRef.current) {
@@ -208,6 +215,7 @@ const NoteEditorScreen: React.FC = () => {
           editable={!isReadMode}
           centerSignal={centerSignal}
           isViewMode={isReadMode}
+          onInteractionStateChange={setIsCanvasGestureActive}
         />
 
         <View style={[styles.headerRow, { borderBottomColor: theme.colors.border + "55" }]}> 

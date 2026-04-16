@@ -38,6 +38,18 @@
       </intent-filter>
       <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info"/>
     </receiver>
+    <receiver android:name=".TodayTasksWidgetProvider" android:exported="true" android:label="@string/widget_tasks_title">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_tasks_today_info"/>
+    </receiver>
+    <receiver android:name=".FolderQuickWidgetProvider" android:exported="true" android:label="@string/widget_folder_title">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+      </intent-filter>
+      <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_folder_quick_info"/>
+    </receiver>
     <receiver android:name=".WidgetUpdateReceiver" android:exported="true">
       <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED"/>

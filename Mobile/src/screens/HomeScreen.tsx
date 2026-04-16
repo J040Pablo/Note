@@ -12,6 +12,7 @@ import { useQuickNotesStore } from "@store/useQuickNotesStore";
 import { useTasksStore } from "@store/useTasksStore";
 import { useAppStore } from "@store/useAppStore";
 import { useFilesStore } from "@store/useFilesStore";
+import { useNotificationsStore } from "@store/useNotificationsStore";
 import { getAllTasks, isTaskCompletedForDate, shouldAppearOnDate, toDateKey, toggleTaskForDate, updateTask } from "@services/tasksService";
 import { createNote, getAllNotes, getAllQuickNotes } from "@services/notesService";
 import { createFolder, getAllFolders } from "@services/foldersService";
@@ -104,6 +105,7 @@ const HomeScreen: React.FC = () => {
   const removeFolder = useAppStore((s) => s.removeFolder);
   const removeNote = useNotesStore((s) => s.removeNote);
   const removeQuickNote = useQuickNotesStore((s) => s.removeQuickNote);
+  const unreadCount = useNotificationsStore((s) => s.unreadCount);
 
   const [search, setSearch] = useState("");
   const [selectedPinned, setSelectedPinned] = useState<{ type: PinnedItemType; id: ID; label: string } | null>(null);
@@ -614,7 +616,14 @@ const HomeScreen: React.FC = () => {
                   onPress={() => navigation.navigate("Notifications" as never)}
                   style={[hsStyles.headerActionBtn, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
                 >
-                  <Ionicons name="notifications-outline" size={20} color={theme.colors.textPrimary} />
+                  <View>
+                    <Ionicons name="notifications-outline" size={20} color={theme.colors.textPrimary} />
+                    {unreadCount > 0 && (
+                      <View style={[hsStyles.badge, { backgroundColor: theme.colors.danger }]}>
+                        <Text style={hsStyles.badgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+                      </View>
+                    )}
+                  </View>
                 </Pressable>
               </View>
             </View>
@@ -1618,6 +1627,24 @@ const hsStyles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 12
+  },
+  badge: {
+    position: "absolute",
+    top: -6,
+    right: -8,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 2,
+    zIndex: 1
+  },
+  badgeText: {
+    color: "#FFFFFF",
+    fontSize: 9,
+    fontWeight: "800",
+    textAlign: "center"
   }
 });
 

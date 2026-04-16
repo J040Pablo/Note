@@ -74,5 +74,14 @@ CREATE TABLE IF NOT EXISTS app_meta (
   key TEXT PRIMARY KEY NOT NULL,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY NOT NULL,
+  title TEXT,
+  body TEXT,
+  taskId TEXT,
+  read INTEGER DEFAULT 0,
+  receivedAt INTEGER
+);
 `;
 

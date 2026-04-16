@@ -6,4 +6,6 @@
   <string name="contribution_widget_description">Shows your completed tasks as a GitHub-style heatmap</string>
   <string name="contribution_widget_subtitle">%1$d tasks this week</string>
   <string name="contribution_widget_no_data">Complete tasks to see your heatmap</string>
+  <string name="widget_tasks_title">Today Tasks</string>
+  <string name="widget_folder_title">Quick Folder</string>
 </resources>

@@ -1,140 +1,101 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  Widget layout using nested LinearLayouts to be compatible with RemoteViews.
-  GridLayout is NOT used here because RemoteViews does not support addView() at runtime;
-  we instead pre-generate 70 ImageView cells (10 columns × 7 rows) statically.
-  The ContributionWidgetProvider.kt reads their IDs and sets the drawable/background
-  for each one based on SharedPreferences data.
--->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
-    android:orientation="vertical"
-    android:padding="10dp"
-    android:gravity="center_vertical">
+    android:gravity="center"
+    android:padding="0dp"
+    android:orientation="vertical">
 
-    <!-- Header row -->
     <LinearLayout
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:layout_marginBottom="6dp">
+        android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/widget_title"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="@string/contribution_widget_title"
-            android:textColor="@color/widget_text_primary"
-            android:textSize="11sp"
-            android:fontFamily="sans-serif-medium"
-            android:maxLines="1" />
-
-        <TextView
-            android:id="@+id/widget_subtitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="@color/widget_text_secondary"
-            android:textSize="9sp"
-            android:maxLines="1" />
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="2dp">
+            <ImageView android:id="@+id/cell_0_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_1_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_2_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_3_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_4_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_5_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_6_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_7_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_8_0" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_9_0" android:layout_width="7dp" android:layout_height="7dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="2dp">
+            <ImageView android:id="@+id/cell_0_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_1_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_2_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_3_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_4_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_5_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_6_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_7_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_8_1" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_9_1" android:layout_width="7dp" android:layout_height="7dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="2dp">
+            <ImageView android:id="@+id/cell_0_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_1_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_2_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_3_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_4_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_5_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_6_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_7_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_8_2" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_9_2" android:layout_width="7dp" android:layout_height="7dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="2dp">
+            <ImageView android:id="@+id/cell_0_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_1_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_2_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_3_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_4_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_5_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_6_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_7_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_8_3" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_9_3" android:layout_width="7dp" android:layout_height="7dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="2dp">
+            <ImageView android:id="@+id/cell_0_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_1_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_2_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_3_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_4_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_5_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_6_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_7_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_8_4" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_9_4" android:layout_width="7dp" android:layout_height="7dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal" android:layout_marginBottom="2dp">
+            <ImageView android:id="@+id/cell_0_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_1_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_2_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_3_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_4_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_5_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_6_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_7_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_8_5" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_9_5" android:layout_width="7dp" android:layout_height="7dp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="wrap_content" android:layout_height="wrap_content" android:orientation="horizontal">
+            <ImageView android:id="@+id/cell_0_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_1_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_2_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_3_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_4_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_5_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_6_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_7_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_8_6" android:layout_width="7dp" android:layout_height="7dp" android:layout_marginEnd="2dp" />
+            <ImageView android:id="@+id/cell_9_6" android:layout_width="7dp" android:layout_height="7dp" />
+        </LinearLayout>
     </LinearLayout>
-
-    <!-- Grid: 7 rows × 10 columns = 70 day cells -->
-    <!-- Row 0 (oldest week column 0) -->
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:layout_marginBottom="2dp">
-        <ImageView android:id="@+id/cell_0_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_1_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_2_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_3_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_4_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_5_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_6_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_7_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_8_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_9_0" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:scaleType="fitXY" />
-    </LinearLayout>
-    <!-- Row 1 -->
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:layout_marginBottom="2dp">
-        <ImageView android:id="@+id/cell_0_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_1_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_2_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_3_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_4_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_5_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_6_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_7_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_8_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_9_1" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:scaleType="fitXY" />
-    </LinearLayout>
-    <!-- Row 2 -->
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:layout_marginBottom="2dp">
-        <ImageView android:id="@+id/cell_0_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_1_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_2_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_3_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_4_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_5_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_6_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_7_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_8_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_9_2" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:scaleType="fitXY" />
-    </LinearLayout>
-    <!-- Row 3 -->
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:layout_marginBottom="2dp">
-        <ImageView android:id="@+id/cell_0_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_1_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_2_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_3_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_4_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_5_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_6_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_7_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_8_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_9_3" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:scaleType="fitXY" />
-    </LinearLayout>
-    <!-- Row 4 -->
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:layout_marginBottom="2dp">
-        <ImageView android:id="@+id/cell_0_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_1_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_2_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_3_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_4_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_5_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_6_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_7_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_8_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_9_4" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:scaleType="fitXY" />
-    </LinearLayout>
-    <!-- Row 5 -->
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:layout_marginBottom="2dp">
-        <ImageView android:id="@+id/cell_0_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_1_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_2_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_3_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_4_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_5_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_6_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_7_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_8_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_9_5" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:scaleType="fitXY" />
-    </LinearLayout>
-    <!-- Row 6 (today's row) -->
-    <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal">
-        <ImageView android:id="@+id/cell_0_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_1_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_2_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_3_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_4_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_5_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_6_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_7_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_8_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:layout_marginEnd="2dp" android:scaleType="fitXY" />
-        <ImageView android:id="@+id/cell_9_6" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1" android:scaleType="fitXY" />
-    </LinearLayout>
-
 </LinearLayout>

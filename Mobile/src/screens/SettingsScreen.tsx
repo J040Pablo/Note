@@ -17,7 +17,11 @@ import { usePomodoroStore } from "@store/usePomodoroStore";
 
 const PRESET_COLORS = [
   "#FFFFFF",
+  "#F3F4F6",
+  "#9CA3AF",
   "#6B7280",
+  "#1F2937",
+  "#111827",
   "#000000",
   "#EF4444",
   "#F97316",
@@ -26,6 +30,7 @@ const PRESET_COLORS = [
   "#06B6D4",
   "#3B82F6",
   "#6366F1",
+  "#7C3AED",
   "#A855F7",
   "#F472B6"
 ];

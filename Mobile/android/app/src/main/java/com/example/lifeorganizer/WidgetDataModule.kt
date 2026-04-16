@@ -15,10 +15,34 @@ class WidgetDataModule(
     companion object {
         private const val PREFS_NAME = ContributionWidgetProvider.PREFS_NAME
         private const val KEY_DATA = ContributionWidgetProvider.KEY_CONTRIBUTION_DATA
+        private const val KEY_TASKS_DATA = "tasks_today_data"
+        private const val KEY_FOLDER_DATA = "folder_quick_data"
         private const val MAX_DAYS = 70
     }
 
     override fun getName(): String = "WidgetBridge"
+
+    @ReactMethod
+    fun updateTasksWidget(jsonString: String, promise: Promise) {
+        try {
+            getPrefs().edit().putString(KEY_TASKS_DATA, jsonString).apply()
+            TodayTasksWidgetProvider.requestUpdate(reactContext)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("WIDGET_TASKS_UPDATE_ERROR", e.message ?: "Unknown error", e)
+        }
+    }
+
+    @ReactMethod
+    fun updateFolderWidget(jsonString: String, promise: Promise) {
+        try {
+            getPrefs().edit().putString(KEY_FOLDER_DATA, jsonString).apply()
+            FolderQuickWidgetProvider.requestUpdate(reactContext)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject("WIDGET_FOLDER_UPDATE_ERROR", e.message ?: "Unknown error", e)
+        }
+    }
 
     @ReactMethod
     fun updateWidgetData(jsonString: String, promise: Promise) {
@@ -73,6 +97,8 @@ class WidgetDataModule(
     fun refreshWidget(promise: Promise) {
         try {
             triggerWidgetUpdate()
+            TodayTasksWidgetProvider.requestUpdate(reactContext)
+            FolderQuickWidgetProvider.requestUpdate(reactContext)
             promise.resolve(null)
         } catch (e: Exception) {
             promise.reject("WIDGET_REFRESH_ERROR", e.message ?: "Unknown error", e)
