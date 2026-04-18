@@ -27,8 +27,10 @@ import type {
   FolderViewMode,
 } from "../types";
 import { useAppMode } from "../../../app/mode";
-import { getFolders, getNotes, getQuickNotes, loadData, saveData } from "../../../services/webData";
-import { dispatchEntitySyncEvent, subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQuickNote } from "../../tasks/sync";
+import { getFolders, getNotes, getQuickNotes } from "../../../services/webData";
+import { createFolder, deleteFolder, updateFolder } from "../../../services/foldersService.web";
+import { createNote, deleteNote, updateNote, deleteQuickNote, updateQuickNote } from "../../../services/notesService.web";
+import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQuickNote } from "../../tasks/sync";
 import { subscribeSyncBridge } from "../../../services/syncBridge";
 import styles from "./FoldersPage.module.css";
 
@@ -182,6 +184,49 @@ const getDescendantIds = (sourceId: string, entries: FolderEntry[]) => {
   return descendants;
 };
 
+const persistFolderEntry = (entry: FolderEntry): void => {
+  if (entry.type === "folder") {
+    updateFolder({
+      ...mapEntryToFolder(entry),
+      updatedAt: Date.now(),
+    });
+    return;
+  }
+
+  if (entry.type === "note") {
+    updateNote({
+      ...mapEntryToNote(entry),
+      updatedAt: Date.now(),
+    });
+    return;
+  }
+
+  if (entry.type === "quick-note") {
+    updateQuickNote(entry.id, {
+      title: entry.name,
+      content: entry.content ?? "",
+      text: entry.content ?? "",
+      folderId: entry.parentId,
+    });
+  }
+};
+
+const deleteFolderEntry = (entry: FolderEntry): void => {
+  if (entry.type === "folder") {
+    deleteFolder(entry.id);
+    return;
+  }
+
+  if (entry.type === "note") {
+    deleteNote(entry.id);
+    return;
+  }
+
+  if (entry.type === "quick-note") {
+    deleteQuickNote(entry.id);
+  }
+};
+
 const FoldersPage: React.FC = () => {
   const { mode } = useAppMode();
   const navigate = useNavigate();
@@ -220,80 +265,6 @@ const FoldersPage: React.FC = () => {
 
   const leaveTimerRef = React.useRef<number | null>(null);
   const enterTimerRef = React.useRef<number | null>(null);
-
-  const persistEntries = React.useCallback((nextEntries: FolderEntry[]) => {
-    try {
-      const store = loadData();
-
-      const foldersForStore = nextEntries
-        .filter((entry) => entry.type === "folder")
-        .map((folder) => mapEntryToFolder(folder));
-
-      const notesForStore = nextEntries
-        .filter((entry) => entry.type === "note")
-        .map((note) => mapEntryToNote(note));
-
-      saveData({
-        ...store,
-        folders: foldersForStore,
-        notes: notesForStore,
-      });
-    } catch {
-      // Ignore persistence errors to avoid affecting navigation/UI.
-    }
-  }, []);
-
-  const updateEntries = React.useCallback(
-    (updater: (prev: FolderEntry[]) => FolderEntry[]) => {
-      setEntries((prev) => {
-        const next = updater(prev);
-        if (isMobileSync) {
-          const prevFolders = prev.filter((entry) => entry.type === "folder");
-          const nextFolders = next.filter((entry) => entry.type === "folder");
-          const prevNotes = prev.filter((entry) => entry.type === "note");
-          const nextNotes = next.filter((entry) => entry.type === "note");
-          const nextFolderIds = new Set(nextFolders.map((entry) => entry.id));
-          const nextNoteIds = new Set(nextNotes.map((entry) => entry.id));
-
-          nextFolders.forEach((folder) => {
-            // sent to mobile
-            dispatchEntitySyncEvent({
-              type: "UPSERT_FOLDER",
-              payload: { ...mapEntryToFolder(folder), updatedAt: Date.now() },
-            });
-          });
-          prevFolders
-            .filter((folder) => !nextFolderIds.has(folder.id))
-            .forEach((folder) =>
-              dispatchEntitySyncEvent({
-                type: "DELETE_FOLDER",
-                payload: { id: folder.id, updatedAt: Date.now() },
-              })
-            );
-
-          nextNotes.forEach((note) => {
-            // sent to mobile
-            dispatchEntitySyncEvent({
-              type: "UPSERT_NOTE",
-              payload: { ...mapEntryToNote(note), updatedAt: Date.now() },
-            });
-          });
-          prevNotes
-            .filter((note) => !nextNoteIds.has(note.id))
-            .forEach((note) =>
-              dispatchEntitySyncEvent({
-                type: "DELETE_NOTE",
-                payload: { id: note.id, updatedAt: Date.now() },
-              })
-            );
-        } else {
-          persistEntries(next);
-        }
-        return next;
-      });
-    },
-    [isMobileSync, persistEntries]
-  );
 
   React.useEffect(() => {
     if (!isMobileSync) return;
@@ -458,20 +429,19 @@ const FoldersPage: React.FC = () => {
       const safeName = payload.name.trim();
       if (!safeName) return;
 
-      const created: FolderEntry = {
-        id: makeId("folder"),
+      const created = createFolder({
         parentId: currentFolderId ?? null,
-        type: "folder",
-        createdAt: Date.now(),
-        ...payload,
         name: safeName,
-      };
+        description: payload.description,
+        color: payload.color,
+        imageUrl: payload.imageUrl,
+        bannerUrl: payload.bannerUrl,
+      });
 
-      // persist after create
-      updateEntries((prev) => [created, ...prev]);
+      setEntries((prev) => [mapSyncFolderToEntry(created), ...prev]);
       setShowModal(false);
     },
-    [currentFolderId, updateEntries]
+    [currentFolderId]
   );
 
   const handleFabAction = React.useCallback(
@@ -493,7 +463,7 @@ const FoldersPage: React.FC = () => {
           createdAt: Date.now(),
         };
 
-        updateEntries((prev) => [file, ...prev]);
+        setEntries((prev) => [file, ...prev]);
         return;
       }
 
@@ -507,7 +477,7 @@ const FoldersPage: React.FC = () => {
         return;
       }
     },
-    [currentFolderId, navigate, updateEntries, visibleEntries]
+    [currentFolderId, navigate, visibleEntries]
   );
 
   const handleOpenMenu = React.useCallback((itemId: string, anchor: DOMRect) => {
@@ -535,12 +505,17 @@ const FoldersPage: React.FC = () => {
       closeContextMenu();
 
       if (action === "delete") {
-        // persist after delete
-        updateEntries((prev) => {
+        setEntries((prev) => {
           const descendants =
             selectedContextItem.type === "folder"
               ? getDescendantIds(selectedContextItem.id, prev)
               : new Set<string>();
+
+          prev.forEach((entry) => {
+            if (entry.id === selectedContextItem.id || descendants.has(entry.id)) {
+              deleteFolderEntry(entry);
+            }
+          });
 
           return prev.filter(
             (entry) => entry.id !== selectedContextItem.id && !descendants.has(entry.id)
@@ -578,7 +553,7 @@ const FoldersPage: React.FC = () => {
       setUploadedBanner(selectedContextItem.bannerUrl);
       setModalState({ mode: "media", itemId: selectedContextItem.id });
     },
-    [closeContextMenu, currentFolderId, selectedContextItem, updateEntries]
+    [closeContextMenu, currentFolderId, selectedContextItem]
   );
 
   const closeModalState = React.useCallback(() => {
@@ -852,11 +827,13 @@ const FoldersPage: React.FC = () => {
                     const safeName = renameValue.trim();
                     if (!safeName) return;
 
-                    // persist after rename
-                    updateEntries((prev) =>
-                      prev.map((entry) =>
-                        entry.id === modalState.itemId ? { ...entry, name: safeName } : entry
-                      )
+                    setEntries((prev) =>
+                      prev.map((entry) => {
+                        if (entry.id !== modalState.itemId) return entry;
+                        const next = { ...entry, name: safeName };
+                        persistFolderEntry(next);
+                        return next;
+                      })
                     );
                     closeModalState();
                     return;
@@ -866,20 +843,21 @@ const FoldersPage: React.FC = () => {
                     const safeName = editorTitle.trim();
                     if (!safeName) return;
 
-                    updateEntries((prev) =>
-                      prev.map((entry) =>
-                        entry.id === modalState.itemId
-                          ? {
-                              ...entry,
-                              name: safeName,
-                              content: editorBody,
-                              description:
-                                entry.type === "folder"
-                                  ? editorBody.slice(0, 120)
-                                  : entry.description,
-                            }
-                          : entry
-                      )
+                    setEntries((prev) =>
+                      prev.map((entry) => {
+                        if (entry.id !== modalState.itemId) return entry;
+                        const next = {
+                          ...entry,
+                          name: safeName,
+                          content: editorBody,
+                          description:
+                            entry.type === "folder"
+                              ? editorBody.slice(0, 120)
+                              : entry.description,
+                        };
+                        persistFolderEntry(next);
+                        return next;
+                      })
                     );
                     closeModalState();
                     return;
@@ -889,26 +867,19 @@ const FoldersPage: React.FC = () => {
                     const safeName = editorTitle.trim();
                     if (!safeName) return;
 
-                    const newNote: FolderEntry = {
-                      id: makeId("note"),
-                      parentId: toParentId(currentFolderId),
-                      type: "note",
-                      name: safeName,
-                      description: "Create Note",
+                    const created = createNote({
+                      title: safeName,
                       content: editorBody,
-                      color: "#f59e0b",
-                      createdAt: Date.now(),
-                    };
+                      folderId: toParentId(currentFolderId),
+                    });
 
-                    // persist note after create
-                    updateEntries((prev) => [newNote, ...prev]);
+                    setEntries((prev) => [mapSyncNoteToEntry(created), ...prev]);
                     closeModalState();
                     return;
                   }
 
                   if (modalState.mode === "move") {
-                    // persist after move
-                    updateEntries((prev) => {
+                    setEntries((prev) => {
                       const targetParentId = toParentId(moveTarget);
                       const selectedItem = prev.find((entry) => entry.id === modalState.itemId);
                       if (!selectedItem) return prev;
@@ -921,45 +892,45 @@ const FoldersPage: React.FC = () => {
                         }
                       }
 
-                      return prev.map((entry) =>
-                        entry.id === modalState.itemId
-                          ? {
-                              ...entry,
-                              parentId: targetParentId,
-                            }
-                          : entry
-                      );
+                      return prev.map((entry) => {
+                        if (entry.id !== modalState.itemId) return entry;
+                        const next = {
+                          ...entry,
+                          parentId: targetParentId,
+                        };
+                        persistFolderEntry(next);
+                        return next;
+                      });
                     });
                     closeModalState();
                     return;
                   }
 
                   if (modalState.mode === "color") {
-                    updateEntries((prev) =>
-                      prev.map((entry) =>
-                        entry.id === modalState.itemId
-                          ? {
-                              ...entry,
-                              color: selectedColor,
-                            }
-                          : entry
-                      )
+                    setEntries((prev) =>
+                      prev.map((entry) => {
+                        if (entry.id !== modalState.itemId) return entry;
+                        const next = { ...entry, color: selectedColor };
+                        persistFolderEntry(next);
+                        return next;
+                      })
                     );
                     closeModalState();
                     return;
                   }
 
                   if (modalState.mode === "media") {
-                    updateEntries((prev) =>
-                      prev.map((entry) =>
-                        entry.id === modalState.itemId
-                          ? {
-                              ...entry,
-                              imageUrl: uploadedImage,
-                              bannerUrl: uploadedBanner,
-                            }
-                          : entry
-                      )
+                    setEntries((prev) =>
+                      prev.map((entry) => {
+                        if (entry.id !== modalState.itemId) return entry;
+                        const next = {
+                          ...entry,
+                          imageUrl: uploadedImage,
+                          bannerUrl: uploadedBanner,
+                        };
+                        persistFolderEntry(next);
+                        return next;
+                      })
                     );
                     closeModalState();
                   }

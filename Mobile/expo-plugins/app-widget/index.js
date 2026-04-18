@@ -42,7 +42,7 @@ function withContributionWidgetManifest(config) {
         $: {
           'android:name': PROVIDER_SIMPLE,
           'android:exported': 'true',
-          'android:label': '@string/contribution_widget_title',
+          'android:label': '@string/app_name',
         },
         'intent-filter': [
           {
@@ -115,10 +115,10 @@ function withContributionWidgetStrings(config) {
     const existing = strings.resources.string.map((s) => s.$?.name);
 
     const entries = [
-      { name: 'contribution_widget_title', value: 'Task Contributions' },
-      { name: 'contribution_widget_description', value: 'Shows your completed tasks as a GitHub-style heatmap' },
-      { name: 'contribution_widget_subtitle', value: '%1$d tasks this week' },
-      { name: 'contribution_widget_no_data', value: 'Complete tasks to see your heatmap' },
+      { name: 'contribution_widget_title', value: 'Life Organizer' },
+      { name: 'contribution_widget_description', value: '' },
+      { name: 'contribution_widget_subtitle', value: '' },
+      { name: 'contribution_widget_no_data', value: '' },
     ];
 
     for (const entry of entries) {

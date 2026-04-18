@@ -14,6 +14,7 @@ import { useTaskSyncServer } from "@hooks/useTaskSyncServer";
 import { useSyncListener } from "@hooks/useSyncListener";
 import { useInitializeStores } from "@hooks/useInitializeStores";
 import { usePomodoroTimer } from "@hooks/usePomodoroTimer";
+import { useWidgetSync } from "@hooks/useWidgetSync";
 import { addNotificationResponseListener, getLastNotificationResponse } from "@services/notificationService";
 import { usePomodoroStore } from "@store/usePomodoroStore";
 import { useTasksStore } from "@store/useTasksStore";
@@ -54,6 +55,7 @@ const ThemedNavigation: React.FC = () => {
   useTaskSyncServer();
   useSyncListener(); // Real-time sync listener for all stores
   useInitializeStores(); // Pre-load stores to prevent race conditions with notifications
+  useWidgetSync(); // CRITICAL: Keep Android contribution widget in sync with task state
 
   React.useEffect(() => {
     const handledKeys = new Set<string>();

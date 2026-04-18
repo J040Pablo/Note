@@ -230,13 +230,16 @@ export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Ta
     return toggleTask(task);
   }
 
+  // Normalize dateKey to YYYY-MM-DD format (safety check)
+  const normalizedDateKey = /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : toDateKey(dateKey as any);
+  
   const completedDates = new Set(task.completedDates ?? []);
-  const isCompleting = !completedDates.has(dateKey);
+  const isCompleting = !completedDates.has(normalizedDateKey);
   
   if (isCompleting) {
-    completedDates.add(dateKey);
+    completedDates.add(normalizedDateKey);
   } else {
-    completedDates.delete(dateKey);
+    completedDates.delete(normalizedDateKey);
   }
 
   const updated: Task = {
@@ -244,6 +247,10 @@ export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Ta
     updatedAt: Date.now(),
     completedDates: Array.from(completedDates)
   };
+
+  if (__DEV__) {
+    console.log(`[TASK] toggleTaskForDate: ${task.id} date=${normalizedDateKey} isCompleting=${isCompleting} newDates=${updated.completedDates.length}`);
+  }
 
   // Cancel notifications when all instances are completed
   if (isCompleting && task.notificationIds && task.notificationIds.length > 0) {

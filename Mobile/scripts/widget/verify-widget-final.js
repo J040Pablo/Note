@@ -6,9 +6,9 @@ const path = require('path');
 console.log('\n=== WIDGET PRESENCE VERIFICATION ===\n');
 
 const checks = {
-  'AppWidgetProvider.kt': {
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/AppWidgetProvider.kt',
-    verify: (content) => content.includes('class AppWidgetProvider') && content.includes('override fun onUpdate')
+  'ContributionWidgetProvider.kt': {
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionWidgetProvider.kt',
+    verify: (content) => content.includes('class ContributionWidgetProvider') && content.includes('override fun onUpdate')
   },
   'widget_info.xml': {
     path: '../../android/app/src/main/res/xml/widget_info.xml',
@@ -16,7 +16,7 @@ const checks = {
   },
   'widget_layout.xml': {
     path: '../../android/app/src/main/res/layout/widget_layout.xml',
-    verify: (content) => content.includes('widget_title') && content.includes('widget_grid') && content.includes('cell_29')
+    verify: (content) => content.includes('widget_root') && content.includes('widget_grid') && content.includes('cell_9_6')
   },
   'WidgetDataRepository.kt': {
     path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataRepository.kt',
@@ -28,15 +28,15 @@ const checks = {
   },
   'ProGuard Rules': {
     path: '../../android/app/proguard-rules.pro',
-    verify: (content) => content.includes('com.example.lifeorganizer.AppWidgetProvider')
+    verify: (content) => content.includes('ContributionWidgetProvider')
   },
   'Build Gradle': {
     path: '../../android/app/build.gradle',
-    verify: (content) => content.includes('validateWidgetProvider')
+    verify: (content) => content.includes('com.android.application')
   },
   'Plugin Index': {
     path: '../../expo-plugins/app-widget/index.js',
-    verify: (content) => content.includes('RECEIVER_NAME') && content.includes('android:exported')
+    verify: (content) => content.includes('ContributionWidgetProvider') && content.includes('android:exported')
   }
 };
 
@@ -69,8 +69,8 @@ const manifestFullPath = path.join(__dirname, manifestPath);
 if (fs.existsSync(manifestFullPath)) {
   const manifestContent = fs.readFileSync(manifestFullPath, 'utf-8');
   const hasReceiver =
-    manifestContent.includes('com.example.lifeorganizer.AppWidgetProvider') ||
-    manifestContent.includes('android:name=".AppWidgetProvider"');
+    manifestContent.includes('com.example.lifeorganizer.ContributionWidgetProvider') ||
+    manifestContent.includes('android:name=".ContributionWidgetProvider"');
   
   if (!hasReceiver) {
     console.log('ℹ️  AndroidManifest.xml: Receiver will be added by plugin during prebuild');

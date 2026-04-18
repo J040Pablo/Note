@@ -23,7 +23,7 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              // Widget bridge: exposes NativeModules.WidgetBridge to JS
+              // Widget bridge: exposes NativeModules.WidgetBridge to JS runtime.
               add(WidgetDataPackage())
             }
 

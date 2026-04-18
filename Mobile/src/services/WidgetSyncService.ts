@@ -23,6 +23,9 @@ import {
   refreshWidget as nativeRefresh,
   getStoredHeatmap,
   clearWidgetData as nativeClear,
+  syncHeatmapJson,
+  restoreWidgetSyncQueue,
+  recoverFailedWidgetSync,
 } from '../widgets/contribution-widget/widgetSync';
 import {
   buildContributionMap,
@@ -101,11 +104,7 @@ class WidgetSyncService {
    */
   static async updateWidgetData(heatmapJson: string): Promise<void> {
     if (Platform.OS !== 'android') return;
-    const { NativeModules } = require('react-native');
-    const Bridge = NativeModules.WidgetBridge;
-    if (Bridge?.updateWidgetData) {
-      await Bridge.updateWidgetData(heatmapJson);
-    }
+    await syncHeatmapJson(heatmapJson);
   }
 
   /**
@@ -130,6 +129,18 @@ class WidgetSyncService {
   static async clearWidgetData(): Promise<void> {
     if (Platform.OS !== 'android') return;
     await nativeClear();
+  }
+
+  /** Restore in-flight queue items persisted before app kill/crash. */
+  static async restoreQueue(): Promise<number> {
+    if (Platform.OS !== 'android') return 0;
+    return restoreWidgetSyncQueue();
+  }
+
+  /** Retry items that previously exceeded max retries. */
+  static async recoverFailedSyncs(): Promise<number> {
+    if (Platform.OS !== 'android') return 0;
+    return recoverFailedWidgetSync();
   }
 
   // ── Legacy groupTasksByDate (kept for widgetIntegrationExample.ts) ───

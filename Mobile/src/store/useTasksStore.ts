@@ -20,15 +20,19 @@ export const useTasksStore = create<TasksState & TasksActions>()(
 
     setTasks: (list) =>
       set((state) => {
-        state.tasks = {};
+        const nextTasks: Record<ID, Task> = {};
         for (const task of list) {
-          state.tasks[task.id] = { ...task, parentId: task.parentId ?? null };
+          nextTasks[task.id] = { ...task, parentId: task.parentId ?? null };
         }
+        state.tasks = nextTasks;
       }),
 
     upsertTask: (task) =>
       set((state) => {
-        state.tasks[task.id] = { ...task, parentId: task.parentId ?? null };
+        state.tasks = {
+          ...state.tasks,
+          [task.id]: { ...task, parentId: task.parentId ?? null },
+        };
         
         if (task.parentId && state.tasks[task.parentId]) {
           const parent = state.tasks[task.parentId];
@@ -43,7 +47,9 @@ export const useTasksStore = create<TasksState & TasksActions>()(
         if (!taskToRemove) return;
         
         const parentId = taskToRemove.parentId;
-        delete state.tasks[taskId];
+        const nextTasks = { ...state.tasks };
+        delete nextTasks[taskId];
+        state.tasks = nextTasks;
 
         if (parentId && state.tasks[parentId]) {
           const parent = state.tasks[parentId];
@@ -65,7 +71,10 @@ export const useTasksStore = create<TasksState & TasksActions>()(
            parentId: payload.parentId || null,
            ...payload
         };
-        state.tasks[id] = newTask;
+          state.tasks = {
+           ...state.tasks,
+           [id]: newTask,
+          };
 
         if (newTask.parentId && state.tasks[newTask.parentId]) {
            state.tasks[newTask.parentId].completed = false;

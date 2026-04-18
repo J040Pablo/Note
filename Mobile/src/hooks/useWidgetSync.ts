@@ -50,6 +50,12 @@ export const useWidgetSync = (
   // ── Mount: run full sync once ─────────────────────────────────────────
   useEffect(() => {
     if (Platform.OS !== 'android') return;
+    WidgetSyncService.restoreQueue().catch((e) =>
+      console.error('[useWidgetSync] restoreQueue error:', e)
+    );
+    WidgetSyncService.recoverFailedSyncs().catch((e) =>
+      console.error('[useWidgetSync] recoverFailedSyncs error:', e)
+    );
     runFullSync();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // intentionally runs only on mount
@@ -73,6 +79,9 @@ export const useWidgetSync = (
       'change',
       (state: AppStateStatus) => {
         if (state === 'active') {
+          WidgetSyncService.recoverFailedSyncs().catch((e) =>
+            console.error('[useWidgetSync] recoverFailedSyncs (active) error:', e)
+          );
           // Full sync on foreground — guaranteed accuracy regardless of what
           // happened while the app was in the background / killed.
           WidgetSyncService.updateWidgetWithTasks(tasks).catch((e) =>

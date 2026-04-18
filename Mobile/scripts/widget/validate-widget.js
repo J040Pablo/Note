@@ -8,7 +8,7 @@ const checks = [
     name: 'AndroidManifest.xml widget receiver',
     path: '../../android/app/src/main/AndroidManifest.xml',
     validate: (content) => {
-      const receiverRegex = /<receiver[^>]*android:name="(\.AppWidgetProvider|com\.example\.lifeorganizer\.AppWidgetProvider)"[^>]*android:exported="true"[^>]*>/s;
+      const receiverRegex = /<receiver[^>]*android:name="(\.ContributionWidgetProvider|com\.example\.lifeorganizer\.ContributionWidgetProvider)"[^>]*android:exported="true"[^>]*>/s;
       const actionRegex = /<action[^>]*android:name="android\.appwidget\.action\.APPWIDGET_UPDATE"\s*\/>/s;
       const metadataRegex = /<meta-data[^>]*android:name="android\.appwidget\.provider"[^>]*android:resource="@xml\/widget_info"\s*\/>/s;
       return receiverRegex.test(content) && actionRegex.test(content) && metadataRegex.test(content);
@@ -21,24 +21,24 @@ const checks = [
       return content.includes('@layout/widget_layout') &&
              content.includes('android:minWidth') &&
              content.includes('android:minHeight') &&
-             content.includes('android:description');
+             content.includes('android:targetCellWidth');
     }
   },
   {
     name: 'widget_layout.xml',
     path: '../../android/app/src/main/res/layout/widget_layout.xml',
     validate: (content) => {
-      return content.includes('widget_title') &&
+      return content.includes('widget_root') &&
              content.includes('widget_grid') &&
-             content.includes('cell_0') &&
-             content.includes('cell_29');
+             content.includes('cell_0_0') &&
+             content.includes('cell_9_6');
     }
   },
   {
-    name: 'AppWidgetProvider.kt',
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/AppWidgetProvider.kt',
+    name: 'ContributionWidgetProvider.kt',
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionWidgetProvider.kt',
     validate: (content) => {
-      return content.includes('class AppWidgetProvider') &&
+      return content.includes('class ContributionWidgetProvider') &&
              content.includes('updateAllWidgets') &&
              content.includes('R.layout.widget_layout') &&
              content.includes('WidgetDataRepository.getHeatmapData');
@@ -50,7 +50,7 @@ const checks = [
     validate: (content) => {
       return content.includes('saveHeatmapData') &&
              content.includes('getHeatmapData') &&
-             content.includes('widget_data');
+             content.includes('contribution_data');
     }
   },
   {
@@ -59,15 +59,15 @@ const checks = [
     validate: (content) => {
       return content.includes('class WidgetBridgeModule') &&
              content.includes('updateWidgetData') &&
-             content.includes('AppWidgetProvider.updateAllWidgets');
+             content.includes('ContributionWidgetProvider.updateAllWidgets');
     }
   },
   {
     name: 'strings.xml',
     path: '../../android/app/src/main/res/values/strings.xml',
     validate: (content) => {
-      return content.includes('widget_description') &&
-             content.includes('widget_title');
+      return content.includes('contribution_widget_title') &&
+             content.includes('contribution_widget_description');
     }
   }
 ];

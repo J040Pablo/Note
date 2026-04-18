@@ -3,10 +3,7 @@
   <color name="iconBackground">#0f172a</color>
   <color name="colorPrimary">#023c69</color>
   <color name="colorPrimaryDark">#0f172a</color>
-  <!-- Widget contribution heatmap: light mode -->
   <color name="widget_bg">#0D1117</color>
-  <color name="widget_text_primary">#F1F5F9</color>
-  <color name="widget_text_secondary">#94A3B8</color>
   <color name="widget_cell_empty">#161B22</color>
   <color name="widget_cell_level1">#0E4429</color>
   <color name="widget_cell_level2">#006D32</color>

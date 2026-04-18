@@ -2,8 +2,6 @@ package com.example.lifeorganizer
 
 import android.os.Build
 import android.os.Bundle
-import android.content.Intent
-import android.net.Uri
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -13,46 +11,12 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
-  private fun handleWidgetIntentExtras(intent: Intent?) {
-    if (intent == null || intent.data != null) return
-    
-    val folderId = intent.getStringExtra("folderId")
-    if (!folderId.isNullOrBlank()) {
-        intent.data = Uri.parse("lifeorganizer://folder/${Uri.encode(folderId)}")
-        intent.removeExtra("folderId")
-        intent.removeExtra("openRoute")
-        return
-    }
-
-    val openRoute = intent.getStringExtra("openRoute")
-    when (openRoute) {
-        "tasks" -> {
-            intent.data = Uri.parse("lifeorganizer://tasks")
-            intent.removeExtra("folderId")
-            intent.removeExtra("openRoute")
-        }
-        else -> { /* ignore invalid or null routes */ }
-    }
-  }
-
   override fun onCreate(savedInstanceState: Bundle?) {
     // Set the theme to AppTheme BEFORE onCreate to support
     // coloring the background, status bar, and navigation bar.
     // This is required for expo-splash-screen.
-    setTheme(R.style.AppTheme)
-    
-    handleWidgetIntentExtras(intent)
-    
+    setTheme(R.style.AppTheme);
     super.onCreate(null)
-  }
-
-  override fun onNewIntent(intent: Intent) {
-    super.onNewIntent(intent)
-    
-    handleWidgetIntentExtras(intent)
-    
-    // Set the intent so React Native's Linking module can read it via getInitialURL resolving
-    setIntent(intent)
   }
 
   /**

@@ -11,9 +11,10 @@ import {
   updateNote,
   updateQuickNote,
 } from "@services/notesService";
-import { createTask, deleteTask, getAllTasks, updateTask } from "@services/tasksService";
+import { createTask, deleteTask, getAllTasks, toDateKey, toggleTaskForDate, updateTask } from "@services/tasksService";
 import { deleteMetaKey, upsertMetaKey } from "@services/appMetaService";
-import { subscribeTaskServerEvents, subscribeEntityServerEvents, type TaskServerEvent } from "@services/sync/taskSyncEvents";
+import { subscribeTaskServerEvents, type TaskServerEvent } from "@services/sync/taskSyncEvents";
+import { subscribeEntityServerEvents, type EntityServerEvent } from "@services/sync/entitySyncEvents";
 import { fromSyncPriority, toSyncTask, type SyncPriority, type SyncTask } from "@services/sync/taskSyncProtocol";
 import type { Task } from "@models/types";
 import { isExpoGo, shouldLogDev } from "@utils/runtimeEnv";
@@ -22,6 +23,16 @@ type SocketClient = {
   id: string | number;
   on: (eventName: "message" | "disconnected", callback: (payload: unknown) => void) => void;
   send: (payload: string) => void;
+};
+
+type SyncNotePayload = {
+  id?: string;
+  parentId?: string | null;
+  folderId?: string | null;
+  title?: string;
+  content?: string;
+  createdAt?: number;
+  updatedAt?: number;
 };
 
 type ServerInstance = {
@@ -53,7 +64,7 @@ type SyncIncomingMessage =
       };
     }
   | { type: "TASK_DELETE"; payload?: { id?: string; updatedAt?: number } }
-  | { type: "TASK_TOGGLE"; payload?: { id?: string; completed?: boolean; updatedAt?: number } }
+  | { type: "TASK_TOGGLE"; payload?: { id?: string; date?: string; updatedAt?: number } }
   | { type: "UPSERT_TASK"; payload?: Partial<SyncTask> & { id?: string } }
   | { type: "DELETE_TASK"; payload?: { id?: string; updatedAt?: number } }
   | {
@@ -73,15 +84,7 @@ type SyncIncomingMessage =
   | { type: "DELETE_FOLDER"; payload?: { id?: string; updatedAt?: number } }
   | {
       type: "UPSERT_NOTE";
-      payload?: {
-        id?: string;
-        parentId?: string | null;
-        folderId?: string | null;
-        title?: string;
-        content?: string;
-        createdAt?: number;
-        updatedAt?: number;
-      };
+      payload?: SyncNotePayload;
     }
   | { type: "DELETE_NOTE"; payload?: { id?: string; updatedAt?: number } }
   | {
@@ -139,15 +142,134 @@ let serverUrl: string | null = null;
 let unsubscribeTaskBroadcast: (() => void) | null = null;
 let unsubscribeEntityBroadcast: (() => void) | null = null;
 const clients = new Map<string, SocketClient>();
+const socketClientIds = new Map<string, string>();
 const processedMessageIds = new Map<string, number>();
 const pendingFullSyncIds = new Set<string>();
 const MAX_PROCESSED_MESSAGE_IDS = 4000;
+const BROADCAST_SUPPRESSION_TTL_MS = 15_000;
+
+type BroadcastSuppression = {
+  socketId: string;
+  clientId?: string;
+  expiresAt: number;
+};
+
+const broadcastSuppressions = new Map<string, BroadcastSuppression>();
 
 let hasLoggedExpoGoWsUnsupported = false;
 
 const getSocketId = (socket: SocketClient): string => String(socket.id);
 
 const createMessageId = (): string => `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+
+const logSyncDebug = (...args: unknown[]) => {
+  if (!shouldLogDev) return;
+  console.log(...args);
+};
+
+const normalizeOptionalString = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+const buildSuppressionKey = (entity: string, id: string): string => `${entity}:${id}`;
+
+const keyFromIncomingMessage = (message: SyncIncomingMessage): string | null => {
+  switch (message.type) {
+    case "TASK_CREATE":
+    case "TASK_UPDATE":
+    case "UPSERT_TASK":
+    case "TASK_TOGGLE": {
+      const id = normalizeOptionalString(message.payload?.id);
+      return id ? buildSuppressionKey("task", id) : null;
+    }
+    case "TASK_DELETE":
+    case "DELETE_TASK": {
+      const id = normalizeOptionalString(message.payload?.id);
+      return id ? buildSuppressionKey("task", id) : null;
+    }
+    case "UPSERT_NOTE": {
+      const id = normalizeOptionalString(message.payload?.id);
+      return id ? buildSuppressionKey("note", id) : null;
+    }
+    case "DELETE_NOTE": {
+      const id = normalizeOptionalString(message.payload?.id);
+      return id ? buildSuppressionKey("note", id) : null;
+    }
+    case "UPSERT_QUICK_NOTE": {
+      const id = normalizeOptionalString(message.payload?.id);
+      return id ? buildSuppressionKey("quickNote", id) : null;
+    }
+    case "DELETE_QUICK_NOTE": {
+      const id = normalizeOptionalString(message.payload?.id);
+      return id ? buildSuppressionKey("quickNote", id) : null;
+    }
+    case "UPSERT_FOLDER": {
+      const id = normalizeOptionalString(message.payload?.id);
+      return id ? buildSuppressionKey("folder", id) : null;
+    }
+    case "DELETE_FOLDER": {
+      const id = normalizeOptionalString(message.payload?.id);
+      return id ? buildSuppressionKey("folder", id) : null;
+    }
+    case "UPSERT_APP_META": {
+      const key = normalizeOptionalString(message.payload?.key);
+      return key ? buildSuppressionKey("appMeta", key) : null;
+    }
+    case "DELETE_APP_META": {
+      const key = normalizeOptionalString(message.payload?.key);
+      return key ? buildSuppressionKey("appMeta", key) : null;
+    }
+    default:
+      return null;
+  }
+};
+
+const keyFromTaskEvent = (event: TaskServerEvent): string | null => {
+  if (event.type === "TASK_DELETED") {
+    return buildSuppressionKey("task", String(event.payload.id));
+  }
+  return buildSuppressionKey("task", String(event.payload.id));
+};
+
+const keyFromEntityEvent = (event: EntityServerEvent): string | null => {
+  switch (event.type) {
+    case "UPSERT_FOLDER":
+    case "DELETE_FOLDER":
+      return buildSuppressionKey("folder", String(event.payload.id));
+    case "UPSERT_NOTE":
+    case "DELETE_NOTE":
+      return buildSuppressionKey("note", String(event.payload.id));
+    case "UPSERT_QUICK_NOTE":
+    case "DELETE_QUICK_NOTE":
+      return buildSuppressionKey("quickNote", String(event.payload.id));
+    case "UPSERT_TASK":
+    case "DELETE_TASK":
+      return buildSuppressionKey("task", String(event.payload.id));
+    case "UPSERT_APP_META":
+    case "DELETE_APP_META":
+      return buildSuppressionKey("appMeta", String(event.payload.key));
+    default:
+      return null;
+  }
+};
+
+const rememberBroadcastSuppression = (key: string, socketId: string, clientId?: string) => {
+  broadcastSuppressions.set(key, {
+    socketId,
+    clientId,
+    expiresAt: Date.now() + BROADCAST_SUPPRESSION_TTL_MS,
+  });
+};
+
+const takeBroadcastSuppression = (key: string): BroadcastSuppression | null => {
+  const entry = broadcastSuppressions.get(key);
+  if (!entry) return null;
+  broadcastSuppressions.delete(key);
+  if (entry.expiresAt < Date.now()) return null;
+  return entry;
+};
 
 const rememberProcessedMessage = (messageId: string) => {
   processedMessageIds.set(messageId, Date.now());
@@ -185,20 +307,47 @@ const sendToClient = (socket: SocketClient, message: unknown) => {
   }
 };
 
-const broadcast = (message: unknown) => {
-  clients.forEach((socket) => sendToClient(socket, message));
+const broadcast = (
+  message: unknown,
+  options?: {
+    excludeSocketId?: string;
+    excludeClientId?: string;
+  }
+) => {
+  clients.forEach((socket, socketId) => {
+    if (options?.excludeSocketId && socketId === options.excludeSocketId) {
+      return;
+    }
+    if (options?.excludeClientId) {
+      const socketClientId = socketClientIds.get(socketId);
+      if (socketClientId && socketClientId === options.excludeClientId) {
+        return;
+      }
+    }
+    sendToClient(socket, message);
+  });
 };
 
 const parseIncoming = (raw: unknown): SyncIncomingMessage | null => {
   try {
     if (!raw) return null;
 
-    const value =
-      typeof raw === "string"
-        ? JSON.parse(raw)
-        : typeof raw === "object" && raw !== null && "payload" in (raw as Record<string, unknown>)
-        ? raw
-        : raw;
+    let value: unknown = raw;
+
+    if (typeof value === "string") {
+      value = JSON.parse(value);
+    } else if (value instanceof ArrayBuffer) {
+      value = JSON.parse(new TextDecoder().decode(value));
+    } else if (typeof value === "object" && value !== null) {
+      const record = value as Record<string, unknown>;
+      if (typeof record.data === "string") {
+        value = JSON.parse(record.data);
+      } else if (record.data instanceof ArrayBuffer) {
+        value = JSON.parse(new TextDecoder().decode(record.data));
+      } else if (typeof record.utf8Data === "string") {
+        value = JSON.parse(record.utf8Data);
+      }
+    }
 
     if (!value || typeof value !== "object") return null;
 
@@ -470,12 +619,65 @@ const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "T
   const existing = all.find((task) => String(task.id) === String(id));
   if (!existing) return;
 
-  const completed = typeof payload?.completed === "boolean" ? payload.completed : !existing.completed;
-  await updateTask({
-    ...existing,
-    completed,
-    updatedAt: Date.now(),
+  const dateKey =
+    typeof payload?.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(payload.date)
+      ? payload.date
+      : toDateKey(new Date());
+
+  console.log("[MOBILE][TOGGLE_APPLY]", { taskId: id, date: dateKey });
+  await toggleTaskForDate(existing, dateKey);
+};
+
+const handleNoteUpsert = async (payload: SyncNotePayload) => {
+  const id = String(payload?.id ?? "").trim();
+  const title = String(payload?.title ?? "").trim();
+  if (!id || !title) return;
+
+  const all = await getAllNotes();
+  const current = all.find((note) => String(note.id) === id);
+
+  if (current) {
+    const incomingUpdatedAt = Number(payload?.updatedAt ?? 0);
+    const currentUpdatedAt = Number(current.updatedAt ?? 0);
+    if (incomingUpdatedAt > 0 && currentUpdatedAt > incomingUpdatedAt) {
+      return;
+    }
+  }
+
+  const folderId = (payload?.folderId ?? payload?.parentId ?? null) as string | null;
+  const content = typeof payload?.content === "string" ? payload.content : "";
+  const createdAt = Number(payload?.createdAt ?? current?.createdAt ?? Date.now());
+  const updatedAt = Number(payload?.updatedAt ?? Date.now());
+
+  await createNote({
+    id,
+    title,
+    content,
+    folderId,
+    createdAt,
+    updatedAt,
   });
+};
+
+const handleTaskUpsert = async (
+  payload:
+    | Extract<SyncIncomingMessage, { type: "TASK_CREATE" }>["payload"]
+    | Extract<SyncIncomingMessage, { type: "UPSERT_TASK" }>["payload"]
+) => {
+  const id = String(payload?.id ?? "").trim();
+  if (!id) {
+    await handleTaskCreate(payload);
+    return;
+  }
+
+  const all = await getAllTasks();
+  const existing = all.find((task) => String(task.id) === id);
+  if (!existing) {
+    await handleTaskCreate(payload);
+    return;
+  }
+
+  await handleTaskUpdate(payload);
 };
 
 const handleIncomingMessage = async (socket: SocketClient, message: SyncIncomingMessage) => {
@@ -493,26 +695,8 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
     return;
   }
 
-  if (message.type === "TASK_CREATE") {
-    await handleTaskCreate(message.payload);
-    return;
-  }
-
-  if (message.type === "UPSERT_TASK") {
-    const id = String(message.payload?.id ?? "").trim();
-    if (!id) {
-      await handleTaskCreate(message.payload);
-      return;
-    }
-
-    const all = await getAllTasks();
-    const existing = all.find((task) => String(task.id) === id);
-    if (!existing) {
-      await handleTaskCreate(message.payload);
-      return;
-    }
-
-    await handleTaskUpdate(message.payload);
+  if (message.type === "TASK_CREATE" || message.type === "UPSERT_TASK") {
+    await handleTaskUpsert(message.payload);
     return;
   }
 
@@ -537,44 +721,7 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
   }
 
   if (message.type === "UPSERT_NOTE") {
-    const id = String(message.payload?.id ?? "").trim();
-    const title = String(message.payload?.title ?? "").trim();
-    if (!id || !title) return;
-
-    const all = await getAllNotes();
-    const current = all.find((n) => String(n.id) === id);
-    
-    // Conflict resolution: skip if incoming is older
-    if (current) {
-      const incomingUpdatedAt = Number(message.payload?.updatedAt ?? 0);
-      const currentUpdatedAt = Number(current.updatedAt ?? 0);
-      if (incomingUpdatedAt > 0 && currentUpdatedAt > incomingUpdatedAt) {
-        return;
-      }
-    }
-
-    const folderId = (message.payload?.folderId ?? message.payload?.parentId ?? null) as string | null;
-    const content = typeof message.payload?.content === "string" ? message.payload.content : "";
-
-    if (!current) {
-      await createNote({
-        id,
-        title,
-        content,
-        folderId,
-        createdAt: Number(message.payload?.createdAt ?? Date.now()),
-        updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
-      });
-    } else {
-      await updateNote({
-        ...current,
-        title,
-        content,
-        folderId,
-        updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
-      });
-    }
-
+    await handleNoteUpsert(message.payload ?? {});
     return;
   }
 
@@ -704,15 +851,36 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
 };
 
 const onTaskEvent = (event: TaskServerEvent) => {
+  const suppressionKey = keyFromTaskEvent(event);
+  const suppression = suppressionKey ? takeBroadcastSuppression(suppressionKey) : null;
+
   if (event.type === "TASK_CREATED" || event.type === "TASK_UPDATED") {
-    broadcast({ type: "UPSERT_TASK", payload: event.payload });
+    broadcast(
+      { type: "UPSERT_TASK", payload: event.payload },
+      {
+        excludeSocketId: suppression?.socketId,
+        excludeClientId: suppression?.clientId,
+      }
+    );
     return;
   }
-  broadcast({ type: "DELETE_TASK", payload: event.payload });
+
+  broadcast(
+    { type: "DELETE_TASK", payload: event.payload },
+    {
+      excludeSocketId: suppression?.socketId,
+      excludeClientId: suppression?.clientId,
+    }
+  );
 };
 
 const onEntityEvent = (event: EntityServerEvent) => {
-  broadcast(event);
+  const suppressionKey = keyFromEntityEvent(event);
+  const suppression = suppressionKey ? takeBroadcastSuppression(suppressionKey) : null;
+  broadcast(event, {
+    excludeSocketId: suppression?.socketId,
+    excludeClientId: suppression?.clientId,
+  });
 };
 
 const getWebsocketServerCtor = (): (new (ipAddress: string, port: number) => ServerInstance) | null => {
@@ -726,7 +894,10 @@ const getWebsocketServerCtor = (): (new (ipAddress: string, port: number) => Ser
 };
 
 export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ url: string } | null> => {
+  logSyncDebug("[SYNC][SERVER][INIT]", { port });
+
   if (serverUrl) {
+    logSyncDebug("[SYNC][SERVER][INIT] already-started", { url: serverUrl });
     return { url: serverUrl };
   }
 
@@ -754,28 +925,56 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
   instance.on("connection", (socket: SocketClient) => {
     const socketId = getSocketId(socket);
     clients.set(socketId, socket);
-    console.log(`[sync] client connected: ${socketId}`);
-    console.log("[SYNC] CLIENT CONNECTED");
-    console.log("[SYNC][CONNECT] Mobile connected");
-    console.log("[SYNC] CALLING sendInitialData");
+    logSyncDebug(`[sync] client connected: ${socketId}`);
+    logSyncDebug("[SYNC] CLIENT CONNECTED");
+    logSyncDebug("[SYNC][CONNECT] Mobile connected");
+    logSyncDebug("[SYNC] CALLING sendInitialData");
     sendInitialData(socket)
       .then(() => {
-        console.log("[SYNC] FULL_SYNC SENT");
+        logSyncDebug("[SYNC] FULL_SYNC SENT");
       })
       .catch((error) => {
         console.warn("[sync] failed to send full sync", error);
       });
 
+    logSyncDebug("[SYNC][SERVER][HANDLER_REGISTER]", { socketId, event: "message" });
     socket.on("message", async (raw) => {
       const incoming = parseIncoming(raw);
-      if (!incoming) return;
+      if (!incoming) {
+        const rawType = typeof raw;
+        const rawKeys = raw && typeof raw === "object" ? Object.keys(raw as Record<string, unknown>) : [];
+        console.warn("[SYNC][SERVER][PARSE_IGNORED]", { rawType, rawKeys });
+        return;
+      }
+
+      const incomingClientId = normalizeOptionalString(
+        (incoming as SyncIncomingMessage & { clientId?: unknown }).clientId
+      );
+      if (incomingClientId) {
+        socketClientIds.set(socketId, incomingClientId);
+      }
+
+      const suppressionKey = keyFromIncomingMessage(incoming);
+      if (suppressionKey) {
+        rememberBroadcastSuppression(suppressionKey, socketId, incomingClientId ?? undefined);
+      }
 
       const incomingId = getIncomingMessageId(incoming);
       const receivedAt = Date.now();
-      console.log("[SYNC][RECEIVE]", incomingId ?? "-", incoming.type);
+      logSyncDebug("[SYNC][RECEIVE]", incomingId ?? "-", incoming.type);
+      logSyncDebug("[SYNC][SERVER][RECEIVED]", {
+        messageId: incomingId ?? "-",
+        type: incoming.type,
+      });
 
       if (incomingId && processedMessageIds.has(incomingId)) {
-        console.log("[SYNC][APPLY]", incomingId, "duplicate-ignored");
+        logSyncDebug("[SYNC][DEDUP]", incomingId, "ignorado");
+        logSyncDebug("[SYNC][APPLY]", incomingId, "duplicate-ignored");
+        logSyncDebug("[SYNC][SERVER][APPLIED]", {
+          messageId: incomingId,
+          type: incoming.type,
+          status: "duplicate-ignored",
+        });
         sendAck(socket, incomingId, receivedAt, Date.now(), "OK");
         return;
       }
@@ -783,13 +982,28 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
       try {
         await handleIncomingMessage(socket, incoming);
         const appliedAt = Date.now();
-        console.log("[SYNC][APPLY]", incomingId ?? "-", incoming.type);
+        logSyncDebug("[SYNC][APPLY]", incomingId ?? "-", incoming.type);
+        logSyncDebug("[SYNC][SYNC_APPLIED]", {
+          messageId: incomingId ?? "-",
+          type: incoming.type,
+          status: "success",
+        });
+        logSyncDebug("[SYNC][SERVER][APPLIED]", {
+          messageId: incomingId ?? "-",
+          type: incoming.type,
+          status: "persisted",
+        });
         if (incomingId) {
           rememberProcessedMessage(incomingId);
           sendAck(socket, incomingId, receivedAt, appliedAt, "OK");
         }
       } catch (error) {
-        console.log("[SYNC][ERROR]", incomingId ?? "-", error);
+        console.error("[SYNC][ERROR]", incomingId ?? "-", error);
+        logSyncDebug("[SYNC][SERVER][APPLIED]", {
+          messageId: incomingId ?? "-",
+          type: incoming.type,
+          status: "failed",
+        });
         if (incomingId) {
           sendAck(socket, incomingId, receivedAt, Date.now(), "ERROR");
         }
@@ -797,9 +1011,11 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
       }
     });
 
+    logSyncDebug("[SYNC][SERVER][HANDLER_REGISTER]", { socketId, event: "disconnected" });
     socket.on("disconnected", () => {
       clients.delete(socketId);
-      console.log(`[sync] client disconnected: ${socketId}`);
+      socketClientIds.delete(socketId);
+      logSyncDebug(`[sync] client disconnected: ${socketId}`);
     });
   });
 
@@ -807,15 +1023,22 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
   server = instance;
   serverUrl = `ws://${ipAddress}:${port}`;
 
-  if (!unsubscribeTaskBroadcast) {
-    unsubscribeTaskBroadcast = subscribeTaskServerEvents(onTaskEvent);
+  try {
+    if (!unsubscribeTaskBroadcast) {
+      unsubscribeTaskBroadcast = subscribeTaskServerEvents(onTaskEvent);
+      logSyncDebug("[SYNC][SERVER][EVENT_REGISTER]", { channel: "task" });
+    }
+
+    if (!unsubscribeEntityBroadcast) {
+      unsubscribeEntityBroadcast = subscribeEntityServerEvents(onEntityEvent);
+      logSyncDebug("[SYNC][SERVER][EVENT_REGISTER]", { channel: "entity" });
+    }
+  } catch (error) {
+    console.error("[SYNC][SERVER][EVENT_REGISTER_ERROR]", error);
+    throw error;
   }
 
-  if (!unsubscribeEntityBroadcast) {
-    unsubscribeEntityBroadcast = subscribeEntityServerEvents(onEntityEvent);
-  }
-
-  console.log(`[sync] server started at ${serverUrl}`);
+  logSyncDebug(`[sync] server started at ${serverUrl}`);
   return { url: serverUrl };
 };
 
@@ -827,6 +1050,7 @@ export const stopTaskSyncServer = () => {
   server = null;
   serverUrl = null;
   clients.clear();
+  socketClientIds.clear();
 
   if (unsubscribeTaskBroadcast) {
     unsubscribeTaskBroadcast();

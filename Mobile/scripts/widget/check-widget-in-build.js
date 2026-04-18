@@ -21,7 +21,7 @@ buildPaths.forEach(buildPath => {
     
     if (buildPath.includes('AndroidManifest')) {
       const content = fs.readFileSync(fullPath, 'utf-8');
-      if (content.includes('com.example.lifeorganizer.AppWidgetProvider')) {
+      if (content.includes('com.example.lifeorganizer.ContributionWidgetProvider')) {
         console.log('  ✅ Widget receiver found in manifest');
         found = true;
       } else {

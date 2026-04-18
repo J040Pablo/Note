@@ -5,8 +5,8 @@ const path = require('path');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const MANIFEST_PATH = path.join(PROJECT_ROOT, 'android', 'app', 'src', 'main', 'AndroidManifest.xml');
-const RECEIVER_SIMPLE = '.AppWidgetProvider';
-const RECEIVER_FULL = 'com.example.lifeorganizer.AppWidgetProvider';
+const RECEIVER_SIMPLE = '.ContributionWidgetProvider';
+const RECEIVER_FULL = 'com.example.lifeorganizer.ContributionWidgetProvider';
 const ACTION = 'android.appwidget.action.APPWIDGET_UPDATE';
 const META_NAME = 'android.appwidget.provider';
 const META_RESOURCE = '@xml/widget_info';

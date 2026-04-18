@@ -20,8 +20,33 @@ export const useSyncListener = () => {
       if (event.type === "TASK_CREATED" || event.type === "TASK_UPDATED") {
         const { payload } = event;
         const prev = useTasksStore.getState().tasks[payload.id];
+        const incomingUpdatedAt = Number(payload.updatedAt ?? 0);
+        const currentUpdatedAt = Number(prev?.updatedAt ?? 0);
+
+        // Never overwrite newer local state with older incoming data.
+        if (currentUpdatedAt > 0 && incomingUpdatedAt > 0 && currentUpdatedAt > incomingUpdatedAt) {
+          return;
+        }
+
         const incomingReminders = (payload as any).reminders;
         const incomingNotificationIds = (payload as any).notificationIds;
+        const incomingDate = (payload as any).date;
+        const incomingDueDate = (payload as any).dueDate;
+        const incomingDueTime = (payload as any).dueTime;
+
+        const scheduledDate =
+          (typeof payload.scheduledDate === "string" ? payload.scheduledDate : null) ??
+          (typeof incomingDate === "string" ? incomingDate : null) ??
+          (typeof incomingDueDate === "string" ? incomingDueDate : null) ??
+          prev?.scheduledDate ??
+          null;
+
+        const scheduledTime =
+          (typeof payload.scheduledTime === "string" ? payload.scheduledTime : null) ??
+          (typeof incomingDueTime === "string" ? incomingDueTime : null) ??
+          prev?.scheduledTime ??
+          null;
+
         // Map priority from string to number (0 | 1 | 2)
         let priority = 1;
         if (payload.priority === "low") priority = 0;
@@ -32,12 +57,12 @@ export const useSyncListener = () => {
           text: payload.text || payload.title || "Untitled task",
           completed: Boolean(payload.completed),
           priority,
-          scheduledDate: payload.scheduledDate ?? prev?.scheduledDate ?? null,
-          scheduledTime: payload.scheduledTime ?? prev?.scheduledTime ?? null,
+          scheduledDate,
+          scheduledTime,
           repeatDays: Array.isArray(payload.repeatDays) ? payload.repeatDays : prev?.repeatDays ?? [],
           completedDates: Array.isArray(payload.completedDates) ? payload.completedDates : prev?.completedDates ?? [],
           orderIndex: payload.order ?? prev?.orderIndex ?? 0,
-          updatedAt: payload.updatedAt ?? prev?.updatedAt ?? Date.now(),
+          updatedAt: incomingUpdatedAt > 0 ? incomingUpdatedAt : prev?.updatedAt ?? Date.now(),
           parentId: payload.parentId ?? prev?.parentId ?? null,
           noteId: payload.noteId ?? prev?.noteId ?? null,
           reminders: Array.isArray(incomingReminders) && incomingReminders.length > 0

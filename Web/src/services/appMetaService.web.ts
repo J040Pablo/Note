@@ -1,6 +1,8 @@
 // Web-side appMeta service — mirrors Mobile appMetaService API surface.
 // localStorage-backed metadata store for pinned items, recent items, list order, sort prefs.
 
+import { dispatchEntitySyncEvent } from "../features/tasks/sync";
+import { isWebMobileSyncMode } from "./webSyncMode";
 import type { ID, PinnedItem, PinnedItemType, RecentItem, RecentItemType } from "../types";
 
 const PINNED_KEY = "pinned_items";
@@ -84,6 +86,19 @@ export const setMetaRecord = <T>(key: string, value: T, updatedAt = Date.now()):
   writeMetaRecord(key, value, updatedAt);
 };
 
+const emitMetaSync = (key: string, value: unknown): void => {
+  if (!isWebMobileSyncMode()) return;
+
+  dispatchEntitySyncEvent({
+    type: "UPSERT_APP_META",
+    payload: {
+      key,
+      value: JSON.stringify(value),
+      updatedAt: Date.now(),
+    },
+  });
+};
+
 // ─── Pinned Items ────────────────────────────────────────────────────────────
 
 export const getPinnedItems = (): PinnedItem[] => {
@@ -102,6 +117,7 @@ export const savePinnedItems = (items: PinnedItem[]): void => {
   const next = items;
   writeMetaRecord(PINNED_KEY, next);
   writeMetaRecord(LEGACY_KEYS.pinned, next);
+  emitMetaSync(PINNED_KEY, next);
 };
 
 export const togglePinnedItem = (type: PinnedItemType, id: ID): PinnedItem[] => {
@@ -138,6 +154,7 @@ export const saveRecentItems = (items: RecentItem[]): void => {
   const next = items.slice(0, 10);
   writeMetaRecord(RECENT_KEY, next);
   writeMetaRecord(LEGACY_KEYS.recent, next);
+  emitMetaSync(RECENT_KEY, next);
 };
 
 export const addRecentOpen = (type: RecentItemType, id: ID): RecentItem[] => {
@@ -161,6 +178,7 @@ export const saveListOrder = (scope: string, ids: ID[]): void => {
   const next = ids.filter(Boolean);
   writeMetaRecord(`${LIST_ORDER_PREFIX}${scope}`, next);
   writeMetaRecord(`${LEGACY_KEYS.listOrderPrefix}${scope}`, next);
+  emitMetaSync(`${LIST_ORDER_PREFIX}${scope}`, next);
 };
 
 // ─── Sort Preferences ────────────────────────────────────────────────────────
@@ -179,4 +197,5 @@ export const saveSortPreference = <T extends string>(
 ): void => {
   writeMetaRecord(`${SORT_PREF_PREFIX}${scope}`, value);
   writeMetaRecord(`${LEGACY_KEYS.sortPrefPrefix}${scope}`, value);
+  emitMetaSync(`${SORT_PREF_PREFIX}${scope}`, value);
 };

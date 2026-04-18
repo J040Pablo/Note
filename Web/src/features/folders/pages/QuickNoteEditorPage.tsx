@@ -7,10 +7,7 @@ import {
   updateQuickNote,
   deleteQuickNote,
 } from "../../../services/notesService.web";
-import {
-  dispatchEntitySyncEvent,
-  subscribeTaskSyncMessages,
-} from "../../tasks/sync";
+import { subscribeTaskSyncMessages } from "../../tasks/sync";
 import { useAppMode } from "../../../app/mode";
 import type { DataQuickNote } from "../../../services/webData";
 import QuickRichNoteEditor from "../components/QuickRichNoteEditor";
@@ -101,12 +98,6 @@ const QuickNoteEditorPage: React.FC = () => {
             setLastSavedTitle(updated.title);
             setLastSavedContent(content);
 
-            if (isMobileSync) {
-              dispatchEntitySyncEvent({
-                type: "UPSERT_QUICK_NOTE",
-                payload: { ...updated, updatedAt: Date.now() },
-              });
-            }
           }
         } else {
           creatingRef.current = true;
@@ -119,13 +110,6 @@ const QuickNoteEditorPage: React.FC = () => {
           setNote(created);
           setLastSavedTitle(created.title);
           setLastSavedContent(content);
-
-          if (isMobileSync) {
-            dispatchEntitySyncEvent({
-              type: "UPSERT_QUICK_NOTE",
-              payload: { ...created, updatedAt: Date.now() },
-            });
-          }
 
           window.history.replaceState(null, "", `/quicknotes/${created.id}`);
         }
@@ -201,12 +185,6 @@ const QuickNoteEditorPage: React.FC = () => {
     if (!confirmed) return;
 
     deleteQuickNote(note.id);
-    if (isMobileSync) {
-      dispatchEntitySyncEvent({
-        type: "DELETE_QUICK_NOTE",
-        payload: { id: note.id, updatedAt: Date.now() },
-      });
-    }
     navigate(-1);
   }, [isMobileSync, navigate, note]);
 

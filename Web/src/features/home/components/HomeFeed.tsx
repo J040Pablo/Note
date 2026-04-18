@@ -10,14 +10,12 @@ import {
   Square,
   type LucideIcon,
 } from "lucide-react";
-import { getAllTasks, toggleTask as serviceToggleTask } from "../../../services/tasksService.web";
+import { getAllTasks, toggleTaskForDate as serviceToggleTaskForDate } from "../../../services/tasksService.web";
 import { getAllNotes, getAllQuickNotes, createQuickNote as serviceCreateQuickNote } from "../../../services/notesService.web";
 import { getFolders, type DataFolder } from "../../../services/webData";
 import { getPinnedItems, getRecentItems, savePinnedItems, saveRecentItems } from "../../../services/appMetaService.web";
 import { useAppMode } from "../../../app/mode";
 import {
-  dispatchEntitySyncEvent,
-  dispatchTaskSyncEvent,
   subscribeTaskSyncMessages,
   type SyncFolder,
   type SyncNote,
@@ -46,8 +44,20 @@ type RecentItem = {
 type TaskItem = {
   id: string;
   text: string;
-  completed: boolean;
+  completedDates?: string[];
   recurringDays?: number;
+};
+
+const toDateKey = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const isCompletedToday = (task: TaskItem): boolean => {
+  const today = toDateKey(new Date());
+  return Array.isArray(task.completedDates) && task.completedDates.includes(today);
 };
 
 type NoteItem = {
@@ -60,6 +70,7 @@ type NoteItem = {
 type FolderItem = {
   id: string;
   name: string;
+  description?: string;
   subfolders: number;
   notes: number;
   files: number;
@@ -71,7 +82,7 @@ const firstLine = (value: string): string => value.split(/\r?\n/)[0]?.trim() ?? 
 const mapSyncTaskToUI = (task: SyncTask): TaskItem => ({
   id: task.id,
   text: task.title || task.text || "Untitled task",
-  completed: !!task.completed,
+  completedDates: Array.isArray(task.completedDates) ? task.completedDates : [],
   recurringDays: Array.isArray(task.repeatDays) ? task.repeatDays.length : undefined,
 });
 
@@ -101,7 +112,7 @@ const loadHomeTasks = (): TaskItem[] =>
   getAllTasks().map((task) => ({
     id: task.id,
     text: task.title,
-    completed: task.completed,
+    completedDates: Array.isArray(task.completedDates) ? task.completedDates : [],
     recurringDays: Array.isArray(task.repeatDays) ? task.repeatDays.length : undefined,
   }));
 
@@ -144,6 +155,7 @@ const loadHomeFolders = (): FolderItem[] => {
   return folders.map((folder: DataFolder) => ({
     id: folder.id,
     name: folder.name,
+    description: folder.description,
     subfolders: subfolderCountByFolderId[folder.id] ?? 0,
     notes: noteCountByFolderId[folder.id] ?? 0,
     files: 0,
@@ -167,6 +179,7 @@ const mapSyncFoldersToUI = (folders: SyncFolder[], notes: SyncNote[]): FolderIte
   return folders.map((folder) => ({
     id: folder.id,
     name: folder.name,
+    description: folder.description,
     subfolders: subfolderCountByFolderId[folder.id] ?? 0,
     notes: noteCountByFolderId[folder.id] ?? 0,
     files: 0,
@@ -256,7 +269,7 @@ const HomeFeed: React.FC = () => {
 
   const todaysTasks = React.useMemo(() => tasks.slice(0, 7), [tasks]);
   const completedToday = React.useMemo(
-    () => todaysTasks.filter((task) => task.completed).length,
+    () => todaysTasks.filter((task) => isCompletedToday(task)).length,
     [todaysTasks]
   );
   const recurringCount = React.useMemo(
@@ -323,92 +336,42 @@ const HomeFeed: React.FC = () => {
         ? getPinnedItems().filter((item) => !(item.type === type && item.id === id))
         : [{ type: type as "folder" | "note" | "task", id, pinnedAt: Date.now() }, ...getPinnedItems().filter((item) => !(item.type === type && item.id === id))];
       savePinnedItems(nextStored);
-      if (isMobileSync) {
-        dispatchEntitySyncEvent({
-          type: "UPSERT_APP_META",
-          payload: {
-            key: "pinned_items",
-            value: JSON.stringify(nextStored),
-            updatedAt: Date.now(),
-          },
-        });
-      }
       return nextStored.map((item) => ({ type: item.type, id: item.id }));
     });
-  }, [isMobileSync]);
+  }, []);
 
   const addRecent = React.useCallback((entry: Omit<RecentItem, "openedAt">) => {
     setRecentItems((prev) => {
       const nextStored = [{ type: entry.type, id: entry.id, openedAt: Date.now() }, ...getRecentItems().filter((item) => !(item.type === entry.type && item.id === entry.id))].slice(0, 10);
       saveRecentItems(nextStored);
       const resolved = nextStored.map(resolveRecentItem);
-      if (isMobileSync) {
-        dispatchEntitySyncEvent({
-          type: "UPSERT_APP_META",
-          payload: {
-            key: "recent_items",
-            value: JSON.stringify(nextStored),
-            updatedAt: Date.now(),
-          },
-        });
-      }
       return resolved;
     });
-  }, [isMobileSync, resolveRecentItem]);
+  }, [resolveRecentItem]);
 
   const toggleTask = React.useCallback((taskId: string) => {
-    setTasks((prev) => {
-      const next = prev.map((task) => (task.id === taskId ? { ...task, completed: !task.completed } : task));
-      if (!isMobileSync) {
-        serviceToggleTask(taskId);
-      } else {
-        const task = next.find((t) => t.id === taskId);
-        if (task) {
-          dispatchTaskSyncEvent({
-            type: "TASK_TOGGLE",
-            taskId: taskId,
-            payload: { completed: task.completed },
-          });
-        }
-      }
-      return next;
-    });
-  }, [isMobileSync]);
+    const updated = serviceToggleTaskForDate(taskId, toDateKey(new Date()));
+    if (!updated) return;
+    setTasks((prev) => prev.map((task) => (task.id === taskId ? {
+      ...task,
+      completedDates: Array.isArray(updated.completedDates) ? updated.completedDates : [],
+    } : task)));
+  }, []);
 
   const handleCreateQuickNote = React.useCallback(() => {
     const content = quickNote.trim();
     if (!content) return;
 
-    const id = `qn-${Date.now()}`;
-    const created = mapQuickNoteToUI({
-      id,
-      text: content,
-      createdAt: Date.now(),
+    const created = serviceCreateQuickNote({ text: content });
+    const createdItem = mapQuickNoteToUI({
+      id: created.id,
+      text: created.text,
+      createdAt: created.createdAt,
     });
 
-    setQuickNotes((prev) => [created, ...prev]);
+    setQuickNotes((prev) => [createdItem, ...prev]);
     setQuickNote("");
-
-    if (isMobileSync) {
-      // sent to mobile
-      dispatchEntitySyncEvent({
-        type: "UPSERT_QUICK_NOTE",
-        payload: {
-          id: created.id,
-          title: created.title,
-          content,
-          text: content,
-          createdAt: created.createdAt,
-          updatedAt: Date.now(),
-        },
-      });
-      return;
-    }
-
-    if (!isMobileSync) {
-       serviceCreateQuickNote({ text: content });
-    }
-  }, [isMobileSync, quickNote]);
+  }, [quickNote]);
 
   return (
     <div className={styles.grid}>
@@ -471,7 +434,9 @@ const HomeFeed: React.FC = () => {
         </div>
 
         <div className={styles.list}>
-          {todaysTasks.map((task) => (
+          {todaysTasks.map((task) => {
+            const done = isCompletedToday(task);
+            return (
             <button key={task.id} type="button" className={styles.listItem}>
               <span
                 className={styles.checkbox}
@@ -480,12 +445,12 @@ const HomeFeed: React.FC = () => {
                   toggleTask(task.id);
                 }}
                 role="checkbox"
-                aria-checked={task.completed}
+                aria-checked={done}
               >
-                  {task.completed ? <Check size={13} /> : null}
+                  {done ? <Check size={13} /> : null}
               </span>
 
-              <span className={task.completed ? styles.taskDone : ""}>{task.text}</span>
+              <span className={done ? styles.taskDone : ""}>{task.text}</span>
 
               <span
                 className={styles.pinAction}
@@ -498,7 +463,7 @@ const HomeFeed: React.FC = () => {
                   {pinSet.has(`task:${task.id}`) ? <Pin size={14} /> : <MapPin size={14} />}
               </span>
             </button>
-          ))}
+          );})}
         </div>
       </section>
 

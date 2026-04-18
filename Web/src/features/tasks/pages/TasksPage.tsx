@@ -16,23 +16,20 @@ import TaskModal from "../components/TaskModal";
 import {
   connectTaskSync,
   disconnectTaskSync,
-  dispatchTaskSyncEvent,
   getTaskSyncStatus,
-  subscribeTaskSyncMessages,
+  requestTaskSync,
   subscribeTaskSyncStatus,
-  type SyncTask,
 } from "../sync";
 import type { TaskDraft, TaskFilters, TaskItem } from "../types";
 import { useAppMode } from "../../../app/mode";
 import {
-  getAllTasks,
   createTask,
   updateTask,
   deleteTask,
-  toggleTask as serviceToggleTask,
+  toggleTaskForDate as serviceToggleTaskForDate,
   reorderTasks as serviceReorderTasks
 } from "../../../services/tasksService.web";
-import { subscribeSyncBridge } from "../../../services/syncBridge";
+import { useSyncDataStore } from "../../../store/syncDataStore";
 import styles from "./TasksPage.module.css";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -55,8 +52,6 @@ const formatUiDate = (dateKey: string) =>
     month: "short",
     year: "numeric",
   });
-
-const weekdayFromDateKey = (dateKey: string) => parseDateKey(dateKey).getDay();
 
 const buildMonthCells = (monthDate: Date): Date[] => {
   const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
@@ -86,24 +81,23 @@ const getPriorityClass = (priority: TaskItem["priority"]) => {
 };
 
 const shouldAppearOnDate = (task: TaskItem, dateKey: string) => {
-  if (task.repeatDays.length > 0) {
-    return task.repeatDays.includes(weekdayFromDateKey(dateKey));
-  }
+  return task.scheduledDate === dateKey;
+};
 
-  return task.dueDate === dateKey;
+const isTaskCompletedOnDate = (task: TaskItem, dateKey: string) => {
+  const completedDates = Array.isArray(task.completedDates) ? task.completedDates : [];
+  return completedDates.includes(dateKey);
 };
 
 const defaultFilters: TaskFilters = {
-  date: "all",
+  date: "selected",
   priority: "all",
   status: "all",
   query: "",
 };
 
-const makeTaskId = () => `task-${Date.now()}-${Math.round(Math.random() * 1e4)}`;
-
 const createDraftFromTask = (task: TaskItem, fallbackSelectedDate: string): TaskDraft => {
-  const dueDate = task.dueDate ?? fallbackSelectedDate;
+  const dueDate = task.scheduledDate ?? fallbackSelectedDate;
 
   return {
     title: task.title,
@@ -111,7 +105,7 @@ const createDraftFromTask = (task: TaskItem, fallbackSelectedDate: string): Task
     dueDate,
     dueTime: task.dueTime ?? "08:00",
     repeatDays: task.repeatDays,
-    scheduleMode: task.dueDate ? "custom" : "none",
+    scheduleMode: task.scheduledDate ? "custom" : "none",
   };
 };
 
@@ -124,37 +118,11 @@ const createDefaultDraft = (selectedDate: string): TaskDraft => ({
   scheduleMode: "selected",
 });
 
-const mapSyncTaskToTaskItem = (task: SyncTask, fallbackOrder = 0): TaskItem => ({
-  id: task.id,
-  title: task.title || task.text || "Untitled task",
-  completed: !!task.completed,
-  priority: task.priority,
-  dueDate:
-    typeof task.scheduledDate === "string"
-      ? task.scheduledDate
-      : typeof task.dueDate === "string"
-      ? task.dueDate
-      : typeof task.date === "string"
-      ? task.date
-      : null,
-  dueTime:
-    typeof task.scheduledTime === "string"
-      ? task.scheduledTime
-      : typeof task.dueTime === "string"
-      ? task.dueTime
-      : null,
-  repeatDays: Array.isArray(task.repeatDays) ? task.repeatDays : [],
-  order: typeof task.order === "number" ? task.order : fallbackOrder,
-  createdAt: typeof task.createdAt === "number" ? task.createdAt : task.updatedAt,
-  updatedAt: task.updatedAt,
-});
-
 const TasksPage: React.FC = () => {
   const { mode } = useAppMode();
   const isMobileSync = mode === "mobile-sync";
 
-  // Data is loaded from the single shared data layer at initialization.
-  const [tasks, setTasks] = React.useState<TaskItem[]>(() => getAllTasks());
+  const tasks = useSyncDataStore((state) => state.tasks);
   const [mobileIp, setMobileIp] = React.useState<string>(() => localStorage.getItem("tasks.sync.ip") ?? "192.168.1.107");
   const [mobilePort, setMobilePort] = React.useState<string>(() => localStorage.getItem("tasks.sync.port") ?? "8787");
   const [syncStatus, setSyncStatus] = React.useState(getTaskSyncStatus());
@@ -190,82 +158,26 @@ const TasksPage: React.FC = () => {
     return `ws://${ip}:${normalizedPort}`;
   }, [mobileIp, mobilePort]);
 
-  // Removed bulk persistStandaloneTasks hook. Let operations use tasksService inline to modify persistent store.
-
   React.useEffect(() => {
-    if (isMobileSync) {
-      setTasks([]);
-      return;
-    }
+    if (isMobileSync) return;
 
     disconnectTaskSync();
     setSyncStatus("disconnected");
-    setTasks(getAllTasks());
   }, [isMobileSync]);
 
   React.useEffect(() => {
-    if (!isMobileSync) return;
-
-    const unsubStatus = subscribeTaskSyncStatus(setSyncStatus);
-    const unsubMessages = subscribeTaskSyncMessages((message) => {
-      if (message.type === "INIT" || message.type === "INIT_DATA") {
-        // received from mobile
-        const syncedTasks = message.payload.tasks.map((task, index) => mapSyncTaskToTaskItem(task, index));
-        setTasks(syncedTasks);
-        return;
-      }
-
-      if (
-        message.type === "UPSERT_TASK" ||
-        message.type === "TASK_CREATED" ||
-        message.type === "TASK_UPDATED"
-      ) {
-        setTasks((prev) => {
-          // received from mobile
-          const incoming = mapSyncTaskToTaskItem(message.payload, prev.length + 1);
-          if (prev.some((entry) => entry.id === incoming.id)) {
-            return prev.map((entry) => (entry.id === incoming.id ? { ...entry, ...incoming } : entry));
-          }
-          return [incoming, ...prev];
-        });
-        return;
-      }
-
-      if (message.type === "DELETE_TASK" || message.type === "TASK_DELETED") {
-        // received from mobile
-        setTasks((prev) => prev.filter((entry) => entry.id !== message.payload.id));
-      }
-    });
-
-    return () => {
-      unsubStatus();
-      unsubMessages();
-    };
-  }, [isMobileSync]);
-
-  React.useEffect(() => {
-    if (!isMobileSync) return;
-    const unsub = subscribeSyncBridge((event) => {
-      if (event.type === "TASK_UPSERT" || event.type === "TASK_DELETE" || event.type === "FULL_SYNC") {
-        setTasks(getAllTasks());
-      }
-    });
-    return () => unsub();
-  }, [isMobileSync]);
+    return subscribeTaskSyncStatus(setSyncStatus);
+  }, []);
 
   React.useEffect(() => {
     if (!isMobileSync) return;
     if (!pairingUrl) return;
     connectTaskSync(pairingUrl);
+    const timer = window.setTimeout(() => {
+      requestTaskSync();
+    }, 200);
+    return () => window.clearTimeout(timer);
   }, [isMobileSync, pairingUrl]);
-
-  const sendSyncEvent = React.useCallback(
-    (event: Parameters<typeof dispatchTaskSyncEvent>[0]) => {
-      if (!isMobileSync) return;
-      dispatchTaskSyncEvent(event);
-    },
-    [isMobileSync]
-  );
 
   const monthCells = React.useMemo(() => buildMonthCells(monthCursor), [monthCursor]);
 
@@ -275,7 +187,7 @@ const TasksPage: React.FC = () => {
   );
 
   const completedForSelectedDate = React.useMemo(
-    () => tasksForSelectedDate.filter((task) => task.completed).length,
+    () => tasksForSelectedDate.filter((task) => isTaskCompletedOnDate(task, selectedDate)).length,
     [tasksForSelectedDate]
   );
 
@@ -298,7 +210,7 @@ const TasksPage: React.FC = () => {
   }, [monthCells, tasks]);
 
   const filteredTasks = React.useMemo(() => {
-    let next = [...tasks];
+    let next = [...tasksForSelectedDate];
 
     if (filters.query.trim()) {
       const query = filters.query.trim().toLowerCase();
@@ -310,23 +222,15 @@ const TasksPage: React.FC = () => {
     }
 
     if (filters.status === "completed") {
-      next = next.filter((task) => task.completed);
+      next = next.filter((task) => isTaskCompletedOnDate(task, selectedDate));
     }
 
     if (filters.status === "pending") {
-      next = next.filter((task) => !task.completed);
-    }
-
-    if (filters.date === "selected") {
-      next = next.filter((task) => shouldAppearOnDate(task, selectedDate));
-    }
-
-    if (filters.date === "no-date") {
-      next = next.filter((task) => !task.dueDate && task.repeatDays.length === 0);
+      next = next.filter((task) => !isTaskCompletedOnDate(task, selectedDate));
     }
 
     return next.sort((a, b) => a.order - b.order);
-  }, [filters, selectedDate, tasks]);
+  }, [filters, tasksForSelectedDate, selectedDate]);
 
   const filteredTaskIds = React.useMemo(
     () => filteredTasks.map((task) => task.id),
@@ -381,35 +285,16 @@ const TasksPage: React.FC = () => {
 
       const targetTaskId = filteredTaskIds[targetIndex];
 
-      let sourceOrder = 0;
-      let targetOrder = 0;
+      const before = [...tasks].sort((a, b) => a.order - b.order).map((task) => task.id);
+      const sourceIndex = before.indexOf(taskId);
+      const targetInsertIndex = before.indexOf(targetTaskId);
+      if (sourceIndex === -1 || targetInsertIndex === -1) return;
 
-      tasks.forEach((task) => {
-        if (task.id === taskId) sourceOrder = task.order;
-        if (task.id === targetTaskId) targetOrder = task.order;
-      });
-
-      setTasks((prev) => {
-        const next = [...prev];
-        const t1 = next.find(t => t.id === taskId);
-        const t2 = next.find(t => t.id === targetTaskId);
-        if (t1 && t2) {
-          t1.order = targetOrder;
-          t1.updatedAt = Date.now();
-          t2.order = sourceOrder;
-          t2.updatedAt = Date.now();
-          
-          if (!isMobileSync) {
-             serviceReorderTasks(next.sort((a,b) => a.order - b.order).map(t => t.id));
-          } else {
-             sendSyncEvent({ type: "TASK_UPDATE", taskId: t1.id, payload: t1 as any });
-             sendSyncEvent({ type: "TASK_UPDATE", taskId: t2.id, payload: t2 as any });
-          }
-        }
-        return next;
-      });
+      const withoutSource = before.filter((id) => id !== taskId);
+      withoutSource.splice(targetInsertIndex, 0, taskId);
+      serviceReorderTasks(withoutSource);
     },
-    [filteredTaskIds, isMobileSync, sendSyncEvent, tasks]
+    [filteredTaskIds, tasks]
   );
 
   const handleContextAction = React.useCallback(
@@ -424,23 +309,7 @@ const TasksPage: React.FC = () => {
       }
 
       if (action === "toggle") {
-        setTasks((prev) =>
-          prev.map((task) => {
-            if (task.id !== selectedContextTask.id) return task;
-            const completed = !task.completed;
-            const updatedTask = { ...task, completed, updatedAt: Date.now() };
-            if (!isMobileSync) {
-               serviceToggleTask(task.id);
-            } else {
-               sendSyncEvent({
-                 type: "TASK_TOGGLE",
-                 taskId: task.id,
-                 payload: updatedTask as any,
-               });
-            }
-            return updatedTask;
-          })
-        );
+        serviceToggleTaskForDate(selectedContextTask.id, selectedDate);
         return;
       }
 
@@ -449,21 +318,13 @@ const TasksPage: React.FC = () => {
         return;
       }
 
-      if (!isMobileSync) deleteTask(selectedContextTask.id);
-      
-      setTasks((prev) => prev.filter((task) => task.id !== selectedContextTask.id));
-      if (isMobileSync) {
-        sendSyncEvent({
-          type: "TASK_DELETE",
-          taskId: selectedContextTask.id,
-        });
-      }
-      
+      deleteTask(selectedContextTask.id);
+
       if (moveModeTaskId === selectedContextTask.id) {
         setMoveModeTaskId(null);
       }
     },
-    [closeContextMenu, isMobileSync, moveModeTaskId, openEditModal, selectedContextTask, sendSyncEvent]
+    [closeContextMenu, moveModeTaskId, openEditModal, selectedContextTask, selectedDate]
   );
 
   return (
@@ -494,6 +355,9 @@ const TasksPage: React.FC = () => {
                   localStorage.setItem("tasks.sync.ip", mobileIp.trim());
                   localStorage.setItem("tasks.sync.port", mobilePort.replace(/\D+/g, "") || "8787");
                   connectTaskSync(pairingUrl);
+                  window.setTimeout(() => {
+                    requestTaskSync();
+                  }, 200);
                 }}
               >
                 {syncStatus === "connected" ? "Connected" : syncStatus === "connecting" ? "Connecting..." : "Connect"}
@@ -605,16 +469,17 @@ const TasksPage: React.FC = () => {
 
         <div className={styles.taskList}>
           {filteredTasks.map((task) => {
+            const isDone = isTaskCompletedOnDate(task, selectedDate);
             const detailLine = task.repeatDays.length
               ? `Repeats: ${task.repeatDays.map((entry) => WEEKDAYS[entry]).join(", ")}`
-              : task.dueDate
-              ? `Date: ${formatUiDate(task.dueDate)}${task.dueTime ? ` • ${task.dueTime}` : ""}`
+              : task.scheduledDate
+              ? `Date: ${formatUiDate(task.scheduledDate)}${task.dueTime ? ` • ${task.dueTime}` : ""}`
               : "No date";
 
             return (
               <article
                 key={task.id}
-                className={`${styles.taskRow} ${task.completed ? styles.taskRowCompleted : ""}`}
+                className={`${styles.taskRow} ${isDone ? styles.taskRowCompleted : ""}`}
                 onContextMenu={(event) => {
                   event.preventDefault();
                   openContextMenu(task.id, event.clientX, event.clientY);
@@ -641,24 +506,13 @@ const TasksPage: React.FC = () => {
               >
                 <button
                   type="button"
-                  className={`${styles.checkbox} ${task.completed ? styles.checkboxDone : ""}`}
+                  className={`${styles.checkbox} ${isDone ? styles.checkboxDone : ""}`}
                   onClick={() => {
-                    setTasks((prev) =>
-                      prev.map((entry) => {
-                        if (entry.id !== task.id) return entry;
-                        const completed = !entry.completed;
-                        sendSyncEvent({
-                          type: "TASK_TOGGLE",
-                          taskId: entry.id,
-                          payload: { ...entry, completed, updatedAt: Date.now() } as unknown as Record<string, unknown>,
-                        });
-                        return { ...entry, completed, updatedAt: Date.now() };
-                      })
-                    );
+                    serviceToggleTaskForDate(task.id, selectedDate);
                   }}
-                  aria-label={task.completed ? "Mark as pending" : "Mark as complete"}
+                  aria-label={isDone ? "Mark as pending" : "Mark as complete"}
                 >
-                  {task.completed ? <Check size={14} /> : null}
+                  {isDone ? <Check size={14} /> : null}
                 </button>
 
                 <div className={styles.taskBody}>
@@ -715,7 +569,7 @@ const TasksPage: React.FC = () => {
         x={contextMenuState.x}
         y={contextMenuState.y}
         title={selectedContextTask?.title ?? "Task"}
-        isCompleted={!!selectedContextTask?.completed}
+        isCompleted={selectedContextTask ? isTaskCompletedOnDate(selectedContextTask, selectedDate) : false}
         onClose={closeContextMenu}
         onAction={handleContextAction}
       />
@@ -739,69 +593,31 @@ const TasksPage: React.FC = () => {
           const normalizedTime = normalizedDate ? draft.dueTime || "08:00" : null;
 
           if (modalMode === "edit" && editingTaskId) {
-            setTasks((prev) =>
-              prev.map((task) => {
-                if (task.id !== editingTaskId) return task;
-                const updated: TaskItem = {
-                  ...task,
-                  title: safeTitle,
-                  priority: draft.priority,
-                  dueDate: normalizedDate,
-                  dueTime: normalizedTime,
-                  repeatDays: draft.repeatDays,
-                  updatedAt: Date.now(),
-                };
+            const currentTask = tasks.find((task) => task.id === editingTaskId);
+            if (!currentTask) {
+              setModalOpen(false);
+              return;
+            }
 
-                if (!isMobileSync) {
-                  updateTask(updated);
-                } else {
-                  sendSyncEvent({
-                    type: "TASK_UPDATE",
-                    taskId: task.id,
-                    payload: updated as unknown as Record<string, unknown>,
-                  });
-                }
-
-                return updated;
-              })
-            );
+            updateTask({
+              ...currentTask,
+              title: safeTitle,
+              priority: draft.priority,
+              dueDate: normalizedDate,
+              dueTime: normalizedTime,
+              repeatDays: draft.repeatDays,
+              updatedAt: Date.now(),
+            });
             setModalOpen(false);
             return;
           }
 
-          if (!isMobileSync) {
-             const createdDataTask = createTask({
-                title: safeTitle,
-                priority: draft.priority,
-                dueDate: normalizedDate,
-                dueTime: normalizedTime,
-                repeatDays: draft.repeatDays,
-             });
-             setTasks((prev) => [createdDataTask, ...prev]);
-             setModalOpen(false);
-             return;
-          }
-
-          const nextOrder = tasks.length > 0 ? Math.max(...tasks.map((task) => typeof task.order === 'number' ? task.order : 0)) + 1 : 0;
-
-          const createdTask: TaskItem = {
-            id: makeTaskId(),
+          createTask({
             title: safeTitle,
-            completed: false,
             priority: draft.priority,
             dueDate: normalizedDate,
             dueTime: normalizedTime,
             repeatDays: draft.repeatDays,
-            order: nextOrder,
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          };
-
-          setTasks((prev) => [createdTask, ...prev]);
-          sendSyncEvent({
-            type: "TASK_CREATE",
-            taskId: createdTask.id,
-            payload: createdTask as unknown as Record<string, unknown>,
           });
           setModalOpen(false);
         }}

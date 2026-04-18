@@ -2,6 +2,56 @@ import { getDB, runDbWrite } from "@db/database";
 import type { Note, ID, QuickNote } from "@models/types";
 import { emitEntityServerEvent } from "@services/sync/entitySyncEvents";
 
+const upsertNoteRow = async (payload: {
+  id: ID;
+  title: string;
+  content: string;
+  folderId: ID | null;
+  createdAt: number;
+  updatedAt: number;
+}): Promise<void> => {
+  await runDbWrite(
+    `INSERT INTO notes (id, title, content, folderId, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       title = excluded.title,
+       content = excluded.content,
+       folderId = excluded.folderId,
+       updatedAt = excluded.updatedAt;`,
+    payload.id,
+    payload.title,
+    payload.content,
+    payload.folderId,
+    payload.createdAt,
+    payload.updatedAt
+  );
+};
+
+const upsertQuickNoteRow = async (payload: {
+  id: ID;
+  title: string;
+  content: string;
+  folderId: ID | null;
+  createdAt: number;
+  updatedAt: number;
+}): Promise<void> => {
+  await runDbWrite(
+    `INSERT INTO quick_notes (id, title, content, folderId, createdAt, updatedAt)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       title = excluded.title,
+       content = excluded.content,
+       folderId = excluded.folderId,
+       updatedAt = excluded.updatedAt;`,
+    payload.id,
+    payload.title,
+    payload.content,
+    payload.folderId,
+    payload.createdAt,
+    payload.updatedAt
+  );
+};
+
 export const createNote = async (payload: {
   id?: ID;
   title: string;
@@ -21,26 +71,16 @@ export const createNote = async (payload: {
   const safeContent = typeof payload.content === "string" ? payload.content : "";
   const safeFolderId = payload.folderId ?? null;
 
-  if (safeFolderId === null) {
-    await runDbWrite(
-      "INSERT INTO notes (id, title, content, folderId, createdAt, updatedAt) VALUES (?, ?, ?, NULL, ?, ?)",
-      id,
-      safeTitle,
-      safeContent,
-      createdAt,
-      updatedAt
-    );
-  } else {
-    await runDbWrite(
-      "INSERT INTO notes (id, title, content, folderId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
-      id,
-      safeTitle,
-      safeContent,
-      safeFolderId,
-      createdAt,
-      updatedAt
-    );
-  }
+  await upsertNoteRow({
+    id,
+    title: safeTitle,
+    content: safeContent,
+    folderId: safeFolderId,
+    createdAt,
+    updatedAt,
+  });
+
+  console.log("[DB][UPSERT]", id);
 
   const created: Note = {
     id,
@@ -183,26 +223,14 @@ export const createQuickNote = async (payload: {
   const safeContent = typeof payload.content === "string" ? payload.content : "";
   const safeFolderId = payload.folderId ?? null;
 
-  if (safeFolderId === null) {
-    await runDbWrite(
-      "INSERT INTO quick_notes (id, title, content, folderId, createdAt, updatedAt) VALUES (?, ?, ?, NULL, ?, ?)",
-      id,
-      safeTitle,
-      safeContent,
-      createdAt,
-      updatedAt
-    );
-  } else {
-    await runDbWrite(
-      "INSERT INTO quick_notes (id, title, content, folderId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)",
-      id,
-      safeTitle,
-      safeContent,
-      safeFolderId,
-      createdAt,
-      updatedAt
-    );
-  }
+  await upsertQuickNoteRow({
+    id,
+    title: safeTitle,
+    content: safeContent,
+    folderId: safeFolderId,
+    createdAt,
+    updatedAt,
+  });
 
   const created: QuickNote = {
     id,

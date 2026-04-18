@@ -40,7 +40,9 @@ export type DataTask = {
   id: string;
   title: string;
   completed: boolean;
+  completedDates?: string[];
   priority?: "low" | "medium" | "high";
+  scheduledDate?: string | null;
   dueDate?: string | null;
   repeatDays?: number[];
   createdAt: number;
@@ -82,6 +84,11 @@ const asPriority = (value: unknown): DataTask["priority"] =>
 
 const asRepeatDays = (value: unknown): number[] =>
   Array.isArray(value) ? value.filter((day): day is number => typeof day === "number") : [];
+
+const asDateKeys = (value: unknown): string[] =>
+  Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && /^\d{4}-\d{2}-\d{2}$/.test(entry))
+    : [];
 
 const normalizeFolder = (input: unknown, index: number): DataFolder => {
   const now = Date.now();
@@ -134,11 +141,15 @@ const normalizeTask = (input: unknown, index: number): DataTask => {
   const now = Date.now();
   const item = asRecord(input);
   const createdAt = asNumber(item.createdAt, now);
+  const completedDates = asDateKeys(item.completedDates);
+  const today = new Date().toISOString().slice(0, 10);
   return {
     id: asString(item.id, `task-${now}-${index}`),
     title: asString(item.title, "Untitled task"),
-    completed: Boolean(item.completed),
+    completed: completedDates.length > 0 ? completedDates.includes(today) : Boolean(item.completed),
+    completedDates,
     priority: asPriority(item.priority),
+    scheduledDate: typeof item.scheduledDate === "string" ? item.scheduledDate : typeof item.dueDate === "string" ? item.dueDate : null,
     dueDate: typeof item.dueDate === "string" ? item.dueDate : null,
     repeatDays: asRepeatDays(item.repeatDays),
     createdAt,

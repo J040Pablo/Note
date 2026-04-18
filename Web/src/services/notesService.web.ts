@@ -1,7 +1,9 @@
 // Web-side notes service — mirrors Mobile notesService API surface.
 // All operations are synchronous against localStorage via webData.
 
+import { dispatchEntitySyncEvent } from "../features/tasks/sync";
 import { loadData, saveData, type DataNote, type DataQuickNote } from "./webData";
+import { isWebMobileSyncMode } from "./webSyncMode";
 
 type ID = string;
 
@@ -29,6 +31,10 @@ export const createNote = (payload: {
 
   store.notes = [note, ...store.notes];
   saveData(store);
+
+  if (isWebMobileSyncMode()) {
+    dispatchEntitySyncEvent({ type: "UPSERT_NOTE", payload: note });
+  }
   return note;
 };
 
@@ -45,6 +51,10 @@ export const updateNote = (note: DataNote): DataNote => {
 
   store.notes = store.notes.map((n) => (n.id === updated.id ? updated : n));
   saveData(store);
+
+  if (isWebMobileSyncMode()) {
+    dispatchEntitySyncEvent({ type: "UPSERT_NOTE", payload: updated });
+  }
   return updated;
 };
 
@@ -52,6 +62,10 @@ export const deleteNote = (noteId: ID): void => {
   const store = loadData();
   store.notes = store.notes.filter((n) => n.id !== noteId);
   saveData(store);
+
+  if (isWebMobileSyncMode()) {
+    dispatchEntitySyncEvent({ type: "DELETE_NOTE", payload: { id: noteId } });
+  }
 };
 
 export const getAllNotes = (): DataNote[] => loadData().notes;
@@ -99,6 +113,10 @@ export const createQuickNote = (payload: {
 
   store.quickNotes = [quickNote, ...store.quickNotes];
   saveData(store);
+
+  if (isWebMobileSyncMode()) {
+    dispatchEntitySyncEvent({ type: "UPSERT_QUICK_NOTE", payload: quickNote });
+  }
   return quickNote;
 };
 
@@ -125,6 +143,10 @@ export const updateQuickNote = (
   });
 
   saveData(store);
+
+  if (isWebMobileSyncMode() && result) {
+    dispatchEntitySyncEvent({ type: "UPSERT_QUICK_NOTE", payload: result });
+  }
   return result;
 };
 
@@ -132,6 +154,10 @@ export const deleteQuickNote = (id: ID): void => {
   const store = loadData();
   store.quickNotes = store.quickNotes.filter((q) => q.id !== id);
   saveData(store);
+
+  if (isWebMobileSyncMode()) {
+    dispatchEntitySyncEvent({ type: "DELETE_QUICK_NOTE", payload: { id } });
+  }
 };
 
 export const getAllQuickNotes = (): DataQuickNote[] => loadData().quickNotes;

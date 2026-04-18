@@ -3,10 +3,13 @@ import { View, StyleSheet, Pressable, Alert, Share, ScrollView, TextInput, Layou
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import ColorPicker from "react-native-wheel-color-picker";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Screen } from "@components/Layout";
 import { Text } from "@components/Text";
 import SyncPairingQrModal from "@components/SyncPairingQrModal";
 import { useTheme } from "@hooks/useTheme";
+import type { RootStackParamList } from "@navigation/RootNavigator";
 import { getAllFolders } from "@services/foldersService";
 import { getAllNotes } from "@services/notesService";
 import { getAllTasks } from "@services/tasksService";
@@ -14,6 +17,8 @@ import { getAllFiles } from "@services/filesService";
 import { getPinnedItems, getRecentItems } from "@services/appMetaService";
 import { getTaskPreferences, saveTaskPreferences } from "@services/settingsService";
 import { usePomodoroStore } from "@store/usePomodoroStore";
+
+type Nav = NativeStackNavigationProp<RootStackParamList, "Settings">;
 
 const PRESET_COLORS = [
   "#FFFFFF",
@@ -45,6 +50,7 @@ const SettingsScreen: React.FC = () => {
     secondaryColor,
     setSecondaryColor
   } = useTheme();
+  const navigation = useNavigation<Nav>();
   const [prefs, setPrefs] = useState({
     showCompleted: true,
     highlightRecurring: true,
@@ -150,10 +156,19 @@ const SettingsScreen: React.FC = () => {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text variant="title">Settings</Text>
-        <Text muted style={styles.subtitle}>App preferences and tools</Text>
+      <View style={styles.header}>
+        <Pressable
+          onPress={() => (navigation.canGoBack() ? navigation.goBack() : navigation.navigate("Tabs"))}
+          style={[styles.backButton, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={22} color={theme.colors.textPrimary} />
+        </Pressable>
+        <Text variant="subtitle" style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Settings</Text>
+      </View>
 
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={[styles.section, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
           <View style={styles.sectionHeader}>
             <Ionicons name="color-palette-outline" size={16} color={theme.colors.textSecondary} />
@@ -388,12 +403,24 @@ const SettingsScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8
+  },
+  backButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: "center",
+    justifyContent: "center"
+  },
+  headerTitle: {
+    marginLeft: 10
+  },
   content: {
     paddingBottom: 200
-  },
-  subtitle: {
-    marginTop: 4,
-    marginBottom: 10
   },
   section: {
     borderWidth: StyleSheet.hairlineWidth,

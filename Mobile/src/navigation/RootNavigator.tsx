@@ -207,8 +207,7 @@ const RootNavigator = () => {
         name="Settings"
         component={SettingsScreen}
         options={{
-          headerShown: true,
-          title: "Settings"
+          headerShown: false
         }}
       />
       <RootStack.Screen

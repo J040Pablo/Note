@@ -69,10 +69,6 @@ const SectionHeader: React.FC<SectionHeaderProps> = memo(({ title, icon }) => {
 });
 
 const HomeScreen: React.FC = () => {
-  if (__DEV__) {
-    console.log("[RENDER] HomeScreen");
-  }
-
   const { theme } = useTheme();
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();

@@ -4,7 +4,9 @@ export type TaskItem = {
   id: string;
   title: string;
   completed: boolean;
+  completedDates?: string[];
   priority: TaskPriority;
+  scheduledDate?: string | null;
   dueDate: string | null;
   dueTime: string | null;
   repeatDays: number[];

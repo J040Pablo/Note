@@ -12,3 +12,10 @@
 -keep class com.facebook.react.turbomodule.** { *; }
 
 # Add any project specific keep options here:
+
+# Widget bridge/provider classes used by launcher + React Native bridge
+-keep class com.example.lifeorganizer.ContributionWidgetProvider { *; }
+-keep class com.example.lifeorganizer.WidgetUpdateReceiver { *; }
+-keep class com.example.lifeorganizer.WidgetBridgeModule { *; }
+-keep class com.example.lifeorganizer.WidgetDataPackage { *; }
+-keep class com.example.lifeorganizer.WidgetDataRepository { *; }

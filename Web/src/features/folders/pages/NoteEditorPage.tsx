@@ -14,10 +14,7 @@ import {
   updateNote,
   deleteNote,
 } from "../../../services/notesService.web";
-import {
-  dispatchEntitySyncEvent,
-  subscribeTaskSyncMessages,
-} from "../../tasks/sync";
+import { subscribeSyncBridge } from "../../../services/syncBridge";
 import { useAppMode } from "../../../app/mode";
 import type { DataNote } from "../../../services/webData";
 import styles from "./NoteEditorPage.module.css";
@@ -116,12 +113,6 @@ const NoteEditorPage: React.FC = () => {
           setLastSavedTitle(saved.title);
           setLastSavedContent(saved.content);
 
-          if (isMobileSync) {
-            dispatchEntitySyncEvent({
-              type: "UPSERT_NOTE",
-              payload: { ...saved, updatedAt: Date.now() },
-            });
-          }
         } else {
           creatingRef.current = true;
           const saved = createNote({
@@ -132,13 +123,6 @@ const NoteEditorPage: React.FC = () => {
           setNote(saved);
           setLastSavedTitle(saved.title);
           setLastSavedContent(saved.content);
-
-          if (isMobileSync) {
-            dispatchEntitySyncEvent({
-              type: "UPSERT_NOTE",
-              payload: { ...saved, updatedAt: Date.now() },
-            });
-          }
 
           // Update URL to real note ID without adding history entry
           window.history.replaceState(null, "", `/notes/${saved.id}`);
@@ -175,25 +159,27 @@ const NoteEditorPage: React.FC = () => {
   // Sync incoming updates
   React.useEffect(() => {
     if (!isMobileSync || !note) return;
-    const unsub = subscribeTaskSyncMessages((msg) => {
-      if (msg.type === "UPSERT_NOTE" && msg.payload.id === note.id) {
-        const incoming = msg.payload;
-        setNote((prev) => {
-          if (!prev) return prev;
-          if (incoming.updatedAt <= (prev.updatedAt ?? 0)) return prev;
-          const updated = {
-            ...prev,
-            title: incoming.title,
-            content: incoming.content,
-            updatedAt: incoming.updatedAt,
-          };
-          setTitle(incoming.title);
-          setDocument(parseCanvasNoteContent(incoming.content));
-          setLastSavedTitle(incoming.title);
-          setLastSavedContent(incoming.content);
-          return updated;
-        });
-      }
+    const unsub = subscribeSyncBridge((event) => {
+      if (event.type !== "NOTE_UPSERT" || event.note.id !== note.id) return;
+
+      const incoming = event.note;
+      setNote((prev) => {
+        if (!prev) return prev;
+        if ((incoming.updatedAt ?? 0) <= (prev.updatedAt ?? 0)) return prev;
+
+        const updated = {
+          ...prev,
+          title: incoming.title,
+          content: incoming.content,
+          updatedAt: incoming.updatedAt,
+        };
+
+        setTitle(incoming.title);
+        setDocument(parseCanvasNoteContent(incoming.content));
+        setLastSavedTitle(incoming.title);
+        setLastSavedContent(incoming.content);
+        return updated;
+      });
     });
     return unsub;
   }, [isMobileSync, note]);
@@ -216,12 +202,6 @@ const NoteEditorPage: React.FC = () => {
     if (!confirmed) return;
 
     deleteNote(note.id);
-    if (isMobileSync) {
-      dispatchEntitySyncEvent({
-        type: "DELETE_NOTE",
-        payload: { id: note.id, updatedAt: Date.now() },
-      });
-    }
     navigate(-1);
   }, [isMobileSync, navigate, note]);
 

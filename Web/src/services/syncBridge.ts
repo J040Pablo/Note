@@ -13,6 +13,7 @@ import {
 import { loadData, markSynced, saveData, type DataNote, type DataQuickNote, type DataFolder } from "./webData";
 import { getMetaRecord, setMetaRecord } from "./appMetaService.web";
 import type { TaskItem } from "../features/tasks/types";
+import { setSyncDataFromStoreData } from "../store/syncDataStore";
 
 // ─── Event system ────────────────────────────────────────────────────────────
 
@@ -53,9 +54,17 @@ const emit = (event: SyncBridgeEvent) => {
 const syncTaskToTaskItem = (task: SyncTask, fallbackOrder = 0): TaskItem => ({
   id: task.id,
   title: task.title || task.text || "Untitled task",
-  completed: !!task.completed,
+  completed: Array.isArray(task.completedDates) ? task.completedDates.includes(new Date().toISOString().slice(0, 10)) : false,
   priority: task.priority,
   dueDate:
+    typeof task.scheduledDate === "string"
+      ? task.scheduledDate
+      : typeof task.dueDate === "string"
+      ? task.dueDate
+      : typeof task.date === "string"
+      ? task.date
+      : null,
+  scheduledDate:
     typeof task.scheduledDate === "string"
       ? task.scheduledDate
       : typeof task.dueDate === "string"
@@ -75,6 +84,7 @@ const syncTaskToTaskItem = (task: SyncTask, fallbackOrder = 0): TaskItem => ({
   updatedAt: task.updatedAt,
   parentId: typeof task.parentId === "string" ? task.parentId : null,
   noteId: typeof task.noteId === "string" ? task.noteId : null,
+  completedDates: Array.isArray(task.completedDates) ? task.completedDates : [],
 });
 
 const syncFolderToDataFolder = (folder: SyncFolder): DataFolder => ({
@@ -133,6 +143,7 @@ const handleFullSync = (message: SyncIncomingMessage) => {
       title: item.title,
       completed: item.completed,
       priority: item.priority,
+      scheduledDate: item.scheduledDate ?? item.dueDate,
       dueDate: item.dueDate,
       dueTime: item.dueTime,
       repeatDays: item.repeatDays,
@@ -141,12 +152,14 @@ const handleFullSync = (message: SyncIncomingMessage) => {
       updatedAt: item.updatedAt,
       parentId: item.parentId ?? null,
       noteId: item.noteId ?? null,
+      completedDates: Array.isArray(item.completedDates) ? item.completedDates : [],
     };
   });
 
   // Replace all local data
   markSynced();
   saveData({ folders, notes, quickNotes, tasks });
+  setSyncDataFromStoreData({ folders, notes, quickNotes, tasks });
 
   emit({ type: "FULL_SYNC" });
 };
@@ -162,12 +175,14 @@ const handleEntityMessage = (message: SyncIncomingMessage) => {
         ? store.folders.map((f) => (f.id === folder.id ? folder : f))
         : [folder, ...store.folders];
       saveData(store);
+      setSyncDataFromStoreData(store);
       emit({ type: "FOLDER_UPSERT", folder });
       break;
     }
     case "DELETE_FOLDER": {
       store.folders = store.folders.filter((f) => f.id !== message.payload.id);
       saveData(store);
+      setSyncDataFromStoreData(store);
       emit({ type: "FOLDER_DELETE", id: message.payload.id });
       break;
     }
@@ -178,12 +193,14 @@ const handleEntityMessage = (message: SyncIncomingMessage) => {
         ? store.notes.map((n) => (n.id === note.id ? note : n))
         : [note, ...store.notes];
       saveData(store);
+      setSyncDataFromStoreData(store);
       emit({ type: "NOTE_UPSERT", note });
       break;
     }
     case "DELETE_NOTE": {
       store.notes = store.notes.filter((n) => n.id !== message.payload.id);
       saveData(store);
+      setSyncDataFromStoreData(store);
       emit({ type: "NOTE_DELETE", id: message.payload.id });
       break;
     }
@@ -194,12 +211,14 @@ const handleEntityMessage = (message: SyncIncomingMessage) => {
         ? store.quickNotes.map((q) => (q.id === quickNote.id ? quickNote : q))
         : [quickNote, ...store.quickNotes];
       saveData(store);
+      setSyncDataFromStoreData(store);
       emit({ type: "QUICKNOTE_UPSERT", quickNote });
       break;
     }
     case "DELETE_QUICK_NOTE": {
       store.quickNotes = store.quickNotes.filter((q) => q.id !== message.payload.id);
       saveData(store);
+      setSyncDataFromStoreData(store);
       emit({ type: "QUICKNOTE_DELETE", id: message.payload.id });
       break;
     }
@@ -210,6 +229,7 @@ const handleEntityMessage = (message: SyncIncomingMessage) => {
         title: task.title,
         completed: task.completed,
         priority: task.priority,
+        scheduledDate: task.scheduledDate ?? task.dueDate,
         dueDate: task.dueDate,
         dueTime: task.dueTime,
         repeatDays: task.repeatDays,
@@ -218,18 +238,21 @@ const handleEntityMessage = (message: SyncIncomingMessage) => {
         updatedAt: task.updatedAt,
         parentId: task.parentId ?? null,
         noteId: task.noteId ?? null,
+        completedDates: Array.isArray(task.completedDates) ? task.completedDates : [],
       };
       const exists = store.tasks.some((t) => t.id === task.id);
       store.tasks = exists
         ? store.tasks.map((t) => (t.id === task.id ? taskData : t))
         : [taskData, ...store.tasks];
       saveData(store);
+      setSyncDataFromStoreData(store);
       emit({ type: "TASK_UPSERT", task });
       break;
     }
     case "DELETE_TASK": {
       store.tasks = store.tasks.filter((t) => t.id !== message.payload.id);
       saveData(store);
+      setSyncDataFromStoreData(store);
       emit({ type: "TASK_DELETE", id: message.payload.id });
       break;
     }

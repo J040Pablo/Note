@@ -1,4 +1,3 @@
-export * from "./syncEngine";
 import MessageQueue from "../../services/messageQueue";
 
 export type SyncPriority = "low" | "medium" | "high";
@@ -125,6 +124,7 @@ type StatusListener = (status: SyncStatus) => void;
 
 type ReliableMessage = {
   id: string;
+  clientId: string;
   type: string;
   payload: Record<string, unknown>;
   sentAt: number;
@@ -154,6 +154,35 @@ const MAX_PROCESSED_IDS = 2000;
 const ACK_TIMEOUT_MS = 3000;
 const ACK_RETRY_INTERVAL_MS = 1000;
 let ackRetryTimer: number | null = null;
+
+const SYNC_CLIENT_ID_KEY = "note.sync.clientId";
+
+const getOrCreateClientId = (): string => {
+  try {
+    const current = window.localStorage.getItem(SYNC_CLIENT_ID_KEY)?.trim();
+    if (current) return current;
+    const next = `web-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    window.localStorage.setItem(SYNC_CLIENT_ID_KEY, next);
+    return next;
+  } catch {
+    return `web-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  }
+};
+
+const CLIENT_ID = getOrCreateClientId();
+
+const isSyncDebugEnabled = (): boolean => {
+  try {
+    return import.meta.env.DEV && window.localStorage.getItem("note.sync.debug") === "1";
+  } catch {
+    return false;
+  }
+};
+
+const logSyncDebug = (...args: unknown[]) => {
+  if (!isSyncDebugEnabled()) return;
+  console.log(...args);
+};
 
 const messageListeners = new Set<MessageListener>();
 const statusListeners = new Set<StatusListener>();
@@ -206,7 +235,6 @@ const startAckRetryLoop = () => {
         socket?.send(JSON.stringify(pending.message));
         pending.lastSentAt = now;
         pending.retryCount += 1;
-        console.log("[SYNC][SEND]", pending.message.id, pending.message.type);
       } catch (error) {
         console.log("[SYNC][ERROR]", messageId, error);
       }
@@ -245,6 +273,12 @@ const getIncomingId = (incoming: SyncIncomingMessage): string | null => {
 
 const replayQueuedMessages = () => {
   console.log("[sync] replaying queued messages, count:", messageQueue.size());
+  const beforeDrainCount = messageQueue.size();
+  if (beforeDrainCount > 0) {
+    logSyncDebug("[SYNC][QUEUE_DRAIN][START]", { queued: beforeDrainCount });
+  }
+
+  let drained = 0;
   while (!messageQueue.isEmpty()) {
     const queued = messageQueue.peek();
     if (!queued) break;
@@ -269,6 +303,7 @@ const replayQueuedMessages = () => {
 
       socket.send(JSON.stringify(envelope));
       messageQueue.dequeue();
+      drained += 1;
       console.log("[sync] replayed message:", queued.id);
 
       if ((envelope as { ackRequired?: unknown }).ackRequired === true && typeof (envelope as { id?: unknown }).id === "string") {
@@ -286,6 +321,14 @@ const replayQueuedMessages = () => {
       break;
     }
   }
+
+  if (beforeDrainCount > 0) {
+    logSyncDebug("[SYNC][QUEUE_DRAIN][END]", {
+      before: beforeDrainCount,
+      drained,
+      remaining: messageQueue.size(),
+    });
+  }
 };
 
 const readTimestamp = (value: unknown): number =>
@@ -299,6 +342,28 @@ const entityCache = {
   notes: new Map<string, SyncNote>(),
   quickNotes: new Map<string, SyncQuickNote>(),
   tasks: new Map<string, SyncTask>(),
+};
+
+const hasAnyInitCollections = (payload: unknown): boolean => {
+  if (!payload || typeof payload !== "object") return false;
+  const data = payload as { folders?: unknown; notes?: unknown; quickNotes?: unknown; tasks?: unknown };
+  return (
+    Array.isArray(data.folders) ||
+    Array.isArray(data.notes) ||
+    Array.isArray(data.quickNotes) ||
+    Array.isArray(data.tasks)
+  );
+};
+
+const payloadIsSuspiciouslyEmpty = (payload: unknown): boolean => {
+  if (!payload || typeof payload !== "object") return true;
+  const data = payload as { folders?: unknown[]; notes?: unknown[]; quickNotes?: unknown[]; tasks?: unknown[] };
+  return (
+    Array.isArray(data.folders) && data.folders.length === 0 &&
+    Array.isArray(data.notes) && data.notes.length === 0 &&
+    Array.isArray(data.quickNotes) && data.quickNotes.length === 0 &&
+    Array.isArray(data.tasks) && data.tasks.length === 0
+  );
 };
 
 const applyInitCache = (payload: {
@@ -319,6 +384,31 @@ const applyInitCache = (payload: {
 
 const applyConflictAware = (message: SyncIncomingMessage): SyncIncomingMessage | null => {
   if (message.type === "INIT" || message.type === "INIT_DATA" || message.type === "FULL_SYNC") {
+    if (message.type === "FULL_SYNC") {
+      const incomingTasks = Array.isArray(message.payload.tasks) ? message.payload.tasks : [];
+      const hasAnyPayloadCollections = hasAnyInitCollections(message.payload);
+      const hasExistingCachedData =
+        entityCache.tasks.size > 0 ||
+        entityCache.notes.size > 0 ||
+        entityCache.quickNotes.size > 0 ||
+        entityCache.folders.size > 0;
+
+      if (incomingTasks.length === 0 && entityCache.tasks.size > 0) {
+        console.warn("[SYNC][FULL_SYNC][IGNORED] empty tasks payload with existing local tasks");
+        return null;
+      }
+
+      if (!hasAnyPayloadCollections && hasExistingCachedData) {
+        console.warn("[SYNC][FULL_SYNC][IGNORED] malformed payload (missing collections)");
+        return null;
+      }
+
+      if (payloadIsSuspiciouslyEmpty(message.payload) && hasExistingCachedData) {
+        console.warn("[SYNC][FULL_SYNC][IGNORED] empty payload to avoid unintended wipe");
+        return null;
+      }
+    }
+
     applyInitCache({
       folders: "folders" in message.payload ? (message.payload.folders as SyncFolder[]) : [],
       notes: "notes" in message.payload ? (message.payload.notes as SyncNote[]) : [],
@@ -429,32 +519,109 @@ const sendControlMessage = (payload: unknown) => {
 };
 
 const sendReliableMessage = (message: ReliableMessage) => {
+  const outbound: ReliableMessage =
+    typeof message.clientId === "string" && message.clientId.trim().length > 0
+      ? message
+      : {
+          ...message,
+          clientId: CLIENT_ID,
+        };
+
+  const readyState = socket?.readyState;
+  const isOpen = !!socket && readyState === WebSocket.OPEN;
+
+  logSyncDebug("[SYNC][SEND_ATTEMPT]", {
+    messageId: outbound.id,
+    type: outbound.type,
+    payloadValid: !!outbound.payload && typeof outbound.payload === "object",
+  });
+  logSyncDebug("[SYNC][SOCKET_STATE]", {
+    messageId: outbound.id,
+    type: outbound.type,
+    isOpen,
+    readyState: readyState ?? "no-socket",
+  });
+
+  if (
+    outbound.type === "TASK_CREATE" ||
+    outbound.type === "TASK_UPDATE" ||
+    outbound.type === "TASK_TOGGLE" ||
+    outbound.type === "TASK_DELETE"
+  ) {
+    if (pendingQueue.has(outbound.id)) {
+      logSyncDebug("[SYNC][SENT]", {
+        messageId: outbound.id,
+        type: outbound.type,
+        skipped: "already-pending",
+      });
+      return;
+    }
+    logSyncDebug("[SYNC][WS][STATE]", outbound.type, {
+      messageId: outbound.id,
+      isOpen,
+      readyState: readyState ?? "no-socket",
+    });
+  }
+
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     messageQueue.enqueue({
       id: message.id,
-      type: message.type,
-      payload: message,
+      type: outbound.type,
+      payload: outbound,
       maxRetries: 5,
     });
-    console.log("[sync] queued message:", message.id);
+    logSyncDebug("[sync] queued message:", outbound.id);
+    if (
+      outbound.type === "TASK_CREATE" ||
+      outbound.type === "TASK_UPDATE" ||
+      outbound.type === "TASK_TOGGLE" ||
+      outbound.type === "TASK_DELETE"
+    ) {
+      logSyncDebug("[SYNC][WS][QUEUE]", outbound.type, { messageId: outbound.id });
+    }
+    logSyncDebug("[SYNC][QUEUED]", {
+      messageId: outbound.id,
+      type: outbound.type,
+      queueSize: messageQueue.size(),
+    });
     return;
   }
 
   try {
-    socket.send(JSON.stringify(message));
-    pendingQueue.set(message.id, {
-      message,
-      sentAt: message.sentAt,
+    if (pendingQueue.has(outbound.id)) {
+      logSyncDebug("[SYNC][SENT]", {
+        messageId: outbound.id,
+        type: outbound.type,
+        skipped: "already-pending",
+      });
+      return;
+    }
+    socket.send(JSON.stringify(outbound));
+    pendingQueue.set(outbound.id, {
+      message: outbound,
+      sentAt: outbound.sentAt,
       lastSentAt: Date.now(),
       retryCount: 0,
     });
-    console.log("[SYNC][SEND]", message.id, message.type);
+    logSyncDebug("[SYNC][SENT]", {
+      messageId: outbound.id,
+      type: outbound.type,
+      ackRequired: outbound.ackRequired,
+    });
+    if (
+      outbound.type === "TASK_CREATE" ||
+      outbound.type === "TASK_UPDATE" ||
+      outbound.type === "TASK_TOGGLE" ||
+      outbound.type === "TASK_DELETE"
+    ) {
+      logSyncDebug("[SYNC][WS][SENT]", outbound.type, { messageId: outbound.id });
+    }
   } catch (error) {
-    console.log("[SYNC][ERROR]", message.id, error);
+    console.log("[SYNC][ERROR]", outbound.id, error);
     messageQueue.enqueue({
-      id: message.id,
-      type: message.type,
-      payload: message,
+      id: outbound.id,
+      type: outbound.type,
+      payload: outbound,
       maxRetries: 5,
     });
   }
@@ -559,7 +726,7 @@ export const connectTaskSync = (url: string) => {
 
       const pending = pendingQueue.get(ackId);
       if (!pending) {
-        console.log("[SYNC][ACK]", ackId, "latency:", "n/a");
+        logSyncDebug("[SYNC][ACK]", ackId, "latency:", "n/a");
         return;
       }
 
@@ -571,8 +738,8 @@ export const connectTaskSync = (url: string) => {
 
       const latency = Date.now() - pending.sentAt;
       pendingQueue.delete(ackId);
-      console.log("[SYNC][ACK]", ackId, "latency:", latency);
-      console.log("[SYNC][LATENCY]", latency);
+      logSyncDebug("[SYNC][ACK]", ackId, "latency:", latency);
+      logSyncDebug("[SYNC][LATENCY]", latency);
       if (latency > 500) {
         console.warn("[SYNC][SLOW]", latency);
       }
@@ -649,6 +816,13 @@ export const disconnectTaskSync = () => {
 
 export const getTaskSyncStatus = (): SyncStatus => status;
 
+export const requestTaskSync = (): boolean => {
+  if (!socket || socket.readyState !== WebSocket.OPEN) {
+    return false;
+  }
+  return sendRaw({ type: "INIT_SYNC" });
+};
+
 export const subscribeTaskSyncMessages = (listener: MessageListener) => {
   messageListeners.add(listener);
   return () => { messageListeners.delete(listener); };
@@ -663,10 +837,12 @@ export const subscribeTaskSyncStatus = (listener: StatusListener) => {
 export const dispatchTaskSyncEvent = (event: Omit<TaskSyncEvent, "timestamp">) => {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   const sentAt = Date.now();
+  const socketState = socket ? socket.readyState : WebSocket.CLOSED;
 
   if (event.type === "TASK_DELETE") {
     sendReliableMessage({
       id,
+      clientId: CLIENT_ID,
       type: "TASK_DELETE",
       payload: {
         id: event.taskId,
@@ -681,8 +857,15 @@ export const dispatchTaskSyncEvent = (event: Omit<TaskSyncEvent, "timestamp">) =
   const payload = normalizeOutgoingTask(event.taskId, event.payload);
 
   if (event.type === "TASK_CREATE") {
+    console.log("[SYNC][DEBUG] TASK_CREATE sent", {
+      taskId: event.taskId,
+      socketState,
+      socketOpen: socketState === WebSocket.OPEN,
+    });
+
     sendReliableMessage({
       id,
+      clientId: CLIENT_ID,
       type: "TASK_CREATE",
       payload,
       sentAt,
@@ -692,12 +875,14 @@ export const dispatchTaskSyncEvent = (event: Omit<TaskSyncEvent, "timestamp">) =
   }
 
   if (event.type === "TASK_TOGGLE") {
+    const toggleDate = typeof event.payload?.date === "string" ? event.payload.date : payload.date;
     sendReliableMessage({
       id,
+      clientId: CLIENT_ID,
       type: "TASK_TOGGLE",
       payload: {
         id: payload.id,
-        completed: payload.completed,
+        date: toggleDate,
         updatedAt: payload.updatedAt,
       },
       sentAt,
@@ -706,8 +891,15 @@ export const dispatchTaskSyncEvent = (event: Omit<TaskSyncEvent, "timestamp">) =
     return;
   }
 
+  console.log("[SYNC][DEBUG] TASK_UPDATE sent", {
+    taskId: event.taskId,
+    socketState,
+    socketOpen: socketState === WebSocket.OPEN,
+  });
+
   sendReliableMessage({
     id,
+    clientId: CLIENT_ID,
     type: "TASK_UPDATE",
     payload,
     sentAt,
@@ -730,6 +922,7 @@ export const dispatchEntitySyncEvent = (event: {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
   sendReliableMessage({
     id,
+    clientId: CLIENT_ID,
     type: event.type,
     payload: event.payload,
     sentAt: Date.now(),
