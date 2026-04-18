@@ -30,8 +30,15 @@ const checks = [
     validate: (content) => {
       return content.includes('widget_root') &&
              content.includes('widget_grid') &&
-             content.includes('cell_0_0') &&
-             content.includes('cell_9_6');
+             content.includes('GridView');
+    }
+  },
+  {
+    name: 'widget_heatmap_cell.xml',
+    path: '../../android/app/src/main/res/layout/widget_heatmap_cell.xml',
+    validate: (content) => {
+      return content.includes('cell_root') &&
+             content.includes('cell_dot');
     }
   },
   {
@@ -41,7 +48,24 @@ const checks = [
       return content.includes('class ContributionWidgetProvider') &&
              content.includes('updateAllWidgets') &&
              content.includes('R.layout.widget_layout') &&
+             content.includes('notifyAppWidgetViewDataChanged');
+    }
+  },
+  {
+    name: 'ContributionHeatmapRemoteViewsService.kt',
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionHeatmapRemoteViewsService.kt',
+    validate: (content) => {
+      return content.includes('class ContributionHeatmapRemoteViewsService') &&
+             content.includes('RemoteViewsFactory') &&
              content.includes('WidgetDataRepository.getHeatmapData');
+    }
+  },
+  {
+    name: 'HeatmapWidgetSizing.kt',
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/HeatmapWidgetSizing.kt',
+    validate: (content) => {
+      return content.includes('object HeatmapWidgetSizing') &&
+             content.includes('OPTION_APPWIDGET_SIZES');
     }
   },
   {

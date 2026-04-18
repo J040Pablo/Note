@@ -16,7 +16,19 @@ const checks = {
   },
   'widget_layout.xml': {
     path: '../../android/app/src/main/res/layout/widget_layout.xml',
-    verify: (content) => content.includes('widget_root') && content.includes('widget_grid') && content.includes('cell_9_6')
+    verify: (content) => content.includes('widget_root') && content.includes('widget_grid')
+  },
+  'widget_heatmap_cell.xml': {
+    path: '../../android/app/src/main/res/layout/widget_heatmap_cell.xml',
+    verify: (content) => content.includes('cell_root') && content.includes('cell_dot')
+  },
+  'ContributionHeatmapRemoteViewsService.kt': {
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionHeatmapRemoteViewsService.kt',
+    verify: (content) => content.includes('class ContributionHeatmapRemoteViewsService') && content.includes('RemoteViewsFactory')
+  },
+  'HeatmapWidgetSizing.kt': {
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/HeatmapWidgetSizing.kt',
+    verify: (content) => content.includes('object HeatmapWidgetSizing') && content.includes('resolveAndPersist')
   },
   'WidgetDataRepository.kt': {
     path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataRepository.kt',

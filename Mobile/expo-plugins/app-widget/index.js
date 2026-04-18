@@ -4,6 +4,8 @@ const PROVIDER_NAME = 'com.example.lifeorganizer.ContributionWidgetProvider';
 const PROVIDER_SIMPLE = '.ContributionWidgetProvider';
 const BOOT_RECEIVER_NAME = 'com.example.lifeorganizer.WidgetUpdateReceiver';
 const BOOT_RECEIVER_SIMPLE = '.WidgetUpdateReceiver';
+const HEATMAP_SERVICE_NAME = 'com.example.lifeorganizer.ContributionHeatmapRemoteViewsService';
+const HEATMAP_SERVICE_SIMPLE = '.ContributionHeatmapRemoteViewsService';
 
 /**
  * Ensures the ContributionWidgetProvider receiver is declared in AndroidManifest.xml.
@@ -27,6 +29,12 @@ function withContributionWidgetManifest(config) {
       app.receiver = [];
     } else if (!Array.isArray(app.receiver)) {
       app.receiver = [app.receiver];
+    }
+
+    if (!app.service) {
+      app.service = [];
+    } else if (!Array.isArray(app.service)) {
+      app.service = [app.service];
     }
 
     // ── Widget provider ──────────────────────────────────────────────
@@ -84,6 +92,24 @@ function withContributionWidgetManifest(config) {
             ],
           },
         ],
+      });
+    }
+
+    // ── Collection service for GridView widget ───────────────────────
+    const hasHeatmapService = app.service.some(
+      (s) =>
+        s.$['android:name'] === HEATMAP_SERVICE_NAME ||
+        s.$['android:name'] === HEATMAP_SERVICE_SIMPLE
+    );
+
+    if (!hasHeatmapService) {
+      console.log('[APP-WIDGET-PLUGIN] Adding ContributionHeatmapRemoteViewsService');
+      app.service.push({
+        $: {
+          'android:name': HEATMAP_SERVICE_SIMPLE,
+          'android:exported': 'false',
+          'android:permission': 'android.permission.BIND_REMOTEVIEWS',
+        },
       });
     }
 
