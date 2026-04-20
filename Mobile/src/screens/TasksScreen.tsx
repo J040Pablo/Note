@@ -160,6 +160,7 @@ const TasksScreen: React.FC = () => {
   const fabAnim = useRef(new Animated.Value(0)).current;
   const reorderTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const latestOrderRef = useRef<string[]>([]);
+  const taskAnimationsRef = useRef<Map<string, { scale: Animated.Value; opacity: Animated.Value }>>(new Map());
 
   // Enable LayoutAnimation on Android
   useEffect(() => {
@@ -906,18 +907,70 @@ const TasksScreen: React.FC = () => {
           const isExpanded = expandedTaskId === root.id;
           const taskSelected = isSelected({ kind: "task", id: root.id, parentId: root.parentId ?? null, label: root.text });
 
+          // Get or create animated values for this task
+          const getAnimations = () => {
+            if (!taskAnimationsRef.current.has(root.id)) {
+              taskAnimationsRef.current.set(root.id, {
+                scale: new Animated.Value(1),
+                opacity: new Animated.Value(1)
+              });
+            }
+            return taskAnimationsRef.current.get(root.id)!;
+          };
+
+          const animations = getAnimations();
+
+          // Animate task completion: scale 1→0.92→1.05→1 + opacity fade
+          const animateCompletion = () => {
+            Animated.parallel([
+              Animated.sequence([
+                Animated.timing(animations.scale, {
+                  toValue: 0.92,
+                  duration: 100,
+                  useNativeDriver: false
+                }),
+                Animated.timing(animations.scale, {
+                  toValue: 1.05,
+                  duration: 100,
+                  useNativeDriver: false
+                }),
+                Animated.timing(animations.scale, {
+                  toValue: 1,
+                  duration: 100,
+                  useNativeDriver: false
+                })
+              ]),
+              Animated.sequence([
+                Animated.timing(animations.opacity, {
+                  toValue: 0.7,
+                  duration: 130,
+                  useNativeDriver: false
+                }),
+                Animated.timing(animations.opacity, {
+                  toValue: 1,
+                  duration: 170,
+                  useNativeDriver: false
+                })
+              ])
+            ]).start();
+          };
+
           return (
-            <View
+            <Animated.View
               style={[
                 styles.taskCard,
-                { backgroundColor: theme.colors.card, borderColor: taskSelected ? theme.colors.primary : theme.colors.border },
+                { 
+                  backgroundColor: theme.colors.card, 
+                  borderColor: taskSelected ? theme.colors.primary : theme.colors.border,
+                  transform: [{ scale: animations.scale }],
+                  opacity: animations.opacity
+                },
                 isActive && {
                   elevation: 10,
                   shadowColor: theme.colors.textPrimary,
                   shadowOpacity: 0.3,
                   shadowRadius: 12,
-                  shadowOffset: { width: 0, height: 8 },
-                  transform: [{ scale: 1.03 }]
+                  shadowOffset: { width: 0, height: 8 }
                 }
               ]}
             >
@@ -959,6 +1012,8 @@ const TasksScreen: React.FC = () => {
                           return;
                         }
                       }
+                      // Trigger completion animation
+                      animateCompletion();
                       LayoutAnimation.configureNext({ ...LayoutAnimation.Presets.easeInEaseOut, duration: 150 });
                       try {
                         const updated = await toggleTaskForDate(root, selectedDate);
@@ -1096,7 +1151,7 @@ const TasksScreen: React.FC = () => {
               )}
 
               <SelectionIndicator visible={taskSelected} />
-            </View>
+            </Animated.View>
           );
         }}
         ListEmptyComponent={

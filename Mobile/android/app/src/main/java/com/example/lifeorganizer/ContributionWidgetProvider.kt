@@ -32,27 +32,33 @@ class ContributionWidgetProvider : AppWidgetProvider() {
             appWidgetManager: AppWidgetManager,
             widgetId: Int,
         ): RemoteViews {
+            Log.e("WIDGET_DEBUG", "🟢🟢🟢 buildRemoteViews START: widgetId=$widgetId 🟢🟢🟢")
             val config = HeatmapWidgetSizing.resolveAndPersist(context, appWidgetManager, widgetId)
             val views = RemoteViews(context.packageName, R.layout.widget_layout)
 
             views.setInt(R.id.widget_grid, "setNumColumns", config.cols)
-            views.setInt(R.id.widget_grid, "setHorizontalSpacing", config.gapPx)
-            views.setInt(R.id.widget_grid, "setVerticalSpacing", config.gapPx)
+            views.setInt(R.id.widget_grid, "setHorizontalSpacing", 2)  // 2dp fixo
+            views.setInt(R.id.widget_grid, "setVerticalSpacing", 2)    // 2dp fixo
             views.setInt(R.id.widget_grid, "setStretchMode", GridView.STRETCH_COLUMN_WIDTH)
             views.setViewPadding(
                 R.id.widget_grid,
-                config.paddingPx,
-                config.paddingPx,
-                config.paddingPx,
-                config.paddingPx
+                6,  // 6dp fixo para padding
+                6,
+                6,
+                6
             )
 
+            // 🔴 CRÍTICO: setEmptyView DEVE VIR ANTES de setRemoteAdapter
+            views.setEmptyView(R.id.widget_grid, R.id.widget_empty)
+            
+            // 🔴 CRÍTICO: URI única por widgetId para evitar cache do launcher
             val serviceIntent = Intent(context, ContributionHeatmapRemoteViewsService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
-                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                // Cada widget precisa de uma URI única para forçar recriação do Factory
+                data = Uri.parse("content://com.example.lifeorganizer/widget/$widgetId")
             }
+            Log.e("WIDGET_DEBUG", "🔵 setRemoteAdapter: widgetId=$widgetId uri=${serviceIntent.data} className=${serviceIntent.component}")
             views.setRemoteAdapter(R.id.widget_grid, serviceIntent)
-            views.setEmptyView(R.id.widget_grid, R.id.widget_empty)
 
             val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             if (launchIntent != null) {
@@ -67,9 +73,9 @@ class ContributionWidgetProvider : AppWidgetProvider() {
                 views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
             }
 
-            Log.e(
-                "WIDGET_DEBUG",
-                "widthPx=${config.widthPx} heightPx=${config.heightPx} cols=${config.cols} rows=${config.rows} cellSize=${config.cellSizePx}"
+            Log.i(
+                TAG,
+                "buildRemoteViews: bucket=${config.bucket} cols=${config.cols} rows=${config.rows} cellSize=${config.cellSizeDp}dp"
             )
 
             return views
@@ -80,9 +86,19 @@ class ContributionWidgetProvider : AppWidgetProvider() {
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int,
         ) {
+            Log.d(TAG, "updateWidget START: widgetId=$appWidgetId")
             val views = buildRemoteViews(context, appWidgetManager, appWidgetId)
-            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_grid)
+            
+            // 🔴 ORDEM CRÍTICA:
+            // 1. updateAppWidget() = envia RemoteViews + Intent do RemoteAdapter
+            // 2. notifyAppWidgetViewDataChanged() = força recriação do Factory
+            Log.d(TAG, "updateAppWidget: widgetId=$appWidgetId")
             appWidgetManager.updateAppWidget(appWidgetId, views)
+            
+            Log.d(TAG, "notifyAppWidgetViewDataChanged: widgetId=$appWidgetId")
+            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_grid)
+            
+            Log.d(TAG, "updateWidget END: widgetId=$appWidgetId")
         }
     }
 
@@ -105,6 +121,11 @@ class ContributionWidgetProvider : AppWidgetProvider() {
     ) {
         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
         Log.i(TAG, "onAppWidgetOptionsChanged: id=$appWidgetId")
+        
+        // Limpar bucket persistido para forçar re-resolução
+        HeatmapWidgetSizing.clear(context, appWidgetId)
+        
+        // Atualizar widget com nova resolução
         updateWidget(context, appWidgetManager, appWidgetId)
     }
 

@@ -3,11 +3,17 @@ package com.example.lifeorganizer
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 
+private const val DEBUG_TAG = "HEATMAP_WIDGET"
+
 class ContributionHeatmapRemoteViewsService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
+        Log.e(DEBUG_TAG, "🔴🔴🔴 onGetViewFactory CHAMADO! 🔴🔴🔴")
+        Log.e(DEBUG_TAG, "  widgetId=${intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, -1)}")
+        Log.e(DEBUG_TAG, "  uri=${intent.data}")
         return ContributionHeatmapFactory(applicationContext, intent)
     }
 }
@@ -20,32 +26,49 @@ private class ContributionHeatmapFactory(
     private val appWidgetId: Int =
         intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
 
+    init {
+        Log.e(DEBUG_TAG, "🟠🟠🟠 ContributionHeatmapFactory CONSTRUCTOR: appWidgetId=$appWidgetId 🟠🟠🟠")
+    }
+
     private var config: HeatmapGridConfig = HeatmapGridConfig(
-        widthPx = 110,
-        heightPx = 110,
+        bucket = HeatmapBucket.SMALL,
         cols = 5,
         rows = 5,
-        cellSizePx = 12,
-        gapPx = 2,
-        paddingPx = 6,
+        layoutId = 0,
+        cellSizeDp = 8f
     )
 
     private var orderedDates: List<String> = emptyList()
     private var values: List<Int> = emptyList()
 
     override fun onCreate() {
-        // no-op
+        Log.e(DEBUG_TAG, "🟡 Factory.onCreate: appWidgetId=$appWidgetId")
     }
 
     override fun onDataSetChanged() {
+        Log.e(DEBUG_TAG, "🟢 onDataSetChanged CALLED: appWidgetId=$appWidgetId")
         val manager = AppWidgetManager.getInstance(context)
-        config = HeatmapWidgetSizing.load(context, appWidgetId)
-            ?: HeatmapWidgetSizing.resolveAndPersist(context, manager, appWidgetId)
+        
+        // Carregar bucket persistido ou resolver novo
+        val savedBucket = HeatmapWidgetSizing.load(context, appWidgetId)
+        config = if (savedBucket != null) {
+            // Usar bucket persistido e converter para config
+            val bucket = savedBucket
+            Log.e(DEBUG_TAG, "  ✓ Bucket persistido: $bucket")
+            val tempConfig = HeatmapWidgetSizing.resolve(context, manager, appWidgetId)
+            tempConfig
+        } else {
+            // Resolver e persistir novo
+            Log.e(DEBUG_TAG, "  ✗ Bucket NOT found, resolvendo novo...")
+            HeatmapWidgetSizing.resolveAndPersist(context, manager, appWidgetId)
+        }
 
         val heatmap = WidgetDataRepository.getHeatmapData(context)
+        Log.e(DEBUG_TAG, "  Heatmap keys: ${heatmap.size}")
         val totalDays = config.cols * config.rows
         orderedDates = WidgetDataRepository.recentDateKeys(totalDays)
         values = orderedDates.map { key -> heatmap[key] ?: 0 }
+        Log.e(DEBUG_TAG, "  ✓ onDataSetChanged END: values.size=${values.size} config.cols=${config.cols}")
     }
 
     override fun onDestroy() {
@@ -53,20 +76,22 @@ private class ContributionHeatmapFactory(
         orderedDates = emptyList()
     }
 
-    override fun getCount(): Int = values.size
+    override fun getCount(): Int {
+        Log.e(DEBUG_TAG, "🔵 getCount CALLED: returning ${values.size}")
+        return values.size
+    }
 
     override fun getViewAt(position: Int): RemoteViews {
         if (position < 0 || position >= values.size) {
-            return RemoteViews(context.packageName, R.layout.widget_heatmap_cell)
+            Log.e(DEBUG_TAG, "🟠 getViewAt INVALID position=$position size=${values.size}")
+            return RemoteViews(context.packageName, config.layoutId)
         }
 
+        Log.e(DEBUG_TAG, "🟣 getViewAt position=$position/${values.size} layoutId=${config.layoutId}")
         val count = values[position]
-        val views = RemoteViews(context.packageName, R.layout.widget_heatmap_cell)
+        val views = RemoteViews(context.packageName, config.layoutId)
 
-        views.setInt(R.id.cell_root, "setMinimumHeight", config.cellSizePx)
-        views.setInt(R.id.cell_root, "setMinimumWidth", config.cellSizePx)
-        views.setInt(R.id.cell_dot, "setMinimumHeight", config.cellSizePx)
-        views.setInt(R.id.cell_dot, "setMinimumWidth", config.cellSizePx)
+        // Aplicar apenas backgroundColor - NÃO usar setMinimumHeight/Width
         views.setInt(R.id.cell_dot, "setBackgroundResource", backgroundForCount(count))
 
         val fillInIntent = Intent().apply {
