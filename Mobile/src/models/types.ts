@@ -188,6 +188,15 @@ export interface CanvasNoteDocument {
   elements: CanvasElement[];
 }
 
+export interface TaskRecurrence {
+  type: "none" | "daily" | "weekly" | "monthly";
+  interval?: number;
+  daysOfWeek?: number[];
+  dayOfMonth?: number;
+  occurrences?: number;
+  until?: string;
+}
+
 export interface Task {
   id: ID;
   text: string;
@@ -202,10 +211,14 @@ export interface Task {
   scheduledDate?: string | null;
   /** Optional scheduled time (HH:mm) */
   scheduledTime?: string | null;
-  /** Weekdays where task repeats. 0=Sun ... 6=Sat */
+  /** Weekdays where task repeats. 0=Sun ... 6=Sat (deprecated) */
   repeatDays?: number[];
+  /** Advanced recurrence */
+  repeat?: TaskRecurrence;
   /** Completed day keys (YYYY-MM-DD) used by recurring/scheduled tasks */
   completedDates?: string[];
+  /** Task tags */
+  tags?: string[];
   /** Reminder presets for notifications */
   reminders?: TaskReminderType[];
   /** Notification IDs for scheduled reminders */

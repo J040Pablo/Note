@@ -1,5 +1,5 @@
 import { getDB, runDbWrite, withDbWriteTransaction } from "@db/database";
-import type { Task, ID, TaskReminderType } from "@models/types";
+import type { Task, ID, TaskReminderType, TaskRecurrence } from "@models/types";
 import {
   scheduleTaskNotifications,
   cancelTaskNotifications,
@@ -8,7 +8,7 @@ import WidgetSyncService from "@services/WidgetSyncService";
 import { emitTaskServerEvent } from "@services/sync/taskSyncEvents";
 import { toSyncTask } from "@services/sync/taskSyncProtocol";
 
-export type TaskPriority = 0 | 1 | 2; // 0 = low, 1 = medium, 2 = high
+export type TaskPriority = 0 | 1 | 2;
 
 const VALID_REMINDERS: TaskReminderType[] = ["AT_TIME", "10_MIN_BEFORE", "1_HOUR_BEFORE", "1_DAY_BEFORE"];
 
@@ -32,9 +32,26 @@ const safeJsonNumberArray = (value: unknown): number[] => {
   }
 };
 
+const safeJsonObject = <T>(value: unknown, fallback: T): T => {
+  if (!value || typeof value !== "string") return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+};
+
+const normalizeTags = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(
+    value
+      .map(t => typeof t === "string" ? t.trim().toLowerCase() : "")
+      .filter(t => t.length > 0)
+  ));
+};
+
 const normalizeReminders = (value: unknown): TaskReminderType[] => {
   if (!Array.isArray(value)) return [];
-
   const deduped = Array.from(new Set(value.map(String)));
   return deduped
     .filter((item): item is TaskReminderType => VALID_REMINDERS.includes(item as TaskReminderType))
@@ -59,35 +76,31 @@ export const weekdayFromDateKey = (dateKey: string): number => {
   return new Date(y, (m || 1) - 1, d || 1).getDay();
 };
 
-const parseTask = (row: Task & { repeatDays?: string; completedDates?: string; reminders?: string; notificationIds?: string }): Task => ({
+const parseTask = (row: Task & { repeatDays?: string; repeat?: string; completedDates?: string; reminders?: string; tags?: string; notificationIds?: string }): Task => ({
   ...row,
   completed: !!row.completed,
   priority: row.priority as TaskPriority,
   scheduledDate: row.scheduledDate ?? null,
   scheduledTime: row.scheduledTime ?? null,
   repeatDays: safeJsonNumberArray(row.repeatDays),
+  repeat: safeJsonObject<TaskRecurrence | undefined>(row.repeat, undefined),
   completedDates: safeJsonArray(row.completedDates),
+  tags: normalizeTags(safeJsonArray(row.tags)),
   reminders: normalizeReminders(safeJsonArray(row.reminders)),
   notificationIds: safeJsonArray(row.notificationIds),
 });
 
 export const isTaskCompletedForDate = (task: Task, dateKey: string): boolean => {
   if (!task.scheduledDate && !task.repeatDays?.length) {
-    // Non-scheduled task: use the boolean field only
     return task.completed;
   }
-  // Scheduled or recurring: use completedDates array
   return (task.completedDates ?? []).includes(dateKey);
 };
 
 export const shouldAppearOnDate = (task: Task, dateKey: string): boolean => {
   const repeats = task.repeatDays ?? [];
-  if (repeats.length > 0) {
-    return repeats.includes(weekdayFromDateKey(dateKey));
-  }
-  if (task.scheduledDate) {
-    return task.scheduledDate === dateKey;
-  }
+  if (repeats.length > 0) return repeats.includes(weekdayFromDateKey(dateKey));
+  if (task.scheduledDate) return task.scheduledDate === dateKey;
   return dateKey === toDateKey(new Date());
 };
 
@@ -109,29 +122,26 @@ export const createTask = async (payload: {
   scheduledDate?: string | null;
   scheduledTime?: string | null;
   repeatDays?: number[];
+  repeat?: TaskRecurrence;
+  tags?: string[];
   reminders?: TaskReminderType[];
-  updatedAt?: number;
 }): Promise<Task> => {
-  // Validate that text is not empty
   const taskText = (payload.text ?? "").trim();
-  if (!taskText) {
-    throw new Error("Task text cannot be empty");
-  }
-
-  console.log("createTask called");
+  if (!taskText) throw new Error("Task text cannot be empty");
 
   const task = await withDbWriteTransaction("createTask", async (db) => {
     const id = payload.id ?? uuid();
-    const updatedAt = Number(payload.updatedAt ?? Date.now());
+    const updatedAt = Date.now();
     const repeatDays = payload.repeatDays ?? [];
+    const repeat = payload.repeat;
+    const tags = normalizeTags(payload.tags ?? []);
     const reminders = normalizeReminders(payload.reminders ?? []);
-    const completedDates: string[] = [];
+    
     const nextOrderRow = await db.getFirstAsync<{ next: number }>(
       "SELECT COALESCE(MAX(orderIndex), 0) + 1 AS next FROM tasks"
     );
     const orderIndex = Number(nextOrderRow?.next ?? 1);
 
-    // Create task object for notification scheduling
     const task: Task = {
       id,
       text: taskText,
@@ -144,103 +154,63 @@ export const createTask = async (payload: {
       scheduledDate: payload.scheduledDate ?? null,
       scheduledTime: payload.scheduledTime ?? null,
       repeatDays,
-      completedDates,
+      repeat,
+      tags,
+      completedDates: [],
       reminders,
       notificationIds: [],
     };
 
     await db.runAsync(
-      "INSERT INTO tasks (id, text, completed, updatedAt, orderIndex, priority, noteId, parentId, scheduledDate, scheduledTime, repeatDays, completedDates, reminders, notificationIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      id,
-      taskText,
-      0,
-      updatedAt,
-      orderIndex,
-      payload.priority ?? 1,
-      payload.noteId ?? null,
-      payload.parentId ?? null,
-      payload.scheduledDate ?? null,
-      payload.scheduledTime ?? null,
-      JSON.stringify(repeatDays),
-      JSON.stringify(completedDates),
-      JSON.stringify(reminders),
-      JSON.stringify(task.notificationIds ?? [])
+      "INSERT INTO tasks (id, text, completed, updatedAt, orderIndex, priority, noteId, parentId, scheduledDate, scheduledTime, repeatDays, repeat, tags, completedDates, reminders, notificationIds) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      id, taskText, 0, updatedAt, orderIndex, task.priority, task.noteId, task.parentId, task.scheduledDate, task.scheduledTime, JSON.stringify(repeatDays), repeat ? JSON.stringify(repeat) : null, JSON.stringify(tags), "[]", JSON.stringify(reminders), "[]"
     );
     return task;
   });
 
-  // After task exists in DB, schedule notifications and persist notificationIds.
-  let createdTask = task;
-  try {
-    if (task.scheduledDate && task.scheduledTime && !task.completed) {
-      const notificationIds = await scheduleTaskNotifications(task);
-      createdTask = {
-        ...task,
-        notificationIds,
-      };
-
-      await runDbWrite(
-        "UPDATE tasks SET notificationIds = ?, updatedAt = ? WHERE id = ?",
-        JSON.stringify(notificationIds),
-        createdTask.updatedAt,
-        createdTask.id
-      );
-
-      if (__DEV__) {
-        console.log(`[NOTIF] Scheduled task notifications for ID: ${createdTask.id} (${notificationIds.length})`);
-      }
-    }
-  } catch (e) {
-    console.log(`[NOTIF ERROR] scheduleTaskNotifications create ${task.id}`, e);
+  // Sync notifications
+  const notificationIds = await scheduleTaskNotifications(task);
+  if (notificationIds.length > 0) {
+    const finalTask = { ...task, notificationIds };
+    await runDbWrite("UPDATE tasks SET notificationIds = ? WHERE id = ?", JSON.stringify(notificationIds), task.id);
+    emitTaskServerEvent({ type: "TASK_CREATED", payload: toSyncTask(finalTask) });
+    void syncWidgetHeatmap();
+    return finalTask;
   }
 
-  emitTaskServerEvent({ type: "TASK_CREATED", payload: toSyncTask(createdTask) });
+  emitTaskServerEvent({ type: "TASK_CREATED", payload: toSyncTask(task) });
   void syncWidgetHeatmap();
-  return createdTask;
+  return task;
 };
 
 export const toggleTask = async (task: Task): Promise<Task> => {
   const updated = { ...task, completed: !task.completed, updatedAt: Date.now() };
 
-  // Cancel notifications when task is marked as completed
-  if (updated.completed && task.notificationIds && task.notificationIds.length > 0) {
-    try {
-      await cancelTaskNotifications(task.notificationIds);
-    } catch (e) {
-      console.log(`[NOTIF ERROR] cancelTaskNotifications toggle ${task.id}`, e);
-    }
-  }
+  // Always sync notifications on toggle to ensure they are removed when completed or added when recurring/restored
+  const nextNotificationIds = await scheduleTaskNotifications(updated);
+  updated.notificationIds = nextNotificationIds;
 
   await runDbWrite(
-    "UPDATE tasks SET completed = ?, updatedAt = ? WHERE id = ?",
+    "UPDATE tasks SET completed = ?, updatedAt = ?, notificationIds = ? WHERE id = ?",
     updated.completed ? 1 : 0,
     updated.updatedAt,
+    JSON.stringify(updated.notificationIds),
     task.id
   );
+
   emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated) });
   void syncWidgetHeatmap();
   return updated;
 };
 
 export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Task> => {
-  const repeats = task.repeatDays ?? [];
-  const isRecurringOrScheduled = repeats.length > 0 || !!task.scheduledDate;
+  const isRecurring = (task.repeatDays ?? []).length > 0;
+  if (!isRecurring && !task.scheduledDate) return toggleTask(task);
 
-  if (!isRecurringOrScheduled) {
-    return toggleTask(task);
-  }
-
-  // Normalize dateKey to YYYY-MM-DD format (safety check)
   const normalizedDateKey = /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : toDateKey(dateKey as any);
-  
   const completedDates = new Set(task.completedDates ?? []);
-  const isCompleting = !completedDates.has(normalizedDateKey);
-  
-  if (isCompleting) {
-    completedDates.add(normalizedDateKey);
-  } else {
-    completedDates.delete(normalizedDateKey);
-  }
+  if (completedDates.has(normalizedDateKey)) completedDates.delete(normalizedDateKey);
+  else completedDates.add(normalizedDateKey);
 
   const updated: Task = {
     ...task,
@@ -248,159 +218,54 @@ export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Ta
     completedDates: Array.from(completedDates)
   };
 
-  if (__DEV__) {
-    console.log(`[TASK] toggleTaskForDate: ${task.id} date=${normalizedDateKey} isCompleting=${isCompleting} newDates=${updated.completedDates.length}`);
-  }
-
-  // Cancel notifications when all instances are completed
-  if (isCompleting && task.notificationIds && task.notificationIds.length > 0) {
-    // For recurring tasks, only cancel if this is the only instance
-    if (repeats.length === 0) {
-      try {
-        await cancelTaskNotifications(task.notificationIds);
-      } catch (e) {
-        console.log(`[NOTIF ERROR] cancelTaskNotifications toggleForDate ${task.id}`, e);
-      }
-    }
-  }
+  // Sync notifications (critical for recurring tasks)
+  const nextIds = await scheduleTaskNotifications(updated);
+  updated.notificationIds = nextIds;
 
   await runDbWrite(
-    "UPDATE tasks SET completedDates = ?, updatedAt = ? WHERE id = ?",
+    "UPDATE tasks SET completedDates = ?, updatedAt = ?, notificationIds = ? WHERE id = ?",
     JSON.stringify(updated.completedDates),
     updated.updatedAt,
+    JSON.stringify(updated.notificationIds),
     task.id
   );
 
   emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated) });
   void syncWidgetHeatmap();
-
-  return updated;
-};
-
-export const updateTaskPriority = async (task: Task, priority: TaskPriority): Promise<Task> => {
-  const updated = { ...task, priority, updatedAt: Date.now() };
-
-  await runDbWrite("UPDATE tasks SET priority = ?, updatedAt = ? WHERE id = ?", priority, updated.updatedAt, task.id);
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated) });
   return updated;
 };
 
 export const updateTask = async (task: Task): Promise<Task> => {
-  const previousNotificationIds = Array.isArray(task.notificationIds) ? task.notificationIds : [];
   const normalizedReminders = normalizeReminders(task.reminders ?? []);
-  const baseUpdatedTask: Task = {
+  const normalizedTags = normalizeTags(task.tags ?? []);
+  
+  // 1. Sync notifications first to get the final IDs for single-transaction consistency
+  const nextNotificationIds = await scheduleTaskNotifications({
     ...task,
     reminders: normalizedReminders,
-    notificationIds: previousNotificationIds,
-    updatedAt: Date.now(),
-  };
+  });
 
-  // 1) Persist task fields first.
-  await runDbWrite(
-    "UPDATE tasks SET text = ?, completed = ?, updatedAt = ?, orderIndex = ?, priority = ?, noteId = ?, scheduledDate = ?, scheduledTime = ?, repeatDays = ?, completedDates = ?, reminders = ?, notificationIds = ? WHERE id = ?",
-    baseUpdatedTask.text,
-    baseUpdatedTask.completed ? 1 : 0,
-    baseUpdatedTask.updatedAt,
-    baseUpdatedTask.orderIndex,
-    baseUpdatedTask.priority,
-    baseUpdatedTask.noteId ?? null,
-    baseUpdatedTask.scheduledDate ?? null,
-    baseUpdatedTask.scheduledTime ?? null,
-    JSON.stringify(baseUpdatedTask.repeatDays ?? []),
-    JSON.stringify(baseUpdatedTask.completedDates ?? []),
-    JSON.stringify(baseUpdatedTask.reminders ?? []),
-    JSON.stringify(baseUpdatedTask.notificationIds ?? []),
-    baseUpdatedTask.id
-  );
-
-  // 2) Notification side effects: cancel old -> schedule new if eligible.
-  let nextNotificationIds = previousNotificationIds;
-  try {
-    if (previousNotificationIds.length > 0) {
-      await cancelTaskNotifications(previousNotificationIds);
-      nextNotificationIds = [];
-    }
-
-    if (baseUpdatedTask.scheduledDate && baseUpdatedTask.scheduledTime && !baseUpdatedTask.completed) {
-      nextNotificationIds = await scheduleTaskNotifications({
-        ...baseUpdatedTask,
-        notificationIds: [],
-      });
-      if (__DEV__) {
-        console.log(`[NOTIF] Rescheduled notifications for task ID: ${task.id} (${nextNotificationIds.length})`);
-      }
-    }
-  } catch (e) {
-    console.log(`[NOTIF ERROR] updateTask notifications ${task.id}`, e);
-  }
-
-  // 3) Persist definitive notificationIds.
-  const finalTask: Task = {
-    ...baseUpdatedTask,
+  const updatedTask: Task = {
+    ...task,
+    reminders: normalizedReminders,
+    tags: normalizedTags,
     notificationIds: nextNotificationIds,
     updatedAt: Date.now(),
   };
 
+  // 2. Persist everything in one atomic write
   await runDbWrite(
-    "UPDATE tasks SET notificationIds = ?, updatedAt = ? WHERE id = ?",
-    JSON.stringify(finalTask.notificationIds ?? []),
-    finalTask.updatedAt,
-    finalTask.id
+    "UPDATE tasks SET text = ?, completed = ?, updatedAt = ?, orderIndex = ?, priority = ?, noteId = ?, scheduledDate = ?, scheduledTime = ?, repeatDays = ?, completedDates = ?, reminders = ?, notificationIds = ?, repeat = ?, tags = ? WHERE id = ?",
+    updatedTask.text, updatedTask.completed ? 1 : 0, updatedTask.updatedAt, updatedTask.orderIndex, updatedTask.priority, updatedTask.noteId, updatedTask.scheduledDate, updatedTask.scheduledTime, JSON.stringify(updatedTask.repeatDays), JSON.stringify(updatedTask.completedDates), JSON.stringify(updatedTask.reminders), JSON.stringify(updatedTask.notificationIds), updatedTask.repeat ? JSON.stringify(updatedTask.repeat) : null, JSON.stringify(updatedTask.tags), updatedTask.id
   );
 
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(finalTask) });
+  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updatedTask) });
   void syncWidgetHeatmap();
-  return finalTask;
-};
-
-export const moveTask = async (taskId: ID, parentId: ID | null): Promise<Task> => {
-  const db = await getDB();
-  const row = await db.getFirstAsync<Task & { repeatDays?: string; completedDates?: string; reminders?: string; notificationIds?: string }>(
-    "SELECT * FROM tasks WHERE id = ?",
-    taskId
-  );
-
-  if (!row) {
-    throw new Error(`Task not found: ${taskId}`);
-  }
-
-  const movedTask: Task = {
-    ...parseTask(row),
-    parentId: parentId ?? null,
-    updatedAt: Date.now()
-  };
-
-  await runDbWrite(
-    "UPDATE tasks SET parentId = ?, updatedAt = ? WHERE id = ?",
-    movedTask.parentId,
-    movedTask.updatedAt,
-    movedTask.id
-  );
-
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(movedTask) });
-  return movedTask;
+  return updatedTask;
 };
 
 export const deleteTask = async (taskId: ID): Promise<void> => {
-  // First get task to retrieve notification IDs
-  const db = await getDB();
-  const row = await db.getFirstAsync<Task & { notificationIds?: string }>(
-    "SELECT * FROM tasks WHERE id = ?",
-    taskId
-  );
-  
-  // Cancel notifications before deleting
-  if (row && row.notificationIds) {
-    const notificationIds = safeJsonArray(row.notificationIds);
-    if (notificationIds.length > 0) {
-      try {
-        await cancelTaskNotifications(notificationIds);
-      } catch (e) {
-        console.log(`[NOTIF ERROR] cancelTaskNotifications delete ${taskId}`, e);
-      }
-    }
-  }
-  
+  await cancelTaskNotifications(String(taskId));
   await runDbWrite("DELETE FROM tasks WHERE id = ?", taskId);
   emitTaskServerEvent({ type: "TASK_DELETED", payload: { id: String(taskId), updatedAt: Date.now() } });
   void syncWidgetHeatmap();
@@ -414,16 +279,13 @@ export const getAllTasks = async (): Promise<Task[]> => {
   return rows.map(parseTask);
 };
 
-export const reorderTasks = async (orderedIds: ID[]): Promise<void> => {
-  await withDbWriteTransaction("reorderTasks", async (db) => {
-    const existing = await db.getAllAsync<{ id: ID }>("SELECT id FROM tasks ORDER BY orderIndex ASC, id DESC");
-    const remainingIds = existing.map((x) => x.id).filter((id) => !orderedIds.includes(id));
-    const nextIds = [...orderedIds, ...remainingIds];
-
-    for (let i = 0; i < nextIds.length; i += 1) {
-      await db.runAsync("UPDATE tasks SET orderIndex = ? WHERE id = ?", i + 1, nextIds[i]);
+export const deleteTaskWithChildren = async (taskId: ID): Promise<void> => {
+    const db = await getDB();
+    const children = await db.getAllAsync<{ id: ID }>("SELECT id FROM tasks WHERE parentId = ?", taskId);
+    for (const child of children) {
+        await deleteTask(child.id);
     }
-  });
+    await deleteTask(taskId);
 };
 
 export const getTasksForDate = async (dateKey: string): Promise<Task[]> => {
@@ -431,13 +293,24 @@ export const getTasksForDate = async (dateKey: string): Promise<Task[]> => {
   return all.filter((task) => shouldAppearOnDate(task, dateKey));
 };
 
-export const getPriorityTasks = async (minPriority: TaskPriority = 2, limit = 5): Promise<Task[]> => {
+export const moveTask = async (taskId: ID, parentId: ID | null): Promise<Task> => {
   const db = await getDB();
-  const rows = await db.getAllAsync<Task & { repeatDays?: string; completedDates?: string; reminders?: string; notificationIds?: string }>(
-    "SELECT * FROM tasks WHERE priority >= ? ORDER BY priority DESC LIMIT ?",
-    minPriority,
-    limit
-  );
-  return rows.map(parseTask).filter((task) => !task.completed);
+  const row = await db.getFirstAsync<any>("SELECT * FROM tasks WHERE id = ?", taskId);
+  if (!row) throw new Error(`Task not found: ${taskId}`);
+
+  const movedTask: Task = { ...parseTask(row), parentId: parentId ?? null, updatedAt: Date.now() };
+  await runDbWrite("UPDATE tasks SET parentId = ?, updatedAt = ? WHERE id = ?", movedTask.parentId, movedTask.updatedAt, movedTask.id);
+  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(movedTask) });
+  return movedTask;
 };
 
+export const reorderTasks = async (orderedIds: ID[]): Promise<void> => {
+  await withDbWriteTransaction("reorderTasks", async (db) => {
+    const existing = await db.getAllAsync<{ id: ID }>("SELECT id FROM tasks ORDER BY orderIndex ASC, id DESC");
+    const remainingIds = existing.map((x) => x.id).filter((id) => !orderedIds.includes(id));
+    const nextIds = [...orderedIds, ...remainingIds];
+    for (let i = 0; i < nextIds.length; i += 1) {
+      await db.runAsync("UPDATE tasks SET orderIndex = ? WHERE id = ?", i + 1, nextIds[i]);
+    }
+  });
+};

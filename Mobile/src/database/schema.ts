@@ -46,8 +46,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   scheduledDate TEXT,
   scheduledTime TEXT,
   repeatDays TEXT NOT NULL DEFAULT '[]',
+  repeat TEXT,
   completedDates TEXT NOT NULL DEFAULT '[]',
   reminders TEXT NOT NULL DEFAULT '[]',
+  tags TEXT NOT NULL DEFAULT '[]',
   notificationIds TEXT NOT NULL DEFAULT '[]'
 );
 

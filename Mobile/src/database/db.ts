@@ -76,8 +76,10 @@ const initializeDb = async (db: SQLite.SQLiteDatabase): Promise<void> => {
   await ensureColumn(db, "tasks", "orderIndex", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "tasks", "updatedAt", "INTEGER NOT NULL DEFAULT 0");
   await ensureColumn(db, "tasks", "repeatDays", "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, "tasks", "repeat", "TEXT");
   await ensureColumn(db, "tasks", "completedDates", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, "tasks", "reminders", "TEXT NOT NULL DEFAULT '[]'");
+  await ensureColumn(db, "tasks", "tags", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, "tasks", "notificationIds", "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(db, "tasks", "parentId", "TEXT"); // subtasks support
 
