@@ -23,6 +23,7 @@ export const useWidgetSync = (
   onTasksLoaded?: (count: number) => void
 ) => {
   const tasksMap = useTasksStore((state) => state.tasks);
+  const isLoaded = useTasksStore((state) => state.isLoaded);
   const tasks = useMemo(() => Object.values(tasksMap), [tasksMap]);
 
   // Track previous task reference to detect real changes vs re-renders
@@ -47,29 +48,32 @@ export const useWidgetSync = (
     }
   }, [tasks, onTasksLoaded]);
 
-  // ── Mount: run full sync once ─────────────────────────────────────────
-  useEffect(() => {
-    if (Platform.OS !== 'android') return;
-    WidgetSyncService.restoreQueue().catch((e) =>
-      console.error('[useWidgetSync] restoreQueue error:', e)
-    );
-    WidgetSyncService.recoverFailedSyncs().catch((e) =>
-      console.error('[useWidgetSync] recoverFailedSyncs error:', e)
-    );
-    runFullSync();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally runs only on mount
+  const hasRunInitialSync = useRef(false);
 
-  // ── Task changes: incremental sync (debounced) ───────────────────────
+  // ── Sync Orchestrator (Mount + Changes) ──────────────────────────────
   useEffect(() => {
     if (Platform.OS !== 'android') return;
-    // Skip the initial render (already handled by mount effect above)
+    if (!isLoaded) return; // Aguarda banco DB carregar
+
+    if (!hasRunInitialSync.current) {
+      // Initial mount logic after DB hydration
+      hasRunInitialSync.current = true;
+      prevTasksRef.current = tasks;
+      WidgetSyncService.restoreQueue().catch((e) =>
+        console.error('[useWidgetSync] restoreQueue error:', e)
+      );
+      WidgetSyncService.recoverFailedSyncs().catch((e) =>
+        console.error('[useWidgetSync] recoverFailedSyncs error:', e)
+      );
+      runFullSync();
+      return;
+    }
+
+    // Subsequent updates
     if (prevTasksRef.current === tasks) return;
     prevTasksRef.current = tasks;
-
-    // Fast incremental update for today's count
     WidgetSyncService.debouncedUpdate(tasks);
-  }, [tasks]);
+  }, [tasks, isLoaded, runFullSync]);
 
   // ── App foreground: full sync ─────────────────────────────────────────
   useEffect(() => {

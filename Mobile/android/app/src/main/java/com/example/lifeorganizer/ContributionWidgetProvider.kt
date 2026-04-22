@@ -21,7 +21,7 @@ class ContributionWidgetProvider : AppWidgetProvider() {
         private const val ROWS = 7
         private const val MIN_VISIBLE_COLS = 2
         private const val DEFAULT_VISIBLE_COLS = 4
-        private const val MAX_VISIBLE_COLS = 10
+        private const val MAX_VISIBLE_COLS = 16
         private const val APPROX_LAUNCHER_CELL_DP = 74
 
         fun requestUpdate(context: Context) {
@@ -54,13 +54,13 @@ class ContributionWidgetProvider : AppWidgetProvider() {
 
         private fun resolveVisibleColumns(options: Bundle?): Int {
             val minWidthDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) ?: 0
-            if (minWidthDp <= 0) {
-                return DEFAULT_VISIBLE_COLS
+            
+            return when {
+                minWidthDp >= 310 -> 16 // 2x5 cells
+                minWidthDp >= 240 -> 12 // 2x4 cells
+                minWidthDp >= 170 -> 8  // 2x3 cells
+                else -> 4               // 2x2 cells
             }
-
-            val launcherColumns = max(1, (minWidthDp + 30) / APPROX_LAUNCHER_CELL_DP)
-            val visibleCols = launcherColumns * 2
-            return visibleCols.coerceIn(MIN_VISIBLE_COLS, MAX_VISIBLE_COLS)
         }
 
         private fun readContributionData(context: Context, visibleCols: Int): List<Int> {

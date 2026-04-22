@@ -549,7 +549,7 @@ export async function fullWidgetSync(tasks: MinimalTask[]): Promise<WidgetSyncRe
   }
 
   try {
-    const map = buildContributionMap(tasks, 70);
+    const map = buildContributionMap(tasks, 112);
     const json = JSON.stringify(map);
     logInfo('full-sync-requested', { taskCount: tasks.length, mapKeys: Object.keys(map).length });
     return await enqueueQueueItem('full-sync', { json });
@@ -577,7 +577,7 @@ export async function incrementalWidgetSync(tasks: MinimalTask[]): Promise<Widge
   try {
     const today = todayKey();
     const count = countCompletedToday(tasks);
-    const fallbackJson = JSON.stringify(buildContributionMap(tasks, 70));
+    const fallbackJson = JSON.stringify(buildContributionMap(tasks, 112));
     logInfo('incremental-sync-requested', { today, count, taskCount: tasks.length });
     return await enqueueQueueItem('incremental-sync', {
       date: today,

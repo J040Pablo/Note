@@ -4,6 +4,7 @@ import type { Task, ID } from "@models/types";
 
 interface TasksState {
   tasks: Record<ID, Task>;
+  isLoaded: boolean;
 }
 
 interface TasksActions {
@@ -17,6 +18,7 @@ interface TasksActions {
 export const useTasksStore = create<TasksState & TasksActions>()(
   immer((set) => ({
     tasks: {},
+    isLoaded: false,
 
     setTasks: (list) =>
       set((state) => {
@@ -25,6 +27,7 @@ export const useTasksStore = create<TasksState & TasksActions>()(
           nextTasks[task.id] = { ...task, parentId: task.parentId ?? null };
         }
         state.tasks = nextTasks;
+        state.isLoaded = true;
       }),
 
     upsertTask: (task) =>

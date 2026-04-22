@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_bg"
     android:orientation="vertical"
-    android:padding="4dp"
+    android:padding="8dp"
     android:gravity="center">
 
     <!-- Row 0 -->
@@ -19,7 +19,13 @@
         <ImageView android:id="@+id/cell_6_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_7_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_8_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
-        <ImageView android:id="@+id/cell_9_0" android:layout_width="20dp" android:layout_height="20dp" />
+        <ImageView android:id="@+id/cell_9_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_10_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_11_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_12_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_13_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_14_0" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_15_0" android:layout_width="20dp" android:layout_height="20dp" />
     </LinearLayout>
 
     <!-- Row 1 -->
@@ -33,7 +39,13 @@
         <ImageView android:id="@+id/cell_6_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_7_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_8_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
-        <ImageView android:id="@+id/cell_9_1" android:layout_width="20dp" android:layout_height="20dp" />
+        <ImageView android:id="@+id/cell_9_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_10_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_11_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_12_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_13_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_14_1" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_15_1" android:layout_width="20dp" android:layout_height="20dp" />
     </LinearLayout>
 
     <!-- Row 2 -->
@@ -47,7 +59,13 @@
         <ImageView android:id="@+id/cell_6_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_7_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_8_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
-        <ImageView android:id="@+id/cell_9_2" android:layout_width="20dp" android:layout_height="20dp" />
+        <ImageView android:id="@+id/cell_9_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_10_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_11_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_12_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_13_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_14_2" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_15_2" android:layout_width="20dp" android:layout_height="20dp" />
     </LinearLayout>
 
     <!-- Row 3 -->
@@ -61,7 +79,13 @@
         <ImageView android:id="@+id/cell_6_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_7_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_8_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
-        <ImageView android:id="@+id/cell_9_3" android:layout_width="20dp" android:layout_height="20dp" />
+        <ImageView android:id="@+id/cell_9_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_10_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_11_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_12_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_13_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_14_3" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_15_3" android:layout_width="20dp" android:layout_height="20dp" />
     </LinearLayout>
 
     <!-- Row 4 -->
@@ -75,7 +99,13 @@
         <ImageView android:id="@+id/cell_6_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_7_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_8_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
-        <ImageView android:id="@+id/cell_9_4" android:layout_width="20dp" android:layout_height="20dp" />
+        <ImageView android:id="@+id/cell_9_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_10_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_11_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_12_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_13_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_14_4" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_15_4" android:layout_width="20dp" android:layout_height="20dp" />
     </LinearLayout>
 
     <!-- Row 5 -->
@@ -89,7 +119,13 @@
         <ImageView android:id="@+id/cell_6_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_7_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_8_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
-        <ImageView android:id="@+id/cell_9_5" android:layout_width="20dp" android:layout_height="20dp" />
+        <ImageView android:id="@+id/cell_9_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_10_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_11_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_12_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_13_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_14_5" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_15_5" android:layout_width="20dp" android:layout_height="20dp" />
     </LinearLayout>
 
     <!-- Row 6 -->
@@ -103,7 +139,13 @@
         <ImageView android:id="@+id/cell_6_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_7_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
         <ImageView android:id="@+id/cell_8_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
-        <ImageView android:id="@+id/cell_9_6" android:layout_width="20dp" android:layout_height="20dp" />
+        <ImageView android:id="@+id/cell_9_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_10_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_11_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_12_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_13_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_14_6" android:layout_width="20dp" android:layout_height="20dp" android:layout_marginEnd="4dp" />
+        <ImageView android:id="@+id/cell_15_6" android:layout_width="20dp" android:layout_height="20dp" />
     </LinearLayout>
 
 </LinearLayout>

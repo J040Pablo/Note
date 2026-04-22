@@ -57,7 +57,7 @@ class WidgetSyncService {
   // ── Heatmap generation (pure, no side effects) ───────────────────────
 
   static generateHeatmapData(tasks: Task[] = []): ContributionMap {
-    return buildContributionMap(tasks, 70);
+    return buildContributionMap(tasks, 112);
   }
 
   // ── Sync methods ─────────────────────────────────────────────────────
@@ -146,7 +146,7 @@ class WidgetSyncService {
   // ── Legacy groupTasksByDate (kept for widgetIntegrationExample.ts) ───
 
   static groupTasksByDate(tasks: Task[]): ContributionMap {
-    return buildContributionMap(tasks, 70);
+    return buildContributionMap(tasks, 112);
   }
 }
 

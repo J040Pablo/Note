@@ -9,7 +9,7 @@ object WidgetDataRepository {
     private const val TAG: String = "WidgetDataRepository"
     const val PREFS_NAME: String = "com.example.lifeorganizer.widget"
     const val KEY_CONTRIBUTION_DATA: String = "contribution_data"
-    private const val MAX_DAYS: Int = 70
+    private const val MAX_DAYS: Int = 112
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

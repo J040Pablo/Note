@@ -15,7 +15,7 @@ class WidgetDataModule(
     companion object {
         private const val PREFS_NAME = ContributionWidgetProvider.PREFS_NAME
         private const val KEY_DATA = ContributionWidgetProvider.KEY_CONTRIBUTION_DATA
-        private const val MAX_DAYS = 70
+        private const val MAX_DAYS = 112
     }
 
     override fun getName(): String = "WidgetBridge"
