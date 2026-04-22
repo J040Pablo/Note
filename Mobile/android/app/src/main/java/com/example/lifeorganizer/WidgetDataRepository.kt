@@ -24,7 +24,7 @@ object WidgetDataRepository {
         val pruned = pruneToRecentWindow(map)
         val json = JSONObject()
         pruned.forEach { (key, value) -> json.put(key, value.coerceAtLeast(0)) }
-        prefs(context).edit().putString(KEY_CONTRIBUTION_DATA, json.toString()).apply()
+        prefs(context).edit().putString(KEY_CONTRIBUTION_DATA, json.toString()).commit()
         Log.i(TAG, "saveHeatmapMap: persistedEntries=${pruned.size}")
     }
 
@@ -47,7 +47,7 @@ object WidgetDataRepository {
     }
 
     fun clearHeatmapData(context: Context) {
-        prefs(context).edit().remove(KEY_CONTRIBUTION_DATA).apply()
+        prefs(context).edit().remove(KEY_CONTRIBUTION_DATA).commit()
         Log.w(TAG, "clearHeatmapData: key removed")
     }
 

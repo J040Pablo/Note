@@ -5,100 +5,87 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
-import android.util.Log
-import android.widget.GridView
+import android.content.SharedPreferences
+import android.os.Bundle
+import android.view.View
 import android.widget.RemoteViews
-import android.net.Uri
+import org.json.JSONObject
+import kotlin.math.max
 
 class ContributionWidgetProvider : AppWidgetProvider() {
 
     companion object {
-        private const val TAG = "ContributionWidget"
+        const val PREFS_NAME = "com.example.lifeorganizer.widget"
+        const val KEY_CONTRIBUTION_DATA = "contribution_data"
 
-        fun updateAllWidgets(context: Context) {
+        private const val ROWS = 7
+        private const val MIN_VISIBLE_COLS = 2
+        private const val DEFAULT_VISIBLE_COLS = 4
+        private const val MAX_VISIBLE_COLS = 10
+        private const val APPROX_LAUNCHER_CELL_DP = 74
+
+        fun requestUpdate(context: Context) {
             val manager = AppWidgetManager.getInstance(context)
-            val component = ComponentName(context, ContributionWidgetProvider::class.java)
-            val ids = manager.getAppWidgetIds(component)
-            Log.i(TAG, "updateAllWidgets: widgetCount=${ids.size}")
+            val ids = manager.getAppWidgetIds(
+                ComponentName(context, ContributionWidgetProvider::class.java)
+            )
             if (ids.isNotEmpty()) {
-                ids.forEach { appWidgetId ->
-                    updateWidget(context, manager, appWidgetId)
+                val provider = ContributionWidgetProvider()
+                provider.onUpdate(context, manager, ids)
+            }
+        }
+
+        private fun drawableForCount(count: Int): Int = when {
+            count <= 0 -> R.drawable.widget_cell_empty
+            count <= 2 -> R.drawable.widget_cell_level1
+            count <= 5 -> R.drawable.widget_cell_level2
+            count <= 9 -> R.drawable.widget_cell_level3
+            else -> R.drawable.widget_cell_level4
+        }
+
+        private fun dateKeyForDaysAgo(daysAgo: Int): String {
+            val cal = java.util.Calendar.getInstance()
+            cal.add(java.util.Calendar.DAY_OF_YEAR, -daysAgo)
+            val y = cal.get(java.util.Calendar.YEAR)
+            val m = cal.get(java.util.Calendar.MONTH) + 1
+            val d = cal.get(java.util.Calendar.DAY_OF_MONTH)
+            return "%04d-%02d-%02d".format(y, m, d)
+        }
+
+        private fun resolveVisibleColumns(options: Bundle?): Int {
+            val minWidthDp = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 0) ?: 0
+            if (minWidthDp <= 0) {
+                return DEFAULT_VISIBLE_COLS
+            }
+
+            val launcherColumns = max(1, (minWidthDp + 30) / APPROX_LAUNCHER_CELL_DP)
+            val visibleCols = launcherColumns * 2
+            return visibleCols.coerceIn(MIN_VISIBLE_COLS, MAX_VISIBLE_COLS)
+        }
+
+        private fun readContributionData(context: Context, visibleCols: Int): List<Int> {
+            val prefs: SharedPreferences =
+                context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val raw = prefs.getString(KEY_CONTRIBUTION_DATA, null)
+
+            val stored = mutableMapOf<String, Int>()
+            if (!raw.isNullOrBlank()) {
+                try {
+                    val json = JSONObject(raw)
+                    val keys = json.keys()
+                    while (keys.hasNext()) {
+                        val key = keys.next()
+                        stored[key] = json.optInt(key, 0)
+                    }
+                } catch (_: Exception) {
                 }
             }
-        }
-        private fun buildRemoteViews(
-            context: Context,
-            appWidgetManager: AppWidgetManager,
-            widgetId: Int,
-        ): RemoteViews {
-            Log.e("WIDGET_DEBUG", "🟢🟢🟢 buildRemoteViews START: widgetId=$widgetId 🟢🟢🟢")
-            val config = HeatmapWidgetSizing.resolveAndPersist(context, appWidgetManager, widgetId)
-            val views = RemoteViews(context.packageName, R.layout.widget_layout)
 
-            views.setInt(R.id.widget_grid, "setNumColumns", config.cols)
-            views.setInt(R.id.widget_grid, "setHorizontalSpacing", 2)  // 2dp fixo
-            views.setInt(R.id.widget_grid, "setVerticalSpacing", 2)    // 2dp fixo
-            views.setInt(R.id.widget_grid, "setStretchMode", GridView.STRETCH_COLUMN_WIDTH)
-            views.setViewPadding(
-                R.id.widget_grid,
-                6,  // 6dp fixo para padding
-                6,
-                6,
-                6
-            )
-
-            // 🔴 CRÍTICO: setEmptyView DEVE VIR ANTES de setRemoteAdapter
-            views.setEmptyView(R.id.widget_grid, R.id.widget_empty)
-            
-            // 🔴 CRÍTICO: URI única por widgetId para evitar cache do launcher
-            val serviceIntent = Intent(context, ContributionHeatmapRemoteViewsService::class.java).apply {
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
-                // Cada widget precisa de uma URI única para forçar recriação do Factory
-                data = Uri.parse("content://com.example.lifeorganizer/widget/$widgetId")
+            val totalDays = visibleCols * ROWS
+            return (0 until totalDays).map { index ->
+                val key = dateKeyForDaysAgo(totalDays - 1 - index)
+                stored[key] ?: 0
             }
-            Log.e("WIDGET_DEBUG", "🔵 setRemoteAdapter: widgetId=$widgetId uri=${serviceIntent.data} className=${serviceIntent.component}")
-            views.setRemoteAdapter(R.id.widget_grid, serviceIntent)
-
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-            if (launchIntent != null) {
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                val pendingIntent = PendingIntent.getActivity(
-                    context,
-                    widgetId,
-                    launchIntent,
-                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                )
-                views.setPendingIntentTemplate(R.id.widget_grid, pendingIntent)
-                views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
-            }
-
-            Log.i(
-                TAG,
-                "buildRemoteViews: bucket=${config.bucket} cols=${config.cols} rows=${config.rows} cellSize=${config.cellSizeDp}dp"
-            )
-
-            return views
-        }
-
-        private fun updateWidget(
-            context: Context,
-            appWidgetManager: AppWidgetManager,
-            appWidgetId: Int,
-        ) {
-            Log.d(TAG, "updateWidget START: widgetId=$appWidgetId")
-            val views = buildRemoteViews(context, appWidgetManager, appWidgetId)
-            
-            // 🔴 ORDEM CRÍTICA:
-            // 1. updateAppWidget() = envia RemoteViews + Intent do RemoteAdapter
-            // 2. notifyAppWidgetViewDataChanged() = força recriação do Factory
-            Log.d(TAG, "updateAppWidget: widgetId=$appWidgetId")
-            appWidgetManager.updateAppWidget(appWidgetId, views)
-            
-            Log.d(TAG, "notifyAppWidgetViewDataChanged: widgetId=$appWidgetId")
-            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_grid)
-            
-            Log.d(TAG, "updateWidget END: widgetId=$appWidgetId")
         }
     }
 
@@ -107,30 +94,70 @@ class ContributionWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
-        Log.i(TAG, "onUpdate: ids=${appWidgetIds.joinToString()}")
-        appWidgetIds.forEach { appWidgetId ->
-            updateWidget(context, appWidgetManager, appWidgetId)
+        for (widgetId in appWidgetIds) {
+            updateWidget(context, appWidgetManager, widgetId)
         }
+    }
+
+    override fun onEnabled(context: Context) {
+        requestUpdate(context)
     }
 
     override fun onAppWidgetOptionsChanged(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetId: Int,
-        newOptions: android.os.Bundle
+        newOptions: Bundle
     ) {
         super.onAppWidgetOptionsChanged(context, appWidgetManager, appWidgetId, newOptions)
-        Log.i(TAG, "onAppWidgetOptionsChanged: id=$appWidgetId")
-        
-        // Limpar bucket persistido para forçar re-resolução
-        HeatmapWidgetSizing.clear(context, appWidgetId)
-        
-        // Atualizar widget com nova resolução
         updateWidget(context, appWidgetManager, appWidgetId)
     }
 
-    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
-        super.onDeleted(context, appWidgetIds)
-        appWidgetIds.forEach { widgetId -> HeatmapWidgetSizing.clear(context, widgetId) }
+    private fun updateWidget(
+        context: Context,
+        manager: AppWidgetManager,
+        widgetId: Int
+    ) {
+        val views = RemoteViews(context.packageName, R.layout.widget_contribution)
+        val options = manager.getAppWidgetOptions(widgetId)
+        val visibleCols = resolveVisibleColumns(options)
+        val orderedCounts = readContributionData(context, visibleCols)
+
+        for (colIdx in 0 until MAX_VISIBLE_COLS) {
+            val visibility = if (colIdx < visibleCols) View.VISIBLE else View.GONE
+
+            for (rowIdx in 0 until ROWS) {
+                val resId = context.resources.getIdentifier(
+                    "cell_${colIdx}_${rowIdx}",
+                    "id",
+                    context.packageName
+                )
+
+                if (resId == 0) {
+                    continue
+                }
+
+                views.setViewVisibility(resId, visibility)
+
+                if (colIdx < visibleCols) {
+                    val dayIndex = colIdx * ROWS + rowIdx
+                    val count = orderedCounts.getOrElse(dayIndex) { 0 }
+                    views.setImageViewResource(resId, drawableForCount(count))
+                }
+            }
+        }
+
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        if (launchIntent != null) {
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                widgetId,
+                launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_root, pendingIntent)
+        }
+
+        manager.updateAppWidget(widgetId, views)
     }
 }

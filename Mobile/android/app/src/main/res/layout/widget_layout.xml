@@ -12,19 +12,17 @@
         android:layout_height="match_parent"
         android:clipToPadding="false"
         android:gravity="center"
-        android:horizontalSpacing="2dp"
-        android:numColumns="7"
+        android:horizontalSpacing="1dp"
+        android:numColumns="auto_fit"
         android:overScrollMode="never"
         android:padding="6dp"
-        android:stretchMode="columnWidth"
-        android:verticalSpacing="2dp" />
+        android:stretchMode="none"
+        android:verticalSpacing="1dp" />
 
-    <TextView
+    <View
         android:id="@+id/widget_empty"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:gravity="center"
-        android:text=""
         android:visibility="gone" />
 
 </FrameLayout>

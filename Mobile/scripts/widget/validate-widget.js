@@ -18,27 +18,20 @@ const checks = [
     name: 'widget_info.xml',
     path: '../../android/app/src/main/res/xml/widget_info.xml',
     validate: (content) => {
-      return content.includes('@layout/widget_layout') &&
+      return content.includes('@layout/widget_contribution') &&
              content.includes('android:minWidth') &&
              content.includes('android:minHeight') &&
              content.includes('android:targetCellWidth');
     }
   },
   {
-    name: 'widget_layout.xml',
-    path: '../../android/app/src/main/res/layout/widget_layout.xml',
+    name: 'widget_contribution.xml',
+    path: '../../android/app/src/main/res/layout/widget_contribution.xml',
     validate: (content) => {
       return content.includes('widget_root') &&
-             content.includes('widget_grid') &&
-             content.includes('GridView');
-    }
-  },
-  {
-    name: 'widget_heatmap_cell.xml',
-    path: '../../android/app/src/main/res/layout/widget_heatmap_cell.xml',
-    validate: (content) => {
-      return content.includes('cell_root') &&
-             content.includes('cell_dot');
+             content.includes('cell_0_0') &&
+             content.includes('cell_3_6') &&
+             !content.includes('widget_subtitle');
     }
   },
   {
@@ -46,52 +39,27 @@ const checks = [
     path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionWidgetProvider.kt',
     validate: (content) => {
       return content.includes('class ContributionWidgetProvider') &&
-             content.includes('updateAllWidgets') &&
-             content.includes('R.layout.widget_layout') &&
-             content.includes('notifyAppWidgetViewDataChanged');
+             content.includes('requestUpdate') &&
+             content.includes('R.layout.widget_contribution') &&
+             content.includes('manager.updateAppWidget');
     }
   },
   {
-    name: 'ContributionHeatmapRemoteViewsService.kt',
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionHeatmapRemoteViewsService.kt',
+    name: 'WidgetDataModule.kt',
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataModule.kt',
     validate: (content) => {
-      return content.includes('class ContributionHeatmapRemoteViewsService') &&
-             content.includes('RemoteViewsFactory') &&
-             content.includes('WidgetDataRepository.getHeatmapData');
-    }
-  },
-  {
-    name: 'HeatmapWidgetSizing.kt',
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/HeatmapWidgetSizing.kt',
-    validate: (content) => {
-      return content.includes('object HeatmapWidgetSizing') &&
-             content.includes('OPTION_APPWIDGET_SIZES');
-    }
-  },
-  {
-    name: 'WidgetDataRepository.kt',
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataRepository.kt',
-    validate: (content) => {
-      return content.includes('saveHeatmapData') &&
-             content.includes('getHeatmapData') &&
-             content.includes('contribution_data');
-    }
-  },
-  {
-    name: 'WidgetBridgeModule.kt',
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetBridgeModule.kt',
-    validate: (content) => {
-      return content.includes('class WidgetBridgeModule') &&
+      return content.includes('class WidgetDataModule') &&
              content.includes('updateWidgetData') &&
-             content.includes('ContributionWidgetProvider.updateAllWidgets');
+             content.includes('override fun getName(): String = "WidgetBridge"');
     }
   },
   {
     name: 'strings.xml',
     path: '../../android/app/src/main/res/values/strings.xml',
     validate: (content) => {
-      return content.includes('contribution_widget_title') &&
-             content.includes('contribution_widget_description');
+      return content.includes('contribution_widget_description') &&
+             !content.includes('contribution_widget_title') &&
+             !content.includes('contribution_widget_subtitle');
     }
   }
 ];

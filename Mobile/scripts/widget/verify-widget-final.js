@@ -12,31 +12,15 @@ const checks = {
   },
   'widget_info.xml': {
     path: '../../android/app/src/main/res/xml/widget_info.xml',
-    verify: (content) => content.includes('appwidget-provider') && content.includes('@layout/widget_layout')
+    verify: (content) => content.includes('appwidget-provider') && content.includes('@layout/widget_contribution')
   },
-  'widget_layout.xml': {
-    path: '../../android/app/src/main/res/layout/widget_layout.xml',
-    verify: (content) => content.includes('widget_root') && content.includes('widget_grid')
+  'widget_contribution.xml': {
+    path: '../../android/app/src/main/res/layout/widget_contribution.xml',
+    verify: (content) => content.includes('widget_root') && content.includes('cell_0_0') && content.includes('cell_3_6') && !content.includes('widget_subtitle')
   },
-  'widget_heatmap_cell.xml': {
-    path: '../../android/app/src/main/res/layout/widget_heatmap_cell.xml',
-    verify: (content) => content.includes('cell_root') && content.includes('cell_dot')
-  },
-  'ContributionHeatmapRemoteViewsService.kt': {
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionHeatmapRemoteViewsService.kt',
-    verify: (content) => content.includes('class ContributionHeatmapRemoteViewsService') && content.includes('RemoteViewsFactory')
-  },
-  'HeatmapWidgetSizing.kt': {
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/HeatmapWidgetSizing.kt',
-    verify: (content) => content.includes('object HeatmapWidgetSizing') && content.includes('resolveAndPersist')
-  },
-  'WidgetDataRepository.kt': {
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataRepository.kt',
-    verify: (content) => content.includes('saveHeatmapData') && content.includes('getHeatmapData')
-  },
-  'WidgetBridgeModule.kt': {
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetBridgeModule.kt',
-    verify: (content) => content.includes('class WidgetBridgeModule') && content.includes('updateWidgetData')
+  'WidgetDataModule.kt': {
+    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataModule.kt',
+    verify: (content) => content.includes('class WidgetDataModule') && content.includes('override fun getName(): String = "WidgetBridge"')
   },
   'ProGuard Rules': {
     path: '../../android/app/proguard-rules.pro',

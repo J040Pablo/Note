@@ -5,10 +5,13 @@ import android.content.Context
 import android.content.Intent
 
 class WidgetUpdateReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent?) {
-        val action = intent?.action ?: return
-        if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-            ContributionWidgetProvider.updateAllWidgets(context)
+
+    override fun onReceive(context: Context, intent: Intent) {
+        when (intent.action) {
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED -> {
+                ContributionWidgetProvider.requestUpdate(context)
+            }
         }
     }
 }

@@ -9,7 +9,7 @@ class WidgetDataPackage : ReactPackage {
 
     override fun createNativeModules(
         reactContext: ReactApplicationContext
-    ): List<NativeModule> = listOf(WidgetBridgeModule(reactContext))
+    ): List<NativeModule> = listOf(WidgetDataModule(reactContext))
 
     override fun createViewManagers(
         reactContext: ReactApplicationContext
