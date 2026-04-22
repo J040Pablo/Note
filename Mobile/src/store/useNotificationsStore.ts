@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { immer } from "zustand/middleware/immer";
 import type { Notification } from "@models/types";
 import { getDb, runDbWrite } from "@database/db";
+import { log, warn, error as logError } from '@utils/logger';
 
 interface NotificationsState {
   notifications: Notification[];
@@ -43,7 +44,7 @@ export const useNotificationsStore = create<NotificationsState & NotificationsAc
           "DELETE FROM notifications WHERE id NOT IN (SELECT id FROM notifications ORDER BY receivedAt DESC LIMIT 200)"
         );
       } catch (error) {
-        console.error("[NotificationsStore] load failed", error);
+        logError("[NotificationsStore] load failed", error);
       }
     },
 
@@ -160,7 +161,7 @@ export const useNotificationsStore = create<NotificationsState & NotificationsAc
           }
         });
       } catch (error) {
-        console.error("[NotificationsStore] add failed", error);
+        logError("[NotificationsStore] add failed", error);
       } finally {
         // Guaranteed Cleanup: Limit database to last 200 entries to prevent bloat
         try {
@@ -168,12 +169,12 @@ export const useNotificationsStore = create<NotificationsState & NotificationsAc
             "DELETE FROM notifications WHERE id NOT IN (SELECT id FROM notifications ORDER BY receivedAt DESC LIMIT 200)"
           );
         } catch (e) {
-          console.error("[NotificationsStore] cleanup failed", e);
+          logError("[NotificationsStore] cleanup failed", e);
         }
 
         if (__DEV__) {
           const state = get();
-          console.log("[NOTIF DEBUG]", {
+          log("[NOTIF DEBUG]", {
             total: state.notifications.length,
             unread: state.unreadCount
           });
@@ -201,7 +202,7 @@ export const useNotificationsStore = create<NotificationsState & NotificationsAc
           }
         });
       } catch (error) {
-        console.error("[NotificationsStore] markAsRead failed", error);
+        logError("[NotificationsStore] markAsRead failed", error);
       }
     },
 
@@ -217,7 +218,7 @@ export const useNotificationsStore = create<NotificationsState & NotificationsAc
           state.unreadCount = 0;
         });
       } catch (error) {
-        console.error("[NotificationsStore] markAllAsRead failed", error);
+        logError("[NotificationsStore] markAllAsRead failed", error);
       }
     },
   }))

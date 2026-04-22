@@ -47,6 +47,7 @@ import { useGlobalSelection } from "@hooks/useGlobalSelection";
 import { useItemActions } from "@hooks/useItemActions";
 import { useUnifiedItems } from "@hooks/useUnifiedItems";
 import { FloatingButton } from "@components/FloatingButton";
+import { log, warn, error as logError } from '@utils/logger';
 
 type TasksRoute = RouteProp<TabsParamList, "Tasks">;
 type TasksNav = BottomTabNavigationProp<TabsParamList, "Tasks">;
@@ -116,9 +117,7 @@ const TOP_PADDING_DEFAULT = 24;
 const TOP_PADDING_WITH_SELECTION = 80;
 
 const TasksScreen: React.FC = () => {
-  if (__DEV__) {
-    console.log("[RENDER] TasksScreen");
-  }
+
 
   const { theme } = useTheme();
   const route = useRoute<TasksRoute>();
@@ -513,9 +512,9 @@ const TasksScreen: React.FC = () => {
     if (!__DEV__) return;
 
     try {
-      console.info("[NOTIF][SCHEDULE] DEV validation started");
+      log("[NOTIF][SCHEDULE] DEV validation started");
       const testId = await scheduleTestNotification();
-      console.info(`[NOTIF][SCHEDULE] Test notification id=${String(testId)}`);
+      log(`[NOTIF][SCHEDULE] Test notification id=${String(testId)}`);
 
       const now = new Date();
       const plus15 = new Date(now.getTime() + 15 * 60 * 1000);
@@ -527,17 +526,17 @@ const TasksScreen: React.FC = () => {
         reminders: ["AT_TIME", "10_MIN_BEFORE", "1_HOUR_BEFORE"]
       });
 
-      console.info(
+      log(
         `[NOTIF][SCHEDULE] DEV task created id=${testTask.id} notificationIds=${JSON.stringify(testTask.notificationIds ?? [])}`
       );
 
       const allScheduled = await getScheduledNotifications();
-      console.info(`[NOTIF][SCHEDULE] Total scheduled after DEV validation: ${allScheduled.length}`);
+      log(`[NOTIF][SCHEDULE] Total scheduled after DEV validation: ${allScheduled.length}`);
       await logScheduledNotificationsDetailed();
       upsertTask(testTask);
       showToast("DEV notif validation triggered");
     } catch (error) {
-      console.error("[NOTIF][SCHEDULE] DEV validation failed", error);
+      logError("[NOTIF][SCHEDULE] DEV validation failed", error);
       showToast("DEV notif validation failed", "error");
     }
   }, [showToast, upsertTask]);
@@ -757,7 +756,7 @@ const TasksScreen: React.FC = () => {
                                   const updated = await toggleTaskForDate(root, root.scheduledDate!);
                                   upsertTask(updated);
                                 } catch (e) {
-                                  console.error("[TasksScreen] toggle expired task failed", e);
+                                  logError("[TasksScreen] toggle expired task failed", e);
                                 }
                               }}
                             >
@@ -853,7 +852,7 @@ const TasksScreen: React.FC = () => {
                                       const updated = await toggleTaskForDate(subtask, root.scheduledDate!);
                                       upsertTask(updated);
                                     } catch (e) {
-                                      console.error("[TasksScreen] toggle expired subtask failed", e);
+                                      logError("[TasksScreen] toggle expired subtask failed", e);
                                     }
                                   }}
                                 >
@@ -896,7 +895,7 @@ const TasksScreen: React.FC = () => {
           setSortMode("custom");
           saveSortPreference(TASK_SORT_SCOPE, "custom");
           actions.reorder({ kind: "task", parentId: null, orderedIds }).catch((error) => {
-            console.error("[tasks] reorder persist failed", error);
+            logError("[tasks] reorder persist failed", error);
             showToast("Não foi possível salvar a ordem", "error");
           });
         }}
@@ -1019,7 +1018,7 @@ const TasksScreen: React.FC = () => {
                         const updated = await toggleTaskForDate(root, selectedDate);
                         upsertTask(updated);
                       } catch (e) {
-                        console.error("[TasksScreen] toggle root task failed", e);
+                        logError("[TasksScreen] toggle root task failed", e);
                       }
                     }}
                   >
@@ -1125,7 +1124,7 @@ const TasksScreen: React.FC = () => {
                             const updated = await toggleTaskForDate(subtask, selectedDate);
                             upsertTask(updated);
                           } catch (e) {
-                            console.error("[TasksScreen] toggle subtask failed", e);
+                            logError("[TasksScreen] toggle subtask failed", e);
                           }
                         }}
                       >
@@ -1280,7 +1279,7 @@ const TasksScreen: React.FC = () => {
             setPendingDeleteTask(null);
             showToast("Deleted ✓");
           } catch (error) {
-            console.error("[task] delete failed", error);
+            logError("[task] delete failed", error);
             showToast("Could not delete task", "error");
           } finally {
             setTaskDeleting(false);
@@ -1553,7 +1552,7 @@ const TasksScreen: React.FC = () => {
                   
                   taskSubmittingRef.current = true;
                   setTaskSubmitting(true);
-                  console.log("[task] Creating task:", trimmedText);
+                  log("[task] Creating task:", trimmedText);
                   
                   try {
                     const dateForTask = repeatDays.length ? null : scheduledDate || null;
@@ -1563,12 +1562,12 @@ const TasksScreen: React.FC = () => {
                     if (dateForTask && timeForTask && reminders.length > 0) {
                       if (areNotificationsAvailable()) {
                         const granted = await requestNotificationPermission();
-                        console.log(`[NOTIF][TasksScreen] Permission preflight: ${granted ? "granted" : "denied"}`);
+                        log(`[NOTIF][TasksScreen] Permission preflight: ${granted ? "granted" : "denied"}`);
                         if (!granted) {
                           showToast("Permissão de notificação negada", "error");
                         }
                       } else {
-                        console.warn("[NOTIF][TasksScreen] Notifications unavailable (Expo Go or unsupported runtime)");
+                        warn("[NOTIF][TasksScreen] Notifications unavailable (Expo Go or unsupported runtime)");
                       }
                     }
                     
@@ -1582,7 +1581,7 @@ const TasksScreen: React.FC = () => {
                         repeatDays,
                         reminders
                       });
-                      console.log(
+                      log(
                         `[NOTIF][TasksScreen] Updated task=${updated.id} scheduledIds=${updated.notificationIds?.length ?? 0}`
                       );
                       upsertTask(updated);
@@ -1632,8 +1631,8 @@ const TasksScreen: React.FC = () => {
                         repeatDays,
                         reminders
                       });
-                      console.log("[task] Task created successfully:", created.id);
-                      console.log(
+                      log("[task] Task created successfully:", created.id);
+                      log(
                         `[NOTIF][TasksScreen] Created task=${created.id} scheduledIds=${created.notificationIds?.length ?? 0}`
                       );
                       upsertTask(created);
@@ -1653,7 +1652,7 @@ const TasksScreen: React.FC = () => {
                     setShowModal(false);
                     showToast("Task salva ✓");
                   } catch (error) {
-                    console.error("[task] save failed", error);
+                    logError("[task] save failed", error);
                     showToast("Não foi possível salvar", "error");
                   } finally {
                     taskSubmittingRef.current = false;

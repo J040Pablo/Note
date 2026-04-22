@@ -1,3 +1,4 @@
+import { log, warn, error as logError } from '@utils/logger';
 type SyncClientStatus = "disconnected" | "connecting" | "connected";
 
 type SyncClientMessage =
@@ -56,7 +57,7 @@ export const connectTaskSyncClient = (url: string): Promise<void> => {
     ws.onmessage = (event) => {
       const incoming = safeParse(String(event.data));
       if (!incoming) return;
-      console.log("[sync-client] message", incoming.type);
+      log("[sync-client] message", incoming.type);
     };
 
     ws.onerror = () => {

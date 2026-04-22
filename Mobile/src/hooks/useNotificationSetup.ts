@@ -9,6 +9,7 @@ import {
 import { useNotificationsStore } from '@store/useNotificationsStore';
 import Constants from 'expo-constants';
 import { isExpoGo, shouldLogDev } from '@utils/runtimeEnv';
+import { log, warn, error as logError } from '@utils/logger';
 
 /**
  * Hook to request notification permissions on app startup
@@ -22,26 +23,26 @@ export const useNotificationSetup = () => {
 
     const initializeNotifications = async () => {
       if (isExpoGo || Constants.appOwnership === 'expo') {
-        console.warn('[NOTIF] Notifications may not work in Expo Go. Use Dev Build or APK/IPA');
+        warn('[NOTIF] Notifications may not work in Expo Go. Use Dev Build or APK/IPA');
       }
 
       try {
         if (!areNotificationsAvailable()) {
-          if (shouldLogDev) console.info('[NOTIF] Notifications not available in this environment.');
+          if (shouldLogDev) log('[NOTIF] Notifications not available in this environment.');
           return;
         }
 
         const granted = await hasNotificationPermission();
         if (!granted) {
           const result = await requestNotificationPermission();
-          console.log('[NOTIF][PERMISSION] Permission status:', result);
+          log('[NOTIF][PERMISSION] Permission status:', result);
         } else {
-          console.log('[NOTIF][PERMISSION] Permission already granted');
+          log('[NOTIF][PERMISSION] Permission already granted');
         }
 
         await ensureTaskNotificationChannel();
       } catch (error) {
-        console.error('[NOTIF] Error setting up notifications:', error);
+        logError('[NOTIF] Error setting up notifications:', error);
       }
     };
 

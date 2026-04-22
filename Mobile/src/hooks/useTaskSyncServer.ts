@@ -1,12 +1,13 @@
 import { useEffect } from "react";
 import { startTaskSyncServer, stopTaskSyncServer } from "@services/sync/taskSyncServer";
 import { isExpoGo, shouldLogDev } from "@utils/runtimeEnv";
+import { log, warn, error as logError } from '@utils/logger';
 
 export const useTaskSyncServer = () => {
   useEffect(() => {
     if (isExpoGo) {
       if (shouldLogDev) {
-        console.info("[sync] Skipping local WebSocket server in Expo Go.");
+        log("[sync] Skipping local WebSocket server in Expo Go.");
       }
       return;
     }
@@ -17,11 +18,11 @@ export const useTaskSyncServer = () => {
       .then((result) => {
         if (!mounted || !result?.url) return;
         if (shouldLogDev) {
-          console.info(`[sync] connect web client at ${result.url}`);
+          log(`[sync] connect web client at ${result.url}`);
         }
       })
       .catch((error) => {
-        console.warn("[sync] failed to start", error);
+        warn("[sync] failed to start", error);
       });
 
     return () => {

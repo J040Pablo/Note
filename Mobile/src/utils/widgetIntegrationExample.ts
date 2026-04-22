@@ -8,6 +8,7 @@
 import { useTasksStore } from '@store/useTasksStore';
 import WidgetSyncService from '@services/WidgetSyncService';
 import { useEffect, useMemo } from 'react';
+import { log, warn, error as logError } from '@utils/logger';
 
 /**
  * Hook para sincronizar automaticamente tasks com o widget
@@ -66,9 +67,9 @@ async function syncTasksToWidget(tasks: any[]) {
     // Enviar para o widget
     await WidgetSyncService.updateWidgetWithTasks(completedTasks);
 
-    console.log('✅ Widget sincronizado com', Object.keys(taskData).length, 'dias');
+    log('✅ Widget sincronizado com', Object.keys(taskData).length, 'dias');
   } catch (error) {
-    console.error('❌ Erro ao sincronizar widget:', error);
+    logError('❌ Erro ao sincronizar widget:', error);
   }
 }
 
@@ -79,8 +80,8 @@ async function syncTasksToWidget(tasks: any[]) {
 export const debugWidgetSync = async () => {
   const tasks = Object.values(useTasksStore.getState().tasks);
 
-  console.log('📊 Tasks totais:', tasks.length);
-  console.log('✅ Tasks completadas:', tasks.filter((t) => t.completed).length);
+  log('📊 Tasks totais:', tasks.length);
+  log('✅ Tasks completadas:', tasks.filter((t) => t.completed).length);
 
   await syncTasksToWidget(tasks);
 };

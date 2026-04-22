@@ -18,6 +18,7 @@ import { subscribeEntityServerEvents, type EntityServerEvent } from "@services/s
 import { fromSyncPriority, toSyncTask, type SyncPriority, type SyncTask } from "@services/sync/taskSyncProtocol";
 import type { Task } from "@models/types";
 import { isExpoGo, shouldLogDev } from "@utils/runtimeEnv";
+import { log, warn, error as logError } from '@utils/logger';
 
 type SocketClient = {
   id: string | number;
@@ -164,7 +165,7 @@ const createMessageId = (): string => `${Date.now()}-${Math.random().toString(36
 
 const logSyncDebug = (...args: unknown[]) => {
   if (!shouldLogDev) return;
-  console.log(...args);
+  log(...args);
 };
 
 const normalizeOptionalString = (value: unknown): string | null => {
@@ -298,12 +299,12 @@ const sendToClient = (socket: SocketClient, message: unknown) => {
     if (normalized && typeof normalized === "object") {
       const type = String((normalized as { type?: string }).type ?? "UNKNOWN");
       const id = String((normalized as { id?: string }).id ?? "-");
-      console.log("[SYNC][SEND]", id, type);
+      log("[SYNC][SEND]", id, type);
     }
 
     socket.send(JSON.stringify(normalized));
   } catch (error) {
-    console.warn("[sync] failed to send message", error);
+    warn("[sync] failed to send message", error);
   }
 };
 
@@ -384,7 +385,7 @@ const sendAck = (
       status,
     },
   });
-  console.log("[SYNC][ACK]", messageId, status);
+  log("[SYNC][ACK]", messageId, status);
 };
 
 const hasOwn = (value: unknown, key: string): boolean =>
@@ -510,26 +511,26 @@ export const waitForFullSync = async (): Promise<void> => {
 };
 
 const sendInitialData = async (socket: SocketClient) => {
-  console.log("[SYNC] Fetching data...");
+  log("[SYNC] Fetching data...");
 
   const notes = await getAllNotes().catch((e) => {
-    console.error("[SYNC ERROR notes]", e);
+    logError("[SYNC ERROR notes]", e);
     return [];
   });
   const quickNotes = await getAllQuickNotes().catch((e) => {
-    console.error("[SYNC ERROR quickNotes]", e);
+    logError("[SYNC ERROR quickNotes]", e);
     return [];
   });
   const tasks = await getAllTasks().catch((e) => {
-    console.error("[SYNC ERROR tasks]", e);
+    logError("[SYNC ERROR tasks]", e);
     return [];
   });
   const folders = await getAllFolders().catch((e) => {
-    console.error("[SYNC ERROR folders]", e);
+    logError("[SYNC ERROR folders]", e);
     return [];
   });
 
-  console.log("[SYNC] Data fetched", {
+  log("[SYNC] Data fetched", {
     notes: notes.length,
     quickNotes: quickNotes.length,
     tasks: tasks.length,
@@ -553,9 +554,9 @@ const sendInitialData = async (socket: SocketClient) => {
     pendingFullSyncIds.add(message.id);
   }
 
-  console.log("[SYNC] SENDING FULL_SYNC");
+  log("[SYNC] SENDING FULL_SYNC");
   sendToClient(socket, message);
-  console.log("[SYNC] FULL_SYNC SENT");
+  log("[SYNC] FULL_SYNC SENT");
   // Resolve any waiters
   if (fullSyncResolvers.length > 0) {
     fullSyncResolvers.forEach((fn) => {
@@ -624,7 +625,7 @@ const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "T
       ? payload.date
       : toDateKey(new Date());
 
-  console.log("[MOBILE][TOGGLE_APPLY]", { taskId: id, date: dateKey });
+  log("[MOBILE][TOGGLE_APPLY]", { taskId: id, date: dateKey });
   await toggleTaskForDate(existing, dateKey);
 };
 
@@ -690,7 +691,7 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
     const syncId = String(message.payload?.id ?? "").trim();
     if (syncId) {
       pendingFullSyncIds.delete(syncId);
-      console.log("[SYNC][ACK]", syncId, "FULL_SYNC");
+      log("[SYNC][ACK]", syncId, "FULL_SYNC");
     }
     return;
   }
@@ -904,20 +905,20 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
   if (isExpoGo) {
     if (!hasLoggedExpoGoWsUnsupported && shouldLogDev) {
       hasLoggedExpoGoWsUnsupported = true;
-      console.info("[sync] Disabled in Expo Go. Local WebSocket server requires a development build.");
+      log("[sync] Disabled in Expo Go. Local WebSocket server requires a development build.");
     }
     return null;
   }
 
   const WebsocketServerCtor = getWebsocketServerCtor();
   if (!WebsocketServerCtor) {
-    console.warn("[sync] react-native-websocket-server is unavailable.");
+    warn("[sync] react-native-websocket-server is unavailable.");
     return null;
   }
 
   const ipAddress = await Network.getIpAddressAsync();
   if (!ipAddress || ipAddress === "0.0.0.0") {
-    console.warn("[sync] Could not resolve a valid local IP address.");
+    warn("[sync] Could not resolve a valid local IP address.");
     return null;
   }
 
@@ -934,7 +935,7 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
         logSyncDebug("[SYNC] FULL_SYNC SENT");
       })
       .catch((error) => {
-        console.warn("[sync] failed to send full sync", error);
+        warn("[sync] failed to send full sync", error);
       });
 
     logSyncDebug("[SYNC][SERVER][HANDLER_REGISTER]", { socketId, event: "message" });
@@ -943,7 +944,7 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
       if (!incoming) {
         const rawType = typeof raw;
         const rawKeys = raw && typeof raw === "object" ? Object.keys(raw as Record<string, unknown>) : [];
-        console.warn("[SYNC][SERVER][PARSE_IGNORED]", { rawType, rawKeys });
+        warn("[SYNC][SERVER][PARSE_IGNORED]", { rawType, rawKeys });
         return;
       }
 
@@ -998,7 +999,7 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
           sendAck(socket, incomingId, receivedAt, appliedAt, "OK");
         }
       } catch (error) {
-        console.error("[SYNC][ERROR]", incomingId ?? "-", error);
+        logError("[SYNC][ERROR]", incomingId ?? "-", error);
         logSyncDebug("[SYNC][SERVER][APPLIED]", {
           messageId: incomingId ?? "-",
           type: incoming.type,
@@ -1007,7 +1008,7 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
         if (incomingId) {
           sendAck(socket, incomingId, receivedAt, Date.now(), "ERROR");
         }
-        console.warn("[sync] failed handling message", error);
+        warn("[sync] failed handling message", error);
       }
     });
 
@@ -1034,7 +1035,7 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
       logSyncDebug("[SYNC][SERVER][EVENT_REGISTER]", { channel: "entity" });
     }
   } catch (error) {
-    console.error("[SYNC][SERVER][EVENT_REGISTER_ERROR]", error);
+    logError("[SYNC][SERVER][EVENT_REGISTER_ERROR]", error);
     throw error;
   }
 

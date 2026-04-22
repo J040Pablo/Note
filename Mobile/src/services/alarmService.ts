@@ -1,5 +1,6 @@
 import { createAudioPlayer, setIsAudioActiveAsync, type AudioPlayer } from "expo-audio";
 import { isExpoGo } from "@utils/runtimeEnv";
+import { log, warn, error as logError } from '@utils/logger';
 
 let player: AudioPlayer | null = null;
 let fallbackPlayer: AudioPlayer | null = null;
@@ -35,7 +36,7 @@ export const playAlarm = async (): Promise<void> => {
     await waitUntilLoaded(alarmPlayer);
     await alarmPlayer.seekTo(0);
     alarmPlayer.play();
-    console.log("[ALARM] Playing sound");
+    log("[ALARM] Playing sound");
 
     if (isExpoGo) {
       const remotePlayer = getFallbackPlayer();
@@ -44,10 +45,10 @@ export const playAlarm = async (): Promise<void> => {
       await waitUntilLoaded(remotePlayer);
       await remotePlayer.seekTo(0);
       remotePlayer.play();
-      console.log("[ALARM] Expo Go fallback sound");
+      log("[ALARM] Expo Go fallback sound");
     }
   } catch (err) {
-    console.warn("[ALARM] Failed to play sound", err);
+    warn("[ALARM] Failed to play sound", err);
   }
 };
 

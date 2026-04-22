@@ -47,6 +47,7 @@ import {
   parseCanvasNoteContent,
   serializeCanvasNoteContent
 } from "@utils/noteContent";
+import { log, warn, error as logError } from '@utils/logger';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants & helpers
@@ -172,7 +173,7 @@ const touchDist = (a: { pageX: number; pageY: number }, b: { pageX: number; page
 const getSafePageCoords = (evt: GestureResponderEvent) => {
   const { pageX, pageY } = evt?.nativeEvent ?? {};
   if (typeof pageX !== "number" || typeof pageY !== "number") {
-    console.warn("[CanvasEditor] Invalid touch coords", { pageX, pageY });
+    warn("[CanvasEditor] Invalid touch coords", { pageX, pageY });
     return null;
   }
   return { pageX, pageY };
@@ -483,7 +484,7 @@ const CanvasElementView = memo(
             scrollEnabled={false}
             value={element.text}
             editable={canEditText}
-            pointerEvents={canEditText ? "auto" : "auto"}
+            pointerEvents={canEditText ? "auto" : "none"}
             onFocus={() => {
               if (!editable) return;
               // Only set toolbar mode to keyboard, DO NOT change interaction mode
@@ -1321,7 +1322,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
       setIsElementDragging(mode === "move");
       if (mode !== "move") clearAlignmentGuides();
       if (mode === "rotate") setIsRotating(true);  // 📐 INICIAR MODO ROTAÇÃO
-      setTextInteractionMode("idle");
+      setTextInteractionMode(el.type === "text" ? "selected" : "idle");
       bringToFront(el.id);
       elementInteractionRef.current = {
         elementId: el.id,

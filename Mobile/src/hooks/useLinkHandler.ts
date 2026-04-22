@@ -4,6 +4,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 import type { Link, InternalLinkType } from "@utils/linkUtils";
 import { normalizeUrl, openLink, wrapTextInLink } from "@utils/linkUtils";
+import { log, warn, error as logError } from '@utils/logger';
 
 export interface LinkModalState {
   visible: boolean;
@@ -62,7 +63,7 @@ export const useLinkHandler = (
     (url: string, text: string) => {
       const normalizedUrl = normalizeUrl(url);
       if (!normalizedUrl) {
-        console.warn("Invalid URL:", url);
+        warn("Invalid URL:", url);
         return;
       }
 
@@ -92,7 +93,7 @@ export const useLinkHandler = (
       try {
         await openLink(link, navigation);
       } catch (error) {
-        console.error("Error handling link press:", error);
+        logError("Error handling link press:", error);
       }
     },
     [navigation]

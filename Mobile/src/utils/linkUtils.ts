@@ -1,4 +1,5 @@
 import { Linking } from "react-native";
+import { log, warn, error as logError } from '@utils/logger';
 
 export type InternalLinkType = "note" | "quick_note" | "folder" | "task";
 
@@ -113,7 +114,7 @@ export const openLink = async (link: Link, navigation?: any): Promise<boolean> =
 
     // Link interno
     if (!navigation) {
-      console.warn("Navigation not provided for internal link");
+      warn("Navigation not provided for internal link");
       return false;
     }
 
@@ -149,7 +150,7 @@ export const openLink = async (link: Link, navigation?: any): Promise<boolean> =
         return false;
     }
   } catch (error) {
-    console.error("Error opening link:", error);
+    logError("Error opening link:", error);
     return false;
   }
 };

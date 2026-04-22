@@ -10,6 +10,7 @@ import type {
 import type { Task, TaskReminderType } from '@models/types';
 import { useNotificationsStore } from '@store/useNotificationsStore';
 import { isExpoGo, shouldLogDev } from '@utils/runtimeEnv';
+import { log, warn, error as logError } from '@utils/logger';
 
 const notificationsAvailable = !isExpoGo;
 let hasLoggedNotificationsUnavailable = false;
@@ -44,7 +45,7 @@ Notifications.setNotificationHandler({
 const logNotificationsUnavailableOnce = () => {
   if (hasLoggedNotificationsUnavailable || !shouldLogDev || notificationsAvailable) return;
   hasLoggedNotificationsUnavailable = true;
-  console.info('[Notifications] Local notifications are only available in development builds.');
+  log('[Notifications] Local notifications are only available in development builds.');
 };
 
 const buildTriggerDate = (scheduledDate: string, scheduledTime: string): Date | null => {
@@ -145,7 +146,7 @@ const scheduleTaskNotificationsInternal = async (task: Task): Promise<string[]> 
       ids.push(identifier);
     }
   } catch (error) {
-    console.error('Scheduling error:', error);
+    logError('Scheduling error:', error);
   }
 
   return ids;
@@ -191,7 +192,7 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
       requestedPermissions.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL
     );
   } catch (error) {
-    console.error('Permission request error:', error);
+    logError('Permission request error:', error);
     return false;
   }
 };
@@ -214,7 +215,7 @@ export const ensureTaskNotificationChannel = async (): Promise<void> => {
 
     channelInitialized = true;
   } catch (error) {
-    console.error('Channel error:', error);
+    logError('Channel error:', error);
   }
 };
 
@@ -249,7 +250,7 @@ export const cancelTaskNotifications = async (taskId: string): Promise<void> => 
       )
     );
   } catch (error) {
-    console.error('Cancel error:', error);
+    logError('Cancel error:', error);
   }
 };
 
@@ -288,7 +289,7 @@ export const getScheduledNotifications = async (): Promise<Notifications.Notific
   try {
     return await Notifications.getAllScheduledNotificationsAsync();
   } catch (error) {
-    console.error('[NOTIF] Error fetching scheduled notifications:', error);
+    logError('[NOTIF] Error fetching scheduled notifications:', error);
     return [];
   }
 };
@@ -364,7 +365,7 @@ export const sendPomodoroModeSwitchNotification = async (
       trigger: null,
     });
   } catch (error) {
-    console.error('[NOTIF] Error sending pomodoro notification:', error);
+    logError('[NOTIF] Error sending pomodoro notification:', error);
   }
 };
 
@@ -377,7 +378,7 @@ export const getLastNotificationResponse = async (): Promise<NotificationRespons
     const response = await Notifications.getLastNotificationResponseAsync();
     return response ?? null;
   } catch (error) {
-    console.error('[NOTIF] Error fetching last notification response:', error);
+    logError('[NOTIF] Error fetching last notification response:', error);
     return null;
   }
 };
@@ -409,7 +410,7 @@ export const scheduleTestNotification = async (): Promise<string | null> => {
       trigger: buildTimeIntervalTrigger(2),
     });
   } catch (error) {
-    console.error('[NOTIF] Error scheduling test notification:', error);
+    logError('[NOTIF] Error scheduling test notification:', error);
     return null;
   }
 };
@@ -423,17 +424,17 @@ export const logScheduledNotificationsDetailed = async (): Promise<void> => {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
 
     if (shouldLogDev) {
-      console.info(`[NOTIF][LOG] Total scheduled notifications: ${scheduled.length}`);
+      log(`[NOTIF][LOG] Total scheduled notifications: ${scheduled.length}`);
 
       scheduled.forEach((notification, index) => {
         const taskId = getTaskIdFromNotification(notification);
-        console.info(
+        log(
           `[NOTIF][LOG] [${index}] id=${notification.identifier} taskId=${taskId || 'none'} trigger=${JSON.stringify(notification.trigger)}`
         );
       });
     }
   } catch (error) {
-    console.error('[NOTIF][LOG] Error logging scheduled notifications:', error);
+    logError('[NOTIF][LOG] Error logging scheduled notifications:', error);
   }
 };
 

@@ -6,6 +6,7 @@ import { useAppStore } from '@store/useAppStore';
 import { getAllTasks } from '@services/tasksService';
 import { getAllNotes, getAllQuickNotes } from '@services/notesService';
 import { getAllFolders } from '@services/foldersService';
+import { log, warn, error as logError } from '@utils/logger';
 
 /**
  * Pre-load stores on app startup to ensure data is available for notification handlers
@@ -28,10 +29,10 @@ export const useInitializeStores = () => {
         useAppStore.getState().setFolders(folders);
         
         if (process.env.NODE_ENV === 'development') {
-          console.log('[INIT] Stores initialized at app startup');
+          log('[INIT] Stores initialized at app startup');
         }
       } catch (error) {
-        console.error('[INIT] Error initializing stores:', error);
+        logError('[INIT] Error initializing stores:', error);
       }
     };
 

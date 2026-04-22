@@ -69,6 +69,7 @@ import { Ionicons } from "@expo/vector-icons";
 import DraggableFlatList, { type RenderItemParams } from "react-native-draggable-flatlist";
 import { DraggableGrid } from "react-native-draggable-grid";
 import { useFolderFABActions } from "@hooks/useFolderFABActions";
+import { log, warn, error as logError } from '@utils/logger';
  
 
 const firstLine = (text: string): string => getRichNotePreviewLine(text, 80);
@@ -128,7 +129,7 @@ const FolderDetailScreen: React.FC = () => {
   const folderId = route.params?.folderId ?? null;
   const routeTrail = route.params?.trail;
 
-  console.log("Current route:", route.name, route.params);
+  log("Current route:", route.name, route.params);
 
   const folders = useAppStore((s) => s.folders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);
@@ -488,7 +489,7 @@ const FolderDetailScreen: React.FC = () => {
       handleClearSelection();
       showToast(selectedItems.length === 1 ? "Item movido" : `${selectedItems.length} itens movidos`);
     } catch (error) {
-      console.error("[items] move failed", error);
+      logError("[items] move failed", error);
       showToast("Não foi possível mover os itens", "error");
     }
   }, [actions, handleClearSelection, isDescendantOf, moveSelectedTargetFolderId, selectedItems, showToast]);
@@ -688,25 +689,25 @@ const FolderDetailScreen: React.FC = () => {
                       switch (item.itemType) {
                         case "folder":
                           updateFolderGlobalOrder(item.id, index).catch(err => 
-                            console.error("[FolderDetail] Failed to persist folder order:", err)
+                            logError("[FolderDetail] Failed to persist folder order:", err)
                           );
                           upsertFolder({ ...(item as Folder), globalOrder: index });
                           break;
                         case "note":
                           updateNoteGlobalOrder(item.id, index).catch(err => 
-                            console.error("[FolderDetail] Failed to persist note order:", err)
+                            logError("[FolderDetail] Failed to persist note order:", err)
                           );
                           upsertNote({ ...(item as Note), globalOrder: index });
                           break;
                         case "quick":
                           updateQuickNoteGlobalOrder(item.id, index).catch(err => 
-                            console.error("[FolderDetail] Failed to persist quick note order:", err)
+                            logError("[FolderDetail] Failed to persist quick note order:", err)
                           );
                           upsertQuickNote({ ...(item as QuickNote), globalOrder: index });
                           break;
                         case "file":
                           updateFileGlobalOrder(item.id, index).catch(err => 
-                            console.error("[FolderDetail] Failed to persist file order:", err)
+                            logError("[FolderDetail] Failed to persist file order:", err)
                           );
                           upsertFile({ ...(item as AppFile), globalOrder: index });
                           break;
@@ -1562,7 +1563,7 @@ const FolderDetailScreen: React.FC = () => {
             setShowCreateFolder(false);
             showToast("Folder saved ✓");
           } catch (error) {
-            console.error("[folder] create failed", error);
+            logError("[folder] create failed", error);
             showToast("Could not save folder", "error");
           } finally {
             setFolderSubmitting(false);
@@ -1813,7 +1814,7 @@ const FolderDetailScreen: React.FC = () => {
             setEditingFolder(null);
             showToast("Folder saved ✓");
           } catch (error) {
-            console.error("[folder] update failed", error);
+            logError("[folder] update failed", error);
             showToast("Could not save folder", "error");
           } finally {
             setFolderSubmitting(false);
@@ -1844,7 +1845,7 @@ const FolderDetailScreen: React.FC = () => {
             setEditingNote(null);
             showToast("Note saved ✓");
           } catch (error) {
-            console.error("[note] update failed", error);
+            logError("[note] update failed", error);
             showToast("Could not save note", "error");
           } finally {
             setNoteSubmitting(false);
@@ -2109,7 +2110,7 @@ const FolderDetailScreen: React.FC = () => {
             setPendingDelete(null);
             showToast("Deleted ✓");
           } catch (error) {
-            console.error("[item] delete failed", error);
+            logError("[item] delete failed", error);
             showToast("Could not delete item", "error");
           } finally {
             setDeleteSubmitting(false);

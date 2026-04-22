@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { Linking } from "react-native";
 import type { Link } from "@utils/linkUtils";
 import { stringToLink } from "@utils/linkUtils";
+import { log, warn, error as logError } from '@utils/logger';
 
 export const useLinkRenderer = (navigation?: any) => {
   const renderHtmlWithLinks = useCallback(
@@ -34,7 +35,7 @@ export const useLinkRenderer = (navigation?: any) => {
         }
 
         if (!navigation) {
-          console.warn("Navigation not provided for internal link");
+          warn("Navigation not provided for internal link");
           return;
         }
 
@@ -67,10 +68,10 @@ export const useLinkRenderer = (navigation?: any) => {
             break;
 
           default:
-            console.warn("Unknown link entity:", entity);
+            warn("Unknown link entity:", entity);
         }
       } catch (error) {
-        console.error("Error handling link click:", error);
+        logError("Error handling link click:", error);
       }
     },
     [navigation]

@@ -1,6 +1,7 @@
 import { getDB, runDbWrite } from "@db/database";
 import type { Note, ID, QuickNote } from "@models/types";
 import { emitEntityServerEvent } from "@services/sync/entitySyncEvents";
+import { log, warn, error as logError } from '@utils/logger';
 
 const upsertNoteRow = async (payload: {
   id: ID;
@@ -80,7 +81,7 @@ export const createNote = async (payload: {
     updatedAt,
   });
 
-  console.log("[DB][UPSERT]", id);
+  log("[DB][UPSERT]", id);
 
   const created: Note = {
     id,

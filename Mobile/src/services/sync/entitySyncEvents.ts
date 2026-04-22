@@ -1,4 +1,5 @@
 import type { SyncTask } from "@services/sync/taskSyncProtocol";
+import { log, warn, error as logError } from '@utils/logger';
 
 type SyncFolder = {
   id: string;
@@ -52,7 +53,7 @@ export const emitEntityServerEvent = (event: EntityServerEvent) => {
     try {
       listener(event);
     } catch (error) {
-      console.warn("[sync] entity listener failed", error);
+      warn("[sync] entity listener failed", error);
     }
   });
 };

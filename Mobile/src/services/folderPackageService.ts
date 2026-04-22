@@ -12,6 +12,7 @@ import { useAppStore } from "@store/useAppStore";
 import { useFilesStore } from "@store/useFilesStore";
 import { useNotesStore } from "@store/useNotesStore";
 import { useQuickNotesStore } from "@store/useQuickNotesStore";
+import { log, warn, error as logError } from '@utils/logger';
 
 const PACKAGE_SCHEMA_VERSION = "1.0.0";
 const PACKAGE_ROOT = `${FileSystem.cacheDirectory}folder-packages/`;
@@ -781,7 +782,7 @@ export const exportFolderPackageAndShare = async (
         dialogTitle: options?.shareDialogTitle ?? "Share folder package"
       });
     } else {
-      console.warn(
+      warn(
         "[folder-package] expo-sharing unavailable; falling back to Share.share. Some apps may not support ZIP attachments."
       );
       await Share.share({

@@ -16,7 +16,7 @@ object WidgetDataRepository {
 
     fun saveHeatmapData(context: Context, jsonString: String) {
         val parsed = parseToMap(jsonString)
-        Log.i(TAG, "saveHeatmapData: entries=${parsed.size}")
+        Logger.i(TAG, "saveHeatmapData: entries=${parsed.size}")
         saveHeatmapMap(context, parsed)
     }
 
@@ -25,20 +25,20 @@ object WidgetDataRepository {
         val json = JSONObject()
         pruned.forEach { (key, value) -> json.put(key, value.coerceAtLeast(0)) }
         prefs(context).edit().putString(KEY_CONTRIBUTION_DATA, json.toString()).commit()
-        Log.i(TAG, "saveHeatmapMap: persistedEntries=${pruned.size}")
+        Logger.i(TAG, "saveHeatmapMap: persistedEntries=${pruned.size}")
     }
 
     fun updateDay(context: Context, dateKey: String, count: Int) {
         val next = getHeatmapData(context).toMutableMap()
         next[dateKey] = count.coerceAtLeast(0)
-        Log.i(TAG, "updateDay: date=$dateKey count=${count.coerceAtLeast(0)}")
+        Logger.i(TAG, "updateDay: date=$dateKey count=${count.coerceAtLeast(0)}")
         saveHeatmapMap(context, next)
     }
 
     fun getHeatmapData(context: Context): Map<String, Int> {
         val raw = prefs(context).getString(KEY_CONTRIBUTION_DATA, "{}") ?: "{}"
         val parsed = parseToMap(raw)
-        Log.d(TAG, "getHeatmapData: entries=${parsed.size}")
+        Logger.d(TAG, "getHeatmapData: entries=${parsed.size}")
         return parsed
     }
 
@@ -48,7 +48,7 @@ object WidgetDataRepository {
 
     fun clearHeatmapData(context: Context) {
         prefs(context).edit().remove(KEY_CONTRIBUTION_DATA).commit()
-        Log.w(TAG, "clearHeatmapData: key removed")
+        Logger.w(TAG, "clearHeatmapData: key removed")
     }
 
     fun recentDateKeys(days: Int = MAX_DAYS): List<String> {
@@ -87,7 +87,7 @@ object WidgetDataRepository {
             }
             map
         } catch (e: Exception) {
-            Log.e(TAG, "parseToMap: invalid JSON payload", e)
+            Logger.e(TAG, "parseToMap: invalid JSON payload", e)
             emptyMap()
         }
     }

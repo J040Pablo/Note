@@ -15,6 +15,7 @@
  * "WidgetBridge" by WidgetBridgeModule.kt).
  */
 
+import { log, error as logError } from '@utils/logger';
 import { NativeModules, Platform } from 'react-native';
 import { getDB } from '@db/database';
 import {
@@ -90,11 +91,21 @@ const wait = (ms: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 const logInfo = (event: string, details?: Record<string, unknown>): void => {
-  console.log('[widgetSync]', event, details ?? {});
+  // Ignorar logs repetitivos que só sujam a tela
+  const ignoredEvents = [
+    'queued',
+    'processing-start',
+    'processing-success',
+    'incremental-sync-requested',
+    'full-sync-requested'
+  ];
+  if (ignoredEvents.includes(event)) return;
+
+  log('[widgetSync]', event, details ?? {});
 };
 
-const logError = (event: string, details?: Record<string, unknown>): void => {
-  console.error('[widgetSync]', event, details ?? {});
+const _logError = (event: string, details?: Record<string, unknown>): void => {
+  logError('[widgetSync]', event, details ?? {});
 };
 
 type PersistedWidgetQueueItem = Omit<WidgetQueueItem, 'id'> & { id?: number };

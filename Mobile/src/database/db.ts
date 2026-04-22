@@ -1,5 +1,6 @@
 import * as SQLite from "expo-sqlite";
 import { DB_NAME, createTablesSQL } from "./schema";
+import { log, warn, error as logError } from '@utils/logger';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 let dbInstance: SQLite.SQLiteDatabase | null = null;
@@ -35,7 +36,7 @@ const isRetryableLockError = (error: unknown): boolean => {
 };
 
 const logDbError = (scope: string, error: unknown): void => {
-  console.error(`[db] ${scope} failed`, error);
+  logError(`[db] ${scope} failed`, error);
 };
 
 const hasColumn = async (db: SQLite.SQLiteDatabase, table: string, column: string): Promise<boolean> => {
@@ -154,7 +155,7 @@ const ensureInitialized = async (db: SQLite.SQLiteDatabase): Promise<void> => {
     initializationPromise = (async () => {
       await initializeDb(db);
       initialized = true;
-      console.log("[db] initialization completed");
+      log("[db] initialization completed");
     })();
 
     initializationPromise.catch((error) => {

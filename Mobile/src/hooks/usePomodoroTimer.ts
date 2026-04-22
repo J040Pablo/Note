@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { playAlarm, stopAlarm } from "@services/alarmService";
 import { usePomodoroStore } from "@store/usePomodoroStore";
+import { log, warn, error as logError } from '@utils/logger';
 
 const TIMER_INTERVAL_MS = 1000;
 
@@ -22,7 +23,7 @@ export const usePomodoroTimer = () => {
     if (!isRunning) {
       void stopAlarm();
       if (intervalRef.current) {
-        console.log("[TIMER] Clearing interval");
+        log("[TIMER] Clearing interval");
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
@@ -33,7 +34,7 @@ export const usePomodoroTimer = () => {
       return;
     }
 
-    console.log("[TIMER] Starting interval");
+    log("[TIMER] Starting interval");
 
     intervalRef.current = setInterval(() => {
       const state = usePomodoroStore.getState();
@@ -52,7 +53,7 @@ export const usePomodoroTimer = () => {
 
     return () => {
       if (intervalRef.current) {
-        console.log("[TIMER] Clearing interval");
+        log("[TIMER] Clearing interval");
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }

@@ -3,6 +3,7 @@ import { ActivityIndicator, Modal, Pressable, StyleSheet, View } from "react-nat
 import { Camera, CameraView } from "expo-camera";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
+import { log, warn, error as logError } from '@utils/logger';
 
 type QRScannerProps = {
   onClose: () => void;
@@ -35,7 +36,7 @@ const QRScanner: React.FC<QRScannerProps> = ({ onClose, onScan }) => {
 
     setScanned(true);
     const scannedUrl = String(data ?? "").trim();
-    console.log("QR scanned:", scannedUrl);
+    log("QR scanned:", scannedUrl);
     onScan(scannedUrl);
 
     if (!/^wss?:\/\//i.test(scannedUrl)) {

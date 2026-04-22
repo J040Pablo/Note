@@ -1,4 +1,5 @@
 import type { SyncTask } from "@services/sync/taskSyncProtocol";
+import { log, warn, error as logError } from '@utils/logger';
 
 export type TaskServerEvent =
   | { type: "TASK_CREATED"; payload: SyncTask }
@@ -14,7 +15,7 @@ export const emitTaskServerEvent = (event: TaskServerEvent) => {
     try {
       listener(event);
     } catch (error) {
-      console.warn("[sync] listener failed", error);
+      warn("[sync] listener failed", error);
     }
   });
 };

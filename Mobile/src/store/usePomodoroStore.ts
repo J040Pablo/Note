@@ -3,6 +3,7 @@ import { Dimensions } from "react-native";
 import { stopAlarm } from "@services/alarmService";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { log, warn, error as logError } from '@utils/logger';
 
 type PomodoroMode = "focus" | "break";
 
@@ -75,7 +76,7 @@ export const usePomodoroStore = create<PomodoroStore>()(
             return state;
           }
           if (__DEV__) {
-            console.log("[POMODORO ACTION] start");
+            log("[POMODORO ACTION] start");
           }
           return {
             isRunning: true,
@@ -90,7 +91,7 @@ export const usePomodoroStore = create<PomodoroStore>()(
           }
           void stopAlarm();
           if (__DEV__) {
-            console.log("[POMODORO ACTION] pause");
+            log("[POMODORO ACTION] pause");
           }
           return {
             isRunning: false,
@@ -102,7 +103,7 @@ export const usePomodoroStore = create<PomodoroStore>()(
         set((state) => {
           void stopAlarm();
           if (__DEV__) {
-            console.log("[POMODORO ACTION] reset");
+            log("[POMODORO ACTION] reset");
           }
           return {
             isRunning: false,
@@ -140,7 +141,7 @@ export const usePomodoroStore = create<PomodoroStore>()(
           }
           void stopAlarm();
           if (__DEV__) {
-            console.log("[POMODORO ACTION] toggleMode", nextMode);
+            log("[POMODORO ACTION] toggleMode", nextMode);
           }
           return {
             mode: nextMode,
@@ -163,7 +164,7 @@ export const usePomodoroStore = create<PomodoroStore>()(
         set((state) => {
           const nextPosition = getDefaultOpenPosition();
           if (__DEV__) {
-            console.log("[POMODORO ACTION] openPomodoro");
+            log("[POMODORO ACTION] openPomodoro");
           }
           return {
             isVisible: true,
@@ -180,7 +181,7 @@ export const usePomodoroStore = create<PomodoroStore>()(
         set((state) => {
           void stopAlarm();
           if (__DEV__) {
-            console.log("[POMODORO ACTION] closePomodoro");
+            log("[POMODORO ACTION] closePomodoro");
           }
           return {
             isVisible: false,
