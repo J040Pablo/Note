@@ -1,4 +1,4 @@
-package com.example.lifeorganizer
+package com.example.spectru
 
 import android.os.Build
 import android.os.Bundle

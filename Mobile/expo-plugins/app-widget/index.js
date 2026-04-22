@@ -1,8 +1,8 @@
 const { withAndroidManifest, withStringsXml, withPlugins } = require('@expo/config-plugins');
 
-const PROVIDER_NAME = 'com.example.lifeorganizer.ContributionWidgetProvider';
+const PROVIDER_NAME = 'com.example.spectru.ContributionWidgetProvider';
 const PROVIDER_SIMPLE = '.ContributionWidgetProvider';
-const BOOT_RECEIVER_NAME = 'com.example.lifeorganizer.WidgetUpdateReceiver';
+const BOOT_RECEIVER_NAME = 'com.example.spectru.WidgetUpdateReceiver';
 const BOOT_RECEIVER_SIMPLE = '.WidgetUpdateReceiver';
 
 /**

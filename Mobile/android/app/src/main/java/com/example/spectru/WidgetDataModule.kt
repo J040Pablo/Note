@@ -1,4 +1,4 @@
-package com.example.lifeorganizer
+package com.example.spectru
 
 import android.content.Context
 import android.content.SharedPreferences

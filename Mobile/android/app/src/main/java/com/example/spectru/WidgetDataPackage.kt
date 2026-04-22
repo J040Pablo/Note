@@ -1,4 +1,4 @@
-package com.example.lifeorganizer
+package com.example.spectru
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

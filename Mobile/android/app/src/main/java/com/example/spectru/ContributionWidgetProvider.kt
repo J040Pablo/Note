@@ -1,4 +1,4 @@
-package com.example.lifeorganizer
+package com.example.spectru
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -15,7 +15,7 @@ import kotlin.math.max
 class ContributionWidgetProvider : AppWidgetProvider() {
 
     companion object {
-        const val PREFS_NAME = "com.example.lifeorganizer.widget"
+        const val PREFS_NAME = "com.example.spectru.widget"
         const val KEY_CONTRIBUTION_DATA = "contribution_data"
 
         private const val ROWS = 7

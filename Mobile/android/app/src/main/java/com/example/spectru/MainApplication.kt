@@ -1,4 +1,4 @@
-package com.example.lifeorganizer
+package com.example.spectru
 
 import android.app.Application
 import android.content.res.Configuration
@@ -23,7 +23,6 @@ class MainApplication : Application(), ReactApplication {
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
-              // Widget bridge: exposes NativeModules.WidgetBridge to JS runtime.
               add(WidgetDataPackage())
             }
 

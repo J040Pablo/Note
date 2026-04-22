@@ -85,9 +85,9 @@ android {
     ndkVersion rootProject.ext.ndkVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.example.lifeorganizer'
+    namespace 'com.example.spectru'
     defaultConfig {
-        applicationId 'com.example.lifeorganizer'
+        applicationId 'com.example.spectru'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

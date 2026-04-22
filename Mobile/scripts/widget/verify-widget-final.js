@@ -7,7 +7,7 @@ console.log('\n=== WIDGET PRESENCE VERIFICATION ===\n');
 
 const checks = {
   'ContributionWidgetProvider.kt': {
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionWidgetProvider.kt',
+    path: '../../android/app/src/main/java/com/example/spectru/ContributionWidgetProvider.kt',
     verify: (content) => content.includes('class ContributionWidgetProvider') && content.includes('override fun onUpdate')
   },
   'widget_info.xml': {
@@ -19,7 +19,7 @@ const checks = {
     verify: (content) => content.includes('widget_root') && content.includes('cell_0_0') && content.includes('cell_3_6') && !content.includes('widget_subtitle')
   },
   'WidgetDataModule.kt': {
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataModule.kt',
+    path: '../../android/app/src/main/java/com/example/spectru/WidgetDataModule.kt',
     verify: (content) => content.includes('class WidgetDataModule') && content.includes('override fun getName(): String = "WidgetBridge"')
   },
   'ProGuard Rules': {
@@ -65,7 +65,7 @@ const manifestFullPath = path.join(__dirname, manifestPath);
 if (fs.existsSync(manifestFullPath)) {
   const manifestContent = fs.readFileSync(manifestFullPath, 'utf-8');
   const hasReceiver =
-    manifestContent.includes('com.example.lifeorganizer.ContributionWidgetProvider') ||
+    manifestContent.includes('com.example.spectru.ContributionWidgetProvider') ||
     manifestContent.includes('android:name=".ContributionWidgetProvider"');
   
   if (!hasReceiver) {

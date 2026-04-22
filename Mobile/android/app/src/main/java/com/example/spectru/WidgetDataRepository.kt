@@ -1,4 +1,4 @@
-package com.example.lifeorganizer
+package com.example.spectru
 
 import android.content.Context
 import android.util.Log
@@ -7,7 +7,7 @@ import java.util.Calendar
 
 object WidgetDataRepository {
     private const val TAG: String = "WidgetDataRepository"
-    const val PREFS_NAME: String = "com.example.lifeorganizer.widget"
+    const val PREFS_NAME: String = "com.example.spectru.widget"
     const val KEY_CONTRIBUTION_DATA: String = "contribution_data"
     private const val MAX_DAYS: Int = 112
 

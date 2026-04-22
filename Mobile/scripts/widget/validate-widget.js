@@ -8,7 +8,7 @@ const checks = [
     name: 'AndroidManifest.xml widget receiver',
     path: '../../android/app/src/main/AndroidManifest.xml',
     validate: (content) => {
-      const receiverRegex = /<receiver[^>]*android:name="(\.ContributionWidgetProvider|com\.example\.lifeorganizer\.ContributionWidgetProvider)"[^>]*android:exported="true"[^>]*>/s;
+      const receiverRegex = /<receiver[^>]*android:name="(\.ContributionWidgetProvider|com\.example\.spectru\.ContributionWidgetProvider)"[^>]*android:exported="true"[^>]*>/s;
       const actionRegex = /<action[^>]*android:name="android\.appwidget\.action\.APPWIDGET_UPDATE"\s*\/>/s;
       const metadataRegex = /<meta-data[^>]*android:name="android\.appwidget\.provider"[^>]*android:resource="@xml\/widget_info"\s*\/>/s;
       return receiverRegex.test(content) && actionRegex.test(content) && metadataRegex.test(content);
@@ -36,7 +36,7 @@ const checks = [
   },
   {
     name: 'ContributionWidgetProvider.kt',
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/ContributionWidgetProvider.kt',
+    path: '../../android/app/src/main/java/com/example/spectru/ContributionWidgetProvider.kt',
     validate: (content) => {
       return content.includes('class ContributionWidgetProvider') &&
              content.includes('requestUpdate') &&
@@ -46,7 +46,7 @@ const checks = [
   },
   {
     name: 'WidgetDataModule.kt',
-    path: '../../android/app/src/main/java/com/example/lifeorganizer/WidgetDataModule.kt',
+    path: '../../android/app/src/main/java/com/example/spectru/WidgetDataModule.kt',
     validate: (content) => {
       return content.includes('class WidgetDataModule') &&
              content.includes('updateWidgetData') &&

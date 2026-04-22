@@ -1,8 +1,8 @@
 <resources>
-	<color name="widget_bg">#0F172A</color>
-	<color name="widget_cell_empty">#1E293B</color>
-	<color name="widget_cell_level1">#164E63</color>
-	<color name="widget_cell_level2">#0E7490</color>
-	<color name="widget_cell_level3">#06B6D4</color>
-	<color name="widget_cell_level4">#22D3EE</color>
+  <color name="widget_bg">#0F172A</color>
+  <color name="widget_cell_empty">#1E293B</color>
+  <color name="widget_cell_level1">#164E63</color>
+  <color name="widget_cell_level2">#0E7490</color>
+  <color name="widget_cell_level3">#06B6D4</color>
+  <color name="widget_cell_level4">#22D3EE</color>
 </resources>

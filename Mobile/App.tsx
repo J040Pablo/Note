@@ -31,7 +31,7 @@ const parseDeepLinkToRoute = (url: string): { uri: string; name?: string; mimeTy
     return { uri: url, name, mimeType: null };
   }
 
-  if (!url.startsWith("lifeorganizer://import-file")) {
+  if (!url.startsWith("spectru://import-file")) {
     return null;
   }
 
@@ -177,7 +177,7 @@ const ThemedNavigation: React.FC = () => {
       <NavigationContainer
         ref={navRef}
         linking={{
-          prefixes: ["lifeorganizer://"],
+          prefixes: ["spectru://"],
           config: {
             screens: {
               SaveSharedFile: {
