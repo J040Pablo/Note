@@ -1,9 +1,9 @@
 .createButton {
   height: 42px;
   border-radius: 999px;
-  border: 1px solid #111111;
-  background: #111111;
-  color: #FFFFFF;
+  border: 1px solid var(--text-primary);
+  background: var(--text-primary);
+  color: var(--surface);
   padding: 0 16px;
   display: inline-flex;
   align-items: center;
@@ -21,9 +21,9 @@
 .backButton {
   height: 34px;
   border-radius: 999px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -35,8 +35,8 @@
 }
 
 .backButton:hover {
-  border-color: #D4D4D8;
-  background: #F4F4F5;
+  border-color: var(--border);
+  background: var(--hover);
   transform: translateX(-1px);
 }
 
@@ -49,7 +49,7 @@
 }
 
 .meta {
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }
 
@@ -82,11 +82,11 @@
 .emptyState {
   min-height: 220px;
   border-radius: 14px;
-  border: 1px dashed #D4D4D8;
-  background: #FAFAFA;
+  border: 1px dashed var(--border);
+  background: var(--bg);
   display: grid;
   place-items: center;
-  color: #71717A;
+  color: var(--text-secondary);
   text-align: center;
   padding: 20px;
 }
@@ -94,7 +94,7 @@
 .emptyState p {
   margin: 0;
   font-size: 1.02rem;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .emptyState span {
@@ -175,15 +175,15 @@
 .inlineModal {
   width: min(580px, 100%);
   border-radius: 18px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--surface);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
 }
 
 .inlineHeader {
   height: 62px;
   padding: 0 16px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -192,7 +192,7 @@
 .inlineHeader h3 {
   margin: 0;
   font-size: 1.05rem;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .iconButton {
@@ -200,8 +200,8 @@
   height: 32px;
   border-radius: 10px;
   border: 1px solid transparent;
-  background: #F4F4F5;
-  color: #111111;
+  background: var(--hover);
+  color: var(--text-primary);
   display: inline-grid;
   place-items: center;
   cursor: pointer;
@@ -209,7 +209,7 @@
 }
 
 .iconButton:hover {
-  background: #EAEAEA;
+  background: var(--active);
 }
 
 .modalBody {
@@ -224,7 +224,7 @@
 }
 
 .modalField > span {
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }
 
@@ -232,10 +232,10 @@
 .modalField select,
 .modalField textarea {
   width: 100%;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #FAFAFA;
-  color: #111111;
+  background: var(--bg);
+  color: var(--text-primary);
   padding: 10px 11px;
   font: inherit;
   outline: none;
@@ -249,8 +249,8 @@
 .modalField input:focus,
 .modalField select:focus,
 .modalField textarea:focus {
-  border-color: #111111;
-  background: #FFFFFF;
+  border-color: var(--text-primary);
+  background: var(--surface);
 }
 
 .previewGrid {
@@ -264,12 +264,12 @@
   height: 100px;
   object-fit: cover;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
 }
 
 .inlineFooter {
   height: 66px;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -287,20 +287,20 @@
 }
 
 .cancelInline {
-  background: #FFFFFF;
-  border-color: #E5E5E5;
-  color: #111111;
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text-primary);
 }
 
 .cancelInline:hover {
-  background: #F4F4F5;
-  border-color: #D4D4D8;
+  background: var(--hover);
+  border-color: var(--border);
 }
 
 .saveInline {
-  background: #111111;
-  border-color: #111111;
-  color: #FFFFFF;
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--surface);
   display: inline-flex;
   align-items: center;
   gap: 6px;

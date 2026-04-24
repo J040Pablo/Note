@@ -31,6 +31,7 @@ import {
   type ProfileState
 } from "@services/profileService";
 import { usePomodoroStore } from "@store/usePomodoroStore";
+import { BackupModal } from "@components/BackupModal";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -103,6 +104,7 @@ const ProfileScreen: React.FC = () => {
   const [draft, setDraft] = useState<ProfileState | null>(null);
   const [sectionItems, setSectionItems] = useState<Record<string, ProfileSectionItem[]>>({});
   const [itemManagerVisible, setItemManagerVisible] = useState(false);
+  const [backupVisible, setBackupVisible] = useState(false);
   const [managingSectionId, setManagingSectionId] = useState<string | null>(null);
   const [pickerFilter, setPickerFilter] = useState<PickerFilter>("all");
   const [pickerQuery, setPickerQuery] = useState("");
@@ -342,6 +344,11 @@ const ProfileScreen: React.FC = () => {
   const openPomodoro = useCallback(() => {
     closeMenu();
     usePomodoroStore.getState().openPomodoro();
+  }, [closeMenu]);
+
+  const openBackup = useCallback(() => {
+    closeMenu();
+    setBackupVisible(true);
   }, [closeMenu]);
 
   const heatmapColumns = useMemo(() => {
@@ -610,11 +617,14 @@ const ProfileScreen: React.FC = () => {
               <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
             </Pressable>
 
-            <View style={[styles.menuItem, { borderColor: theme.colors.border, backgroundColor: theme.colors.surface }]}> 
-              <Ionicons name="cloud-download-outline" size={16} color={theme.colors.textSecondary} />
-              <Text style={{ flex: 1, color: theme.colors.textSecondary }}>Backup (em breve)</Text>
-              <Text variant="caption" muted>coming soon</Text>
-            </View>
+            <Pressable
+              onPress={openBackup}
+              style={[styles.menuItem, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}
+            >
+              <Ionicons name="archive-outline" size={16} color={theme.colors.textPrimary} />
+              <Text style={{ flex: 1 }}>Backup & Restore</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
+            </Pressable>
           </Animated.View>
         </Pressable>
       </Modal>
@@ -959,6 +969,7 @@ const ProfileScreen: React.FC = () => {
           </ScrollView>
         </Screen>
       </Modal>
+      <BackupModal visible={backupVisible} onClose={() => setBackupVisible(false)} />
     </Screen>
   );
 };

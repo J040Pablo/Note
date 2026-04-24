@@ -2,8 +2,8 @@
   display: flex;
   height: 100vh;
   width: 100vw;
-  background-color: #FAFAFA;
-  color: #111111;
+  background-color: var(--bg);
+  color: var(--text-primary);
   overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
@@ -11,8 +11,8 @@
 /* --- SIDEBAR --- */
 .sidebar {
   width: 72px;
-  background-color: #FFFFFF;
-  border-right: 1px solid #E5E5E5;
+  background-color: var(--surface);
+  border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -29,7 +29,7 @@
   gap: 6px;
   background: transparent;
   border: none;
-  color: #71717A;
+  color: var(--text-secondary);
   cursor: pointer;
   font-size: 10px;
   font-weight: 500;
@@ -37,8 +37,8 @@
 }
 
 .sidebarItem:hover {
-  color: #111111;
-  background: #F4F4F5;
+  color: var(--text-primary);
+  background: var(--hover);
 }
 
 .sidebarItem span {
@@ -58,8 +58,8 @@
 /* --- TOP BAR --- */
 .topBar {
   height: 56px;
-  background-color: #FFFFFF;
-  border-bottom: 1px solid #E5E5E5;
+  background-color: var(--surface);
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -76,7 +76,7 @@
 .topBarBtn {
   background: transparent;
   border: none;
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 13px;
   padding: 6px 10px;
   border-radius: 4px;
@@ -84,12 +84,12 @@
 }
 
 .topBarBtn:hover {
-  background: #F4F4F5;
-  color: #111111;
+  background: var(--hover);
+  color: var(--text-primary);
 }
 
 .primaryBtn {
-  background: #111111;
+  background: var(--text-primary);
   color: white;
   border: none;
   padding: 8px 16px;
@@ -107,9 +107,9 @@
 }
 
 .shareBtn {
-  background: #FFFFFF;
-  color: #111111;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
   padding: 8px 16px;
   border-radius: 6px;
   font-size: 13px;
@@ -118,7 +118,7 @@
 }
 
 .shareBtn:hover {
-  background: #F4F4F5;
+  background: var(--hover);
 }
 
 /* --- VIEWPORT --- */
@@ -126,7 +126,7 @@
   flex: 1;
   position: relative;
   overflow: hidden;
-  background-color: #FAFAFA;
+  background-color: var(--bg);
   cursor: default;
 }
 
@@ -143,7 +143,7 @@
   transform-origin: 0 0;
   pointer-events: auto;
   cursor: grab;
-  background-color: #FAFAFA;
+  background-color: var(--bg);
 }
 
 .canvas:active {
@@ -155,7 +155,7 @@
   top: 2500px;
   left: 2500px;
   transform: translate(-50%, -50%);
-  background-color: #FFFFFF;
+  background-color: var(--surface);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.08);
   pointer-events: auto;
 }
@@ -164,7 +164,7 @@
   position: absolute;
   top: 0;
   left: 0;
-  background-color: #FFFFFF;
+  background-color: var(--surface);
   z-index: 0;
 }
 
@@ -179,8 +179,8 @@
 /* --- BOTTOM BAR --- */
 .bottomBar {
   height: 48px;
-  background-color: #FFFFFF;
-  border-top: 1px solid #E5E5E5;
+  background-color: var(--surface);
+  border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -197,7 +197,7 @@
 .bottomBtn {
   background: transparent;
   border: none;
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 12px;
   display: flex;
   align-items: center;
@@ -206,7 +206,7 @@
 }
 
 .bottomBtn:hover {
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .bottomCenter {
@@ -224,10 +224,10 @@
 .pageThumb {
   width: 32px;
   height: 32px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: #111111;
+  color: var(--text-primary);
   font-size: 11px;
   display: flex;
   align-items: center;
@@ -236,17 +236,17 @@
 }
 
 .pageThumbActive {
-  border-color: #111111;
-  box-shadow: 0 0 0 1px #111111;
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--text-primary);
 }
 
 .addPageThumb {
   width: 32px;
   height: 32px;
   background: transparent;
-  border: 1px dashed #E5E5E5;
+  border: 1px dashed var(--border);
   border-radius: 4px;
-  color: #A1A1AA;
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -254,33 +254,33 @@
 }
 
 .addPageThumb:hover {
-    border-color: #111111;
-    color: #111111;
+    border-color: var(--text-primary);
+    color: var(--text-primary);
 }
 
 .zoomText {
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 12px;
   min-width: 40px;
 }
 
 .zoomSlider {
   width: 120px;
-  accent-color: #111111;
+  accent-color: var(--text-primary);
 }
 
 .gridBtn {
   background: transparent;
   border: none;
-  color: #71717A;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
 }
 
 .gridBtn:hover {
-  background: #F4F4F5;
-  color: #111111;
+  background: var(--hover);
+  color: var(--text-primary);
 }
 
 /* --- ELEMENTS --- */
@@ -290,7 +290,7 @@
 }
 
 .elementWrapperSelected {
-  outline: 1.5px solid #111111;
+  outline: 1.5px solid var(--text-primary);
   z-index: 1000 !important;
 }
 
@@ -298,8 +298,8 @@
   position: absolute;
   width: 10px;
   height: 10px;
-  background: #ffffff;
-  border: 1.5px solid #111111;
+  background: var(--surface);
+  border: 1.5px solid var(--text-primary);
   border-radius: 50%;
   z-index: 1010;
 }
@@ -345,7 +345,7 @@
   border: none;
   background: transparent;
   outline: none;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .imageElement {
@@ -358,9 +358,9 @@
 .codeElement {
   width: 100%;
   height: 100%;
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-primary);
   font-family: inherit;
   outline: none;
   padding: 8px;
@@ -369,14 +369,14 @@
 .toolbarDivider {
   width: 1px;
   height: 20px;
-  background: #E5E5E5;
+  background: var(--border);
   margin: 0 4px;
 }
 
 .toolbarBtn {
   background: transparent;
   border: none;
-  color: #71717A;
+  color: var(--text-secondary);
   cursor: pointer;
   padding: 8px;
   border-radius: 6px;
@@ -384,6 +384,6 @@
 }
 
 .toolbarBtn:hover {
-  background: #F4F4F5;
-  color: #111111;
+  background: var(--hover);
+  color: var(--text-primary);
 }

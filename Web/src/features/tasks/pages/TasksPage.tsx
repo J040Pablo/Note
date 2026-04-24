@@ -9,6 +9,7 @@ import {
   Plus,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { useTranslation } from "react-i18next";
 import PageContainer from "../../../components/ui/PageContainer";
 import TaskContextMenu, { type TaskContextAction } from "../components/TaskContextMenu";
 import TaskFiltersPanel from "../components/TaskFilters";
@@ -32,7 +33,7 @@ import {
 import { useSyncDataStore } from "../../../store/syncDataStore";
 import styles from "./TasksPage.module.css";
 
-const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 const toDateKey = (date: Date) => {
   const year = date.getFullYear();
@@ -45,13 +46,6 @@ const parseDateKey = (dateKey: string) => {
   const [year, month, day] = dateKey.split("-").map(Number);
   return new Date(year, (month || 1) - 1, day || 1);
 };
-
-const formatUiDate = (dateKey: string) =>
-  parseDateKey(dateKey).toLocaleDateString(undefined, {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
 
 const buildMonthCells = (monthDate: Date): Date[] => {
   const first = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
@@ -67,12 +61,6 @@ const buildMonthCells = (monthDate: Date): Date[] => {
 
 const sameMonth = (a: Date, b: Date) =>
   a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
-
-const getPriorityLabel = (priority: TaskItem["priority"]) => {
-  if (priority === "low") return "LOW";
-  if (priority === "high") return "HIGH";
-  return "MED";
-};
 
 const getPriorityClass = (priority: TaskItem["priority"]) => {
   if (priority === "low") return styles.priorityLow;
@@ -119,6 +107,7 @@ const createDefaultDraft = (selectedDate: string): TaskDraft => ({
 });
 
 const TasksPage: React.FC = () => {
+  const { t, i18n } = useTranslation();
   const { mode } = useAppMode();
   const isMobileSync = mode === "mobile-sync";
 
@@ -157,6 +146,19 @@ const TasksPage: React.FC = () => {
     const normalizedPort = mobilePort.replace(/\D+/g, "") || "8787";
     return `ws://${ip}:${normalizedPort}`;
   }, [mobileIp, mobilePort]);
+
+  const formatUiDate = React.useCallback((dateKey: string) =>
+    parseDateKey(dateKey).toLocaleDateString(i18n.language, {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }), [i18n.language]);
+
+  const getPriorityLabel = React.useCallback((priority: TaskItem["priority"]) => {
+    if (priority === "low") return t("priorityLow");
+    if (priority === "high") return t("priorityHigh");
+    return t("priorityMedium");
+  }, [t]);
 
   React.useEffect(() => {
     if (isMobileSync) return;
@@ -329,8 +331,8 @@ const TasksPage: React.FC = () => {
 
   return (
     <PageContainer
-      title="Tasks"
-      subtitle="Daily productivity"
+      title={t("tasks")}
+      subtitle={t("dailyProductivity")}
       action={
         <div className={styles.headerActions}>
           {isMobileSync ? (
@@ -339,13 +341,13 @@ const TasksPage: React.FC = () => {
                 className={styles.syncInput}
                 value={mobileIp}
                 onChange={(event) => setMobileIp(event.target.value)}
-                placeholder="Mobile IP (192.168.x.x)"
+                placeholder={t("placeholderMobileIp")}
               />
               <input
                 className={styles.syncPortInput}
                 value={mobilePort}
                 onChange={(event) => setMobilePort(event.target.value.replace(/\D+/g, ""))}
-                placeholder="Port"
+                placeholder={t("placeholderPort")}
               />
               <button
                 type="button"
@@ -360,11 +362,11 @@ const TasksPage: React.FC = () => {
                   }, 200);
                 }}
               >
-                {syncStatus === "connected" ? "Connected" : syncStatus === "connecting" ? "Connecting..." : "Connect"}
+                {syncStatus === "connected" ? t("connected") : syncStatus === "connecting" ? t("connecting") : t("connect")}
               </button>
             </div>
           ) : (
-            <div className={styles.standaloneBadge}>Standalone mode</div>
+            <div className={styles.standaloneBadge}>{t("standaloneMode")}</div>
           )}
           <TaskFiltersPanel
             value={filters}
@@ -374,7 +376,7 @@ const TasksPage: React.FC = () => {
           />
           <button type="button" className={styles.createButton} onClick={openCreateModal}>
             <Plus size={17} />
-            <span>Task</span>
+            <span>{t("task")}</span>
           </button>
         </div>
       }
@@ -383,18 +385,18 @@ const TasksPage: React.FC = () => {
         {isMobileSync ? (
           <div className={styles.qrPairingWrap}>
             <div>
-              <h3 className={styles.qrTitle}>Pair with Mobile (QR)</h3>
-              <p className={styles.qrText}>Scan this QR on Mobile settings to connect automatically.</p>
-              <p className={styles.qrUrl}>{pairingUrl || "ws://<mobile-ip>:8787"}</p>
+              <h3 className={styles.qrTitle}>{t("pairWithMobile")}</h3>
+              <p className={styles.qrText}>{t("pairWithMobileDescription")}</p>
+              <p className={styles.qrUrl}>{pairingUrl || `ws://${t("enterMobileIp")}:8787`}</p>
             </div>
             <div className={styles.qrBox}>
-              {pairingUrl ? <QRCodeSVG value={pairingUrl} size={132} /> : <span>Enter mobile IP</span>}
+              {pairingUrl ? <QRCodeSVG value={pairingUrl} size={132} /> : <span>{t("enterMobileIp")}</span>}
             </div>
           </div>
         ) : null}
 
         <div className={styles.progressHeader}>
-          <h3>Today&apos;s progress</h3>
+          <h3>{t("todayProgress")}</h3>
           <span>
             {completedForSelectedDate} / {tasksForSelectedDate.length}
           </span>
@@ -402,7 +404,7 @@ const TasksPage: React.FC = () => {
         <div className={styles.progressTrack}>
           <div className={styles.progressFill} style={{ width: `${progressPercentage}%` }} />
         </div>
-        <p>{progressPercentage}% completed</p>
+        <p>{t("percentCompleted", { percent: progressPercentage })}</p>
       </section>
 
       <section className={styles.calendarCard}>
@@ -411,13 +413,13 @@ const TasksPage: React.FC = () => {
             type="button"
             className={styles.monthButton}
             onClick={() => setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}
-            aria-label="Previous month"
+            aria-label={t("prevMonth")}
           >
             <ChevronLeft size={18} />
           </button>
 
           <h3>
-            {monthCursor.toLocaleDateString(undefined, {
+            {monthCursor.toLocaleDateString(i18n.language, {
               month: "long",
               year: "numeric",
             })}
@@ -427,16 +429,18 @@ const TasksPage: React.FC = () => {
             type="button"
             className={styles.monthButton}
             onClick={() => setMonthCursor((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}
-            aria-label="Next month"
+            aria-label={t("nextMonth")}
           >
             <ChevronRight size={18} />
           </button>
         </header>
 
         <div className={styles.weekHeaderRow}>
-          {WEEKDAYS.map((day) => (
-            <span key={day}>{day}</span>
-          ))}
+          {WEEKDAYS_EN.map((day, idx) => {
+            const date = new Date(2021, 0, 3 + idx); // 2021-01-03 is a Sunday
+            const label = date.toLocaleDateString(i18n.language, { weekday: "short" });
+            return <span key={day}>{label}</span>;
+          })}
         </div>
 
         <div className={styles.grid}>
@@ -463,18 +467,21 @@ const TasksPage: React.FC = () => {
 
       <section className={styles.listSection}>
         <header className={styles.listHeader}>
-          <h3>Tasks</h3>
-          <span>{filteredTasks.length} items</span>
+          <h3>{t("tasks")}</h3>
+          <span>{filteredTasks.length} {t("items")}</span>
         </header>
 
         <div className={styles.taskList}>
           {filteredTasks.map((task) => {
             const isDone = isTaskCompletedOnDate(task, selectedDate);
             const detailLine = task.repeatDays.length
-              ? `Repeats: ${task.repeatDays.map((entry) => WEEKDAYS[entry]).join(", ")}`
+              ? `${t("repeats")}: ${task.repeatDays.map((entry) => {
+                  const date = new Date(2021, 0, 3 + entry); // Sunday based
+                  return date.toLocaleDateString(i18n.language, { weekday: "short" });
+                }).join(", ")}`
               : task.scheduledDate
-              ? `Date: ${formatUiDate(task.scheduledDate)}${task.dueTime ? ` • ${task.dueTime}` : ""}`
-              : "No date";
+              ? `${t("dateLabel")}: ${formatUiDate(task.scheduledDate)}${task.dueTime ? ` • ${task.dueTime}` : ""}`
+              : t("noDate");
 
             return (
               <article
@@ -503,6 +510,11 @@ const TasksPage: React.FC = () => {
                     window.clearTimeout(longPressTimerRef.current);
                   }
                 }}
+                onPointerMove={() => {
+                   if (longPressTimerRef.current) {
+                    window.clearTimeout(longPressTimerRef.current);
+                  }
+                }}
               >
                 <button
                   type="button"
@@ -510,7 +522,7 @@ const TasksPage: React.FC = () => {
                   onClick={() => {
                     serviceToggleTaskForDate(task.id, selectedDate);
                   }}
-                  aria-label={isDone ? "Mark as pending" : "Mark as complete"}
+                  aria-label={isDone ? t("markAsPending") : t("markAsComplete")}
                 >
                   {isDone ? <Check size={14} /> : null}
                 </button>
@@ -530,7 +542,7 @@ const TasksPage: React.FC = () => {
                       type="button"
                       className={styles.moveButton}
                       onClick={() => reorderTask(task.id, "up")}
-                      aria-label="Move up"
+                      aria-label={t("moveUp")}
                     >
                       <ArrowUp size={15} />
                     </button>
@@ -538,7 +550,7 @@ const TasksPage: React.FC = () => {
                       type="button"
                       className={styles.moveButton}
                       onClick={() => reorderTask(task.id, "down")}
-                      aria-label="Move down"
+                      aria-label={t("moveDown")}
                     >
                       <ArrowDown size={15} />
                     </button>
@@ -547,7 +559,7 @@ const TasksPage: React.FC = () => {
                       className={styles.moveDoneButton}
                       onClick={() => setMoveModeTaskId(null)}
                     >
-                      Done
+                      {t("done")}
                     </button>
                   </div>
                 ) : null}
@@ -558,7 +570,7 @@ const TasksPage: React.FC = () => {
           {filteredTasks.length === 0 ? (
             <div className={styles.emptyState}>
               <CalendarDays size={18} />
-              <p>No tasks found for current filters.</p>
+              <p>{t("noTasksFoundFilters")}</p>
             </div>
           ) : null}
         </div>
@@ -568,7 +580,7 @@ const TasksPage: React.FC = () => {
         open={contextMenuState.open}
         x={contextMenuState.x}
         y={contextMenuState.y}
-        title={selectedContextTask?.title ?? "Task"}
+        title={selectedContextTask?.title ?? t("task")}
         isCompleted={selectedContextTask ? isTaskCompletedOnDate(selectedContextTask, selectedDate) : false}
         onClose={closeContextMenu}
         onAction={handleContextAction}
@@ -581,7 +593,7 @@ const TasksPage: React.FC = () => {
         initialDraft={currentDraft}
         onClose={() => setModalOpen(false)}
         onSave={(draft) => {
-          const safeTitle = draft.title.trim() || "Untitled task";
+          const safeTitle = draft.title.trim() || t("untitledTask");
           const nextDate =
             draft.scheduleMode === "none"
               ? null

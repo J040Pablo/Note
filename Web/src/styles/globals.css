@@ -1,7 +1,29 @@
 :root {
+  --bg: #FAFAFA;
+  --surface: #FFFFFF;
+  --text-primary: #111111;
+  --text-secondary: #71717A;
+  --border: #E5E5E5;
+  --accent: #3B82F6;
+  --hover: #F4F4F5;
+  --active: #EAEAEA;
+  --surface-glass: rgba(250, 250, 250, 0.85);
+
   margin: 0;
   padding: 0;
-  background: #FAFAFA;
+  background: var(--bg);
+}
+
+.dark {
+  --bg: #0B0F1A;
+  --surface: #111827;
+  --text-primary: #F9FAFB;
+  --text-secondary: #A1A1AA;
+  --border: #1F2937;
+  --accent: #60A5FA;
+  --hover: #1F2937;
+  --active: #374151;
+  --surface-glass: rgba(11, 15, 26, 0.85);
 }
 
 html,
@@ -20,8 +42,9 @@ body,
   overflow: hidden;
   /* BLOCK BROWSER SCROLL */
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  background: #FAFAFA;
-  color: #111111;
+  background: var(--bg);
+  color: var(--text-primary);
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 body {
@@ -44,4 +67,55 @@ a {
 ul {
   list-style-type: none;
   padding: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--text-primary);
+  margin-top: 0;
+}
+
+p,
+span,
+div,
+li,
+a,
+label {
+  color: inherit;
+}
+
+input,
+textarea,
+select,
+button {
+  font-family: inherit;
+  color: inherit;
+  background: transparent;
+}
+
+::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.8;
+}
+
+/* Scrollbar styling for dark mode */
+.dark ::-webkit-scrollbar {
+  width: 10px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 5px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--active);
 }

@@ -2,7 +2,8 @@
     height: 100vh;
     width: 100vw;
     overflow: hidden;
-    background: #FAFAFA;
+    background: var(--bg);
+    transition: background-color 0.2s ease;
 }
 
 .main-content {

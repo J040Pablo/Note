@@ -29,9 +29,9 @@
   width: 56px;
   height: 56px;
   border-radius: 999px;
-  border: 1px solid #111111;
-  background: #111111;
-  color: #FFFFFF;
+  border: 1px solid var(--text-primary);
+  background: var(--text-primary);
+  color: var(--surface);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   display: inline-grid;
   place-items: center;

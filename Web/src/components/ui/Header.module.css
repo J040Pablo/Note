@@ -19,11 +19,11 @@
   font-size: 2rem;
   line-height: 1.1;
   letter-spacing: -0.02em;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .subtitle {
   margin: 8px 0 0;
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }

@@ -1,8 +1,8 @@
 import React from "react";
-import { Palette, Pencil, Trash2, MoveRight, ImagePlus, FilePenLine } from "lucide-react";
+import { Palette, Pencil, Trash2, MoveRight, ImagePlus, FilePenLine, Download } from "lucide-react";
 import styles from "./ContextMenu.module.css";
 
-type ContextActionId = "rename" | "delete" | "move" | "edit" | "change-color" | "add-media";
+type ContextActionId = "rename" | "delete" | "move" | "edit" | "change-color" | "add-media" | "export";
 
 type ContextMenuProps = {
   open: boolean;
@@ -70,6 +70,10 @@ const ContextMenu: React.FC<ContextMenuProps> = ({ open, x, y, onClose, onAction
         <button type="button" className={styles.item} onClick={() => onAction("add-media")} role="menuitem">
           <ImagePlus size={15} />
           <span>Add image/banner</span>
+        </button>
+        <button type="button" className={styles.item} onClick={() => onAction("export")} role="menuitem">
+          <Download size={15} />
+          <span>Export folder</span>
         </button>
         <button type="button" className={`${styles.item} ${styles.danger}`} onClick={() => onAction("delete")} role="menuitem">
           <Trash2 size={15} />

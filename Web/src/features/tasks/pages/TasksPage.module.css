@@ -14,9 +14,9 @@
   height: 38px;
   min-width: 220px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   padding: 0 10px;
 }
 
@@ -24,18 +24,18 @@
   height: 38px;
   width: 86px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   padding: 0 10px;
 }
 
 .syncButton {
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #111111;
-  background: #111111;
-  color: #FFFFFF;
+  border: 1px solid var(--text-primary);
+  background: var(--text-primary);
+  color: var(--surface);
   padding: 0 10px;
   font-weight: 700;
   cursor: pointer;
@@ -44,9 +44,9 @@
 .standaloneBadge {
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
-  color: #71717A;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
   padding: 0 12px;
   font-weight: 700;
   display: inline-flex;
@@ -56,9 +56,9 @@
 .createButton {
   height: 42px;
   border-radius: 999px;
-  border: 1px solid #111111;
-  background: #111111;
-  color: #FFFFFF;
+  border: 1px solid var(--text-primary);
+  background: var(--text-primary);
+  color: var(--surface);
   padding: 0 16px;
   display: inline-flex;
   align-items: center;
@@ -77,18 +77,18 @@
 
 .qrTitle {
   margin: 0;
-  color: #111111;
+  color: var(--text-primary);
   font-size: 1.1rem;
 }
 
 .qrText {
   margin: 6px 0 4px;
-  color: #71717A;
+  color: var(--text-secondary);
 }
 
 .qrUrl {
   margin: 0;
-  color: #111111;
+  color: var(--text-primary);
   font-weight: 700;
 }
 
@@ -96,12 +96,12 @@
   width: 148px;
   height: 148px;
   border-radius: 12px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--surface);
   display: grid;
   place-items: center;
   padding: 8px;
-  color: #111111;
+  color: var(--text-primary);
   font-size: 0.8rem;
   text-align: center;
 }
@@ -110,8 +110,8 @@
 .calendarCard,
 .listSection {
   border-radius: 20px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--surface);
 }
 
 .progressCard {
@@ -128,27 +128,27 @@
 
 .progressHeader h3 {
   margin: 0;
-  color: #111111;
+  color: var(--text-primary);
   font-size: 2rem;
 }
 
 .progressHeader span,
 .progressCard p {
-  color: #71717A;
+  color: var(--text-secondary);
 }
 
 .progressTrack {
   margin-top: 10px;
   height: 10px;
   border-radius: 999px;
-  background: #EAEAEA;
+  background: var(--active);
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
   border-radius: 999px;
-  background: #111111;
+  background: var(--text-primary);
 }
 
 .progressCard p {
@@ -171,16 +171,16 @@
   margin: 0;
   text-transform: capitalize;
   font-size: 2rem;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .monthButton {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -194,7 +194,7 @@
 
 .weekHeaderRow span {
   text-align: center;
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 0.95rem;
 }
 
@@ -209,7 +209,7 @@
   border-radius: 12px;
   border: 0;
   background: transparent;
-  color: #111111;
+  color: var(--text-primary);
   display: grid;
   align-content: center;
   justify-items: center;
@@ -218,18 +218,18 @@
 }
 
 .dayCellSelected {
-  background: #F4F4F5;
+  background: var(--hover);
 }
 
 .outsideMonth {
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 .dayDot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: #111111;
+  background: var(--text-primary);
 }
 
 .listSection {
@@ -246,11 +246,11 @@
 .listHeader h3 {
   margin: 0;
   font-size: 1.8rem;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .listHeader span {
-  color: #71717A;
+  color: var(--text-secondary);
 }
 
 .taskList {
@@ -259,7 +259,7 @@
 
 .taskRow {
   min-height: 68px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -279,17 +279,17 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  border: 2px solid #E5E5E5;
+  border: 2px solid var(--border);
   background: transparent;
-  color: #FFFFFF;
+  color: var(--surface);
   display: grid;
   place-items: center;
   cursor: pointer;
 }
 
 .checkboxDone {
-  background: #111111;
-  border-color: #111111;
+  background: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 .taskBody {
@@ -298,14 +298,14 @@
 }
 
 .taskBody strong {
-  color: #111111;
+  color: var(--text-primary);
   font-size: 1.05rem;
   line-height: 1.2;
 }
 
 .taskBody p {
   margin: 4px 0 0;
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 0.95rem;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -319,7 +319,7 @@
   padding: 4px 8px;
   font-size: 0.78rem;
   font-weight: 800;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .priorityLow {
@@ -344,9 +344,9 @@
 .moveDoneButton {
   height: 30px;
   border-radius: 8px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   cursor: pointer;
 }
 
@@ -363,10 +363,10 @@
 .emptyState {
   min-height: 140px;
   border-radius: 12px;
-  border: 1px dashed #E5E5E5;
+  border: 1px dashed var(--border);
   display: grid;
   place-items: center;
-  color: #A1A1AA;
+  color: var(--text-secondary);
   text-align: center;
   margin-top: 8px;
 }

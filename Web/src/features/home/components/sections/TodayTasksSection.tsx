@@ -1,5 +1,6 @@
 import React from "react";
 import { Check } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import styles from "../HomeFeed.module.css";
 
 type Task = {
@@ -14,14 +15,16 @@ type Props = {
 };
 
 const TodayTasksSection: React.FC<Props> = ({ tasks, onToggle }) => {
+  const { t } = useTranslation();
+
   return (
     <section className={styles.section}>
       <header className={styles.sectionHeader}>
-        <h2 className={styles.sectionTitle}>Today</h2>
+        <h2 className={styles.sectionTitle}>{t("today")}</h2>
       </header>
       <div className={styles.todayCard}>
         {tasks.length === 0 ? (
-          <p className={styles.emptyTasks}>Nenhuma task para hoje</p>
+          <p className={styles.emptyTasks}>{t("noTasksToday")}</p>
         ) : (
           <div className={styles.taskList}>
             {tasks.map((task) => (

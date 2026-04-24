@@ -1,18 +1,81 @@
 .container {
   max-width: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
 }
 
 .description {
-  color: #71717A;
-  margin-top: 0;
-  margin-bottom: 24px;
+  color: var(--text-secondary);
+  margin: 0;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.button {
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0 16px;
+  background: var(--surface);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 150ms;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.button:hover:not(:disabled) {
+  background: var(--hover);
+  border-color: var(--border);
+  transform: translateY(-1px);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.buttonPrimary {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: var(--surface);
+}
+
+.buttonPrimary:hover:not(:disabled) {
+  background: #27272A;
+  border-color: #27272A;
 }
 
 .logoutButton {
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 10px 20px;
-  background: #FFFFFF;
+  background: var(--surface);
   color: #DC2626;
   font-weight: 600;
   cursor: pointer;
@@ -22,4 +85,8 @@
 .logoutButton:hover {
   background: #FEE2E2;
   border-color: #FCA5A5;
+}
+
+.hideInput {
+  display: none;
 }

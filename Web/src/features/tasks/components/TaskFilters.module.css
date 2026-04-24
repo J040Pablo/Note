@@ -5,9 +5,9 @@
 .trigger {
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   padding: 0 12px;
   display: inline-flex;
   align-items: center;
@@ -21,8 +21,8 @@
   right: 0;
   width: 280px;
   border-radius: 12px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--surface);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
   padding: 12px;
   z-index: 120;
@@ -36,7 +36,7 @@
 }
 
 .label {
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 0.84rem;
 }
 
@@ -44,10 +44,10 @@
 .field select {
   width: 100%;
   height: 36px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #FAFAFA;
-  color: #111111;
+  background: var(--bg);
+  color: var(--text-primary);
   padding: 0 10px;
   font: inherit;
   outline: none;
@@ -55,15 +55,15 @@
 
 .field input:focus,
 .field select:focus {
-  border-color: #111111;
+  border-color: var(--text-primary);
 }
 
 .searchWrap {
   height: 36px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #FAFAFA;
-  color: #71717A;
+  background: var(--bg);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 7px;
@@ -74,16 +74,16 @@
   border: 0;
   background: transparent;
   outline: none;
-  color: #111111;
+  color: var(--text-primary);
   font: inherit;
   width: 100%;
 }
 
 .resetButton {
   height: 34px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #FFFFFF;
-  color: #111111;
+  background: var(--surface);
+  color: var(--text-primary);
   cursor: pointer;
 }

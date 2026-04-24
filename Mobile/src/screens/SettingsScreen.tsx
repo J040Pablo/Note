@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { View, StyleSheet, Pressable, Alert, Share, ScrollView, TextInput, LayoutAnimation, Switch } from "react-native";
+import { View, StyleSheet, Pressable, Alert, Share, ScrollView, TextInput, LayoutAnimation, Switch, ActivityIndicator } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as FileSystem from "expo-file-system/legacy";
 import ColorPicker from "react-native-wheel-color-picker";
@@ -14,9 +14,13 @@ import { getAllFolders } from "@services/foldersService";
 import { getAllNotes } from "@services/notesService";
 import { getAllTasks } from "@services/tasksService";
 import { getAllFiles } from "@services/filesService";
+import * as DocumentPicker from "expo-document-picker";
+import { exportCompleteBackup, importCompleteBackup } from "@services/backupService";
 import { getPinnedItems, getRecentItems } from "@services/appMetaService";
 import { getTaskPreferences, saveTaskPreferences } from "@services/settingsService";
 import { usePomodoroStore } from "@store/usePomodoroStore";
+import { BackupModal } from "@components/BackupModal";
+import { error as logError } from "@utils/logger";
 
 type Nav = NativeStackNavigationProp<RootStackParamList, "Settings">;
 
@@ -60,6 +64,7 @@ const SettingsScreen: React.FC = () => {
   const [editing, setEditing] = useState<"primary" | "secondary">("primary");
   const [customHex, setCustomHex] = useState(primaryColor);
   const [openScanner, setOpenScanner] = useState(false);
+  const [backupVisible, setBackupVisible] = useState(false);
   const pomodoroVisible = usePomodoroStore((state) => state.isVisible);
   const openPomodoro = usePomodoroStore((state) => state.openPomodoro);
   const closePomodoro = usePomodoroStore((state) => state.closePomodoro);
@@ -121,38 +126,7 @@ const SettingsScreen: React.FC = () => {
     [prefs]
   );
 
-  const exportBackup = useCallback(async () => {
-    try {
-      const [folders, notes, tasks, files, pinned, recent] = await Promise.all([
-        getAllFolders(),
-        getAllNotes(),
-        getAllTasks(),
-        getAllFiles(),
-        getPinnedItems(),
-        getRecentItems()
-      ]);
-
-      const payload = {
-        exportedAt: Date.now(),
-        app: "Life Organizer",
-        version: "v3",
-        data: { folders, notes, tasks, files, pinned, recent }
-      };
-
-      const backupPath = `${FileSystem.cacheDirectory}life-organizer-backup-${Date.now()}.json`;
-      await FileSystem.writeAsStringAsync(backupPath, JSON.stringify(payload, null, 2), {
-        encoding: FileSystem.EncodingType.UTF8
-      });
-
-      await Share.share({
-        title: "Life Organizer Backup",
-        message: "Life Organizer local backup",
-        url: backupPath
-      });
-    } catch {
-      Alert.alert("Export failed", "Could not export local data backup.");
-    }
-  }, []);
+  const [loading, setLoading] = useState(false);
 
   return (
     <Screen>
@@ -340,14 +314,21 @@ const SettingsScreen: React.FC = () => {
         <View style={[styles.section, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
           <View style={styles.sectionHeader}>
             <Ionicons name="archive-outline" size={16} color={theme.colors.textSecondary} />
-            <Text variant="subtitle">Backup</Text>
+            <Text variant="subtitle">Backup & Restore</Text>
           </View>
 
-          <Pressable onPress={exportBackup} style={[styles.actionRow, { borderColor: theme.colors.border }]}> 
-            <Ionicons name="download-outline" size={16} color={theme.colors.textSecondary} />
-            <Text style={{ flex: 1 }}>Export local data backup</Text>
+          <Pressable 
+            onPress={() => setBackupVisible(true)}
+            style={[styles.actionRow, { borderColor: theme.colors.border }]}
+          > 
+            <Ionicons name="archive-outline" size={16} color={theme.colors.textSecondary} />
+            <Text style={{ flex: 1 }}>Gerenciar backups</Text>
             <Ionicons name="chevron-forward" size={15} color={theme.colors.textSecondary} />
           </Pressable>
+          
+          <Text muted variant="caption" style={{ marginTop: 4 }}>
+            Exporte seus dados para um arquivo seguro ou restaure um backup anterior.
+          </Text>
         </View>
 
         <View style={[styles.section, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
@@ -398,6 +379,7 @@ const SettingsScreen: React.FC = () => {
       </ScrollView>
 
       <SyncPairingQrModal visible={openScanner} onClose={() => setOpenScanner(false)} />
+      <BackupModal visible={backupVisible} onClose={() => setBackupVisible(false)} />
     </Screen>
   );
 };

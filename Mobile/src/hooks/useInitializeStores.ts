@@ -6,36 +6,46 @@ import { useAppStore } from '@store/useAppStore';
 import { getAllTasks } from '@services/tasksService';
 import { getAllNotes, getAllQuickNotes } from '@services/notesService';
 import { getAllFolders } from '@services/foldersService';
+import { getAllFiles } from '@services/filesService';
+import { useFilesStore } from '@store/useFilesStore';
+import { getPinnedItems, getRecentItems } from '@services/appMetaService';
 import { log, warn, error as logError } from '@utils/logger';
 
 /**
- * Pre-load stores on app startup to ensure data is available for notification handlers
- * This prevents race conditions where notifications arrive before stores are populated
+ * Reads all data from the database and updates all global stores.
+ * Useful for initial app startup and after restoring a full backup.
  */
+export const reloadAllStoresFromDatabase = async () => {
+  try {
+    const [tasks, notes, quickNotes, folders, files, pinned, recent] = await Promise.all([
+      getAllTasks(),
+      getAllNotes(),
+      getAllQuickNotes(),
+      getAllFolders(),
+      getAllFiles(),
+      getPinnedItems(),
+      getRecentItems()
+    ]);
+    
+    useTasksStore.getState().setTasks(tasks);
+    useNotesStore.getState().setNotes(notes);
+    useQuickNotesStore.getState().setQuickNotes(quickNotes);
+    useFilesStore.getState().setFiles(files);
+    
+    useAppStore.getState().setInitialData({
+      folders: Object.fromEntries(folders.map(f => [f.id, f])),
+      pinnedItems: pinned,
+      recentItems: recent
+    });
+    
+    log('[INIT] Stores synchronized with database');
+  } catch (error) {
+    logError('[INIT] Error synchronizing stores:', error);
+    throw error;
+  }
+};
 export const useInitializeStores = () => {
   useEffect(() => {
-    const initializeStores = async () => {
-      try {
-        const [tasks, notes, quickNotes, folders] = await Promise.all([
-          getAllTasks(),
-          getAllNotes(),
-          getAllQuickNotes(),
-          getAllFolders()
-        ]);
-        
-        useTasksStore.getState().setTasks(tasks);
-        useNotesStore.getState().setNotes(notes);
-        useQuickNotesStore.getState().setQuickNotes(quickNotes);
-        useAppStore.getState().setFolders(folders);
-        
-        if (process.env.NODE_ENV === 'development') {
-          log('[INIT] Stores initialized at app startup');
-        }
-      } catch (error) {
-        logError('[INIT] Error initializing stores:', error);
-      }
-    };
-
-    initializeStores();
+    reloadAllStoresFromDatabase();
   }, []);
 };

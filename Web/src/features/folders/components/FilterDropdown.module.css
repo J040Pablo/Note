@@ -5,9 +5,9 @@
 .trigger {
   height: 42px;
   border-radius: 11px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   padding: 0 12px;
   display: inline-flex;
   align-items: center;
@@ -17,8 +17,8 @@
 }
 
 .trigger:hover {
-  border-color: #D4D4D8;
-  background: #F4F4F5;
+  border-color: var(--border);
+  background: var(--hover);
 }
 
 .panel {
@@ -26,8 +26,8 @@
   top: calc(100% + 10px);
   right: 0;
   width: 280px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
   padding: 14px;
@@ -43,15 +43,15 @@
 
 .label {
   font-size: 12px;
-  color: #71717A;
+  color: var(--text-secondary);
 }
 
 .searchWrap {
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
-  color: #71717A;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
   padding: 0 10px;
   display: grid;
   grid-template-columns: auto 1fr;
@@ -63,29 +63,29 @@
   border: none;
   outline: none;
   background: transparent;
-  color: #111111;
+  color: var(--text-primary);
   font: inherit;
 }
 
 .field select {
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-primary);
   padding: 0 10px;
 }
 
 .resetButton {
   height: 36px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   cursor: pointer;
 }
 
 .resetButton:hover {
-  border-color: #D4D4D8;
-  background: #F4F4F5;
+  border-color: var(--border);
+  background: var(--hover);
 }

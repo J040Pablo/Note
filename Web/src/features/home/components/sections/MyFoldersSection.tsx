@@ -1,5 +1,6 @@
 import React from "react";
 import { Folder } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import styles from "../HomeFeed.module.css";
 
 type FolderItem = {
@@ -15,14 +16,16 @@ type Props = {
 };
 
 const MyFoldersSection: React.FC<Props> = ({ folders, onFolderClick }) => {
+  const { t } = useTranslation();
+
   return (
     <section className={styles.section}>
       <header className={styles.sectionHeader}>
-        <h2 className={styles.sectionTitle}>My Folders</h2>
+        <h2 className={styles.sectionTitle}>{t("myFolders")}</h2>
       </header>
       {folders.length === 0 ? (
         <div className={styles.emptyCard}>
-          <p>No folders yet.</p>
+          <p>{t("emptyFolders")}</p>
         </div>
       ) : (
         <div className={styles.folderGrid}>
@@ -35,7 +38,7 @@ const MyFoldersSection: React.FC<Props> = ({ folders, onFolderClick }) => {
               <Folder size={18} className={styles.folderIcon} />
               <div className={styles.folderInfo}>
                 <span className={styles.folderName}>{folder.name}</span>
-                <span className={styles.folderNotes}>{folder.notes} notes</span>
+                <span className={styles.folderNotes}>{t("notesCount", { count: folder.notes })}</span>
               </div>
             </button>
           ))}

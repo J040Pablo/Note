@@ -1,4 +1,6 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
+
 import {
   CheckCheck,
   FileText,
@@ -28,87 +30,89 @@ type SearchItem = {
   updatedAt: string;
 };
 
-const buildSearchIndex = (): SearchItem[] => {
-  const folders: SearchItem[] = getFolders().map((folder) => ({
-    id: `folder-${String(folder.id ?? Date.now())}`,
-    title: String(folder.name ?? "Untitled folder"),
-    description: String(folder.description ?? ""),
-    type: "folder",
-    path: "Home",
-    updatedAt: "Recently",
-  }));
-
-  const notes: SearchItem[] = getNotes().map((note) => ({
-    id: `note-${String(note.id ?? Date.now())}`,
-    title: String(note.title ?? "Untitled note"),
-    description: String(note.content ?? ""),
-    type: "note",
-    path: "Home",
-    updatedAt: "Recently",
-  }));
-
-  const tasks: SearchItem[] = getTasks().map((task) => ({
-    id: `task-${String(task.id ?? Date.now())}`,
-    title: String(task.title ?? "Untitled task"),
-    description: typeof task.priority === "string" ? `Priority: ${task.priority}` : "Task",
-    type: "task",
-    path: "Tasks",
-    updatedAt: "Recently",
-  }));
-
-  return [...folders, ...notes, ...tasks];
-};
-
-const buildSearchIndexFromSyncPayload = (payload: {
-  folders?: SyncFolder[];
-  notes?: SyncNote[];
-  tasks?: SyncTask[];
-}): SearchItem[] => {
-  const folders = (payload.folders ?? []).map((folder) => ({
-    id: `folder-${folder.id}`,
-    title: folder.name || "Untitled folder",
-    description: folder.description ?? "",
-    type: "folder" as const,
-    path: "Home",
-    updatedAt: "Recently",
-  }));
-  const notes = (payload.notes ?? []).map((note) => ({
-    id: `note-${note.id}`,
-    title: note.title || "Untitled note",
-    description: note.content ?? "",
-    type: "note" as const,
-    path: "Home",
-    updatedAt: "Recently",
-  }));
-  const tasks = (payload.tasks ?? []).map((task) => ({
-    id: `task-${task.id}`,
-    title: task.title || "Untitled task",
-    description: typeof task.priority === "string" ? `Priority: ${task.priority}` : "Task",
-    type: "task" as const,
-    path: "Tasks",
-    updatedAt: "Recently",
-  }));
-  return [...folders, ...notes, ...tasks];
-};
-
-const scopes: Array<{ value: SearchScope; label: string; icon: React.ReactNode }> = [
-  { value: "all", label: "All", icon: <SearchIcon size={15} /> },
-  { value: "folder", label: "Folders", icon: <Folder size={15} /> },
-  { value: "note", label: "Notes", icon: <FileText size={15} /> },
-  { value: "task", label: "Tasks", icon: <CheckCheck size={15} /> },
-];
-
 const SearchPage: React.FC = () => {
+  const { t } = useTranslation();
   const { mode } = useAppMode();
   const isMobileSync = mode === "mobile-sync";
   const [query, setQuery] = React.useState("");
   const [scope, setScope] = React.useState<SearchScope>("all");
+  
+  const buildSearchIndex = React.useCallback((): SearchItem[] => {
+    const folders: SearchItem[] = getFolders().map((folder) => ({
+      id: `folder-${String(folder.id ?? Date.now())}`,
+      title: String(folder.name ?? t("untitledFolder")),
+      description: String(folder.description ?? ""),
+      type: "folder",
+      path: t("home"),
+      updatedAt: t("recently"),
+    }));
+
+    const notes: SearchItem[] = getNotes().map((note) => ({
+      id: `note-${String(note.id ?? Date.now())}`,
+      title: String(note.title ?? t("untitledNote")),
+      description: String(note.content ?? ""),
+      type: "note",
+      path: t("home"),
+      updatedAt: t("recently"),
+    }));
+
+    const tasks: SearchItem[] = getTasks().map((task) => ({
+      id: `task-${String(task.id ?? Date.now())}`,
+      title: String(task.title ?? t("untitledTask")),
+      description: typeof task.priority === "string" ? t("priorityLabel", { priority: task.priority }) : t("task"),
+      type: "task",
+      path: t("tasks"),
+      updatedAt: t("recently"),
+    }));
+
+    return [...folders, ...notes, ...tasks];
+  }, [t]);
+
+  const buildSearchIndexFromSyncPayload = React.useCallback((payload: {
+    folders?: SyncFolder[];
+    notes?: SyncNote[];
+    tasks?: SyncTask[];
+  }): SearchItem[] => {
+    const folders = (payload.folders ?? []).map((folder) => ({
+      id: `folder-${folder.id}`,
+      title: folder.name || t("untitledFolder"),
+      description: folder.description ?? "",
+      type: "folder" as const,
+      path: t("home"),
+      updatedAt: t("recently"),
+    }));
+    const notes = (payload.notes ?? []).map((note) => ({
+      id: `note-${note.id}`,
+      title: note.title || t("untitledNote"),
+      description: note.content ?? "",
+      type: "note" as const,
+      path: t("home"),
+      updatedAt: t("recently"),
+    }));
+    const tasks = (payload.tasks ?? []).map((task) => ({
+      id: `task-${task.id}`,
+      title: task.title || t("untitledTask"),
+      description: typeof task.priority === "string" ? t("priorityLabel", { priority: task.priority }) : t("task"),
+      type: "task" as const,
+      path: t("tasks"),
+      updatedAt: t("recently"),
+    }));
+    return [...folders, ...notes, ...tasks];
+  }, [t]);
+
   // search now uses real persisted data
   const [searchIndex, setSearchIndex] = React.useState<SearchItem[]>(() => buildSearchIndex());
 
+  const scopes: Array<{ value: SearchScope; label: string; icon: React.ReactNode }> = [
+    { value: "all", label: t("all"), icon: <SearchIcon size={15} /> },
+    { value: "folder", label: t("folders"), icon: <Folder size={15} /> },
+    { value: "note", label: t("notes"), icon: <FileText size={15} /> },
+    { value: "task", label: t("tasks"), icon: <CheckCheck size={15} /> },
+  ];
+
   React.useEffect(() => {
     setSearchIndex(buildSearchIndex());
-  }, []);
+  }, [buildSearchIndex]);
 
   React.useEffect(() => {
     if (!isMobileSync) return;
@@ -118,7 +122,7 @@ const SearchPage: React.FC = () => {
       setSearchIndex(buildSearchIndexFromSyncPayload(message.payload));
     });
     return () => unsub();
-  }, [isMobileSync]);
+  }, [isMobileSync, buildSearchIndexFromSyncPayload]);
 
   React.useEffect(() => {
     if (!isMobileSync) return;
@@ -126,7 +130,7 @@ const SearchPage: React.FC = () => {
       setSearchIndex(buildSearchIndex());
     });
     return () => unsub();
-  }, [isMobileSync]);
+  }, [isMobileSync, buildSearchIndex]);
 
   const filtered = React.useMemo(() => {
     const safe = query.toLowerCase().trim();
@@ -147,8 +151,8 @@ const SearchPage: React.FC = () => {
 
   return (
     <PageContainer
-      title="Search"
-      subtitle="Find folders, notes and tasks"
+      title={t("search")}
+      subtitle={t("searchSubtitle")}
     >
       <div className={styles.searchShell}>
         <label className={styles.searchInputWrap}>
@@ -156,7 +160,7 @@ const SearchPage: React.FC = () => {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Type to search..."
+            placeholder={t("searchPlaceholder")}
             aria-label="Global search"
           />
         </label>
@@ -181,18 +185,18 @@ const SearchPage: React.FC = () => {
 
         {showIdle ? (
           <div className={styles.emptyState}>
-            <p>Start typing to search.</p>
+            <p>{t("startTyping")}</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className={styles.emptyState}>
-            <p>No results found for “{query.trim()}”.</p>
+            <p>{t("noResultsFound", { queryValue: query.trim() })}</p>
           </div>
         ) : (
           <ul className={styles.results}>
             {filtered.map((item) => (
               <li key={item.id} className={styles.resultItem}>
                 <div className={styles.resultMain}>
-                  <span className={styles.resultType}>{item.type}</span>
+                  <span className={styles.resultType}>{t(item.type)}</span>
                   <h3>{item.title}</h3>
                   <p>{item.description}</p>
                 </div>

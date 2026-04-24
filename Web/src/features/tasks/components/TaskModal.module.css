@@ -11,15 +11,15 @@
 .card {
   width: min(680px, 100%);
   border-radius: 24px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--surface);
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
 }
 
 .header {
   height: 64px;
   padding: 0 16px;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -28,16 +28,16 @@
 .header h3 {
   margin: 0;
   font-size: 1.85rem;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .closeButton {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   display: inline-grid;
   place-items: center;
   cursor: pointer;
@@ -56,17 +56,17 @@
 
 .field > span,
 .sectionTitle {
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 1rem;
 }
 
 .field input {
   width: 100%;
   height: 48px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 14px;
-  background: #FAFAFA;
-  color: #111111;
+  background: var(--bg);
+  color: var(--text-primary);
   font: inherit;
   font-size: 1.15rem;
   padding: 0 14px;
@@ -74,7 +74,7 @@
 }
 
 .field input:focus {
-  border-color: #111111;
+  border-color: var(--text-primary);
 }
 
 .field input:disabled {
@@ -96,18 +96,18 @@
 .chip {
   height: 44px;
   border-radius: 999px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   cursor: pointer;
   font: inherit;
   font-size: 1.05rem;
 }
 
 .chipActive {
-  background: #111111;
-  color: #FFFFFF;
-  border-color: #111111;
+  background: var(--text-primary);
+  color: var(--surface);
+  border-color: var(--text-primary);
 }
 
 .repeatWrap {
@@ -121,17 +121,17 @@
   height: 40px;
   min-width: 54px;
   border-radius: 999px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   cursor: pointer;
   font: inherit;
 }
 
 .dayChipActive {
-  background: #111111;
-  color: #FFFFFF;
-  border-color: #111111;
+  background: var(--text-primary);
+  color: var(--surface);
+  border-color: var(--text-primary);
 }
 
 .scheduleActions {
@@ -142,16 +142,16 @@
 .subtleButton {
   height: 42px;
   border-radius: 999px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   padding: 0 14px;
   cursor: pointer;
 }
 
 .footer {
   height: 72px;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -171,15 +171,15 @@
 }
 
 .cancelButton {
-  border-color: #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
 }
 
 .saveButton {
-  border-color: #111111;
-  background: #111111;
-  color: #FFFFFF;
+  border-color: var(--text-primary);
+  background: var(--text-primary);
+  color: var(--surface);
 }
 
 @media (max-width: 740px) {

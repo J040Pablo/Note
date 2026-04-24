@@ -12,7 +12,7 @@
   border: 1px solid transparent;
   border-radius: 999px;
   background: transparent;
-  color: #71717A;
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -22,9 +22,9 @@
 }
 
 .segment:hover:not(:disabled) {
-  color: #111111;
-  background: #FFFFFF;
-  border-color: #E5E5E5;
+  color: var(--text-primary);
+  background: var(--surface);
+  border-color: var(--border);
 }
 
 .segment:disabled {
@@ -32,13 +32,13 @@
 }
 
 .current {
-  color: #111111;
-  background: #FFFFFF;
-  border-color: #E5E5E5;
+  color: var(--text-primary);
+  background: var(--surface);
+  border-color: var(--border);
 }
 
 .separator {
-  color: #A1A1AA;
+  color: var(--text-secondary);
   display: inline-grid;
   place-items: center;
 }

@@ -1,9 +1,9 @@
 .qrButton {
   height: 40px;
   border-radius: 11px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   padding: 0 12px;
   display: inline-flex;
   align-items: center;
@@ -15,7 +15,7 @@
 }
 
 .qrButton:hover {
-  border-color: #D4D4D8;
-  background: #F4F4F5;
+  border-color: var(--border);
+  background: var(--hover);
   transform: translateY(-1px);
 }

@@ -1,4 +1,6 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
+
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, Folder, Trash2 } from "lucide-react";
 import CanvasEditor from "../components/CanvasEditor";
@@ -20,6 +22,7 @@ import type { DataNote } from "../../../services/webData";
 import styles from "./NoteEditorPage.module.css";
 
 const NoteEditorPage: React.FC = () => {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { mode } = useAppMode();
@@ -89,7 +92,7 @@ const NoteEditorPage: React.FC = () => {
         saveTimerRef.current = null;
       }
 
-      const normalizedTitle = title.trim() || "Untitled";
+      const normalizedTitle = title.trim() || t("untitled");
       const serialized = serializeCanvasNoteContent(document);
 
       if (!note && !title.trim() && document.elements.length === 0) {
@@ -135,7 +138,7 @@ const NoteEditorPage: React.FC = () => {
         setSaving(false);
       }
     },
-    [document, folderId, hasPendingChanges, isMobileSync, note, title]
+    [document, folderId, hasPendingChanges, isMobileSync, note, title, t]
   );
 
   // Autosave with debounce
@@ -198,12 +201,12 @@ const NoteEditorPage: React.FC = () => {
       navigate(-1);
       return;
     }
-    const confirmed = window.confirm("Delete this note?");
+    const confirmed = window.confirm(t("deleteNoteConfirm"));
     if (!confirmed) return;
 
     deleteNote(note.id);
     navigate(-1);
-  }, [isMobileSync, navigate, note]);
+  }, [navigate, note, t]);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -214,7 +217,7 @@ const NoteEditorPage: React.FC = () => {
           type="button"
           className={styles.backBtn}
           onClick={handleBack}
-          title="Go back"
+          title={t("goBack")}
         >
           <ArrowLeft size={18} />
         </button>
@@ -224,7 +227,7 @@ const NoteEditorPage: React.FC = () => {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => persistNote({ allowCreate: true })}
-          placeholder="Note title..."
+          placeholder={t("noteTitlePlaceholder")}
         />
 
         {folderName && (
@@ -234,13 +237,13 @@ const NoteEditorPage: React.FC = () => {
         )}
 
         <div className={styles.headerActions}>
-          {saving && <span className={styles.savingIndicator}>Saving...</span>}
+          {saving && <span className={styles.savingIndicator}>{t("saving")}</span>}
           <button
             type="button"
             className={styles.saveBtn}
             onClick={() => persistNote({ allowCreate: true })}
           >
-            <Check size={14} /> Save
+            <Check size={14} /> {t("save")}
           </button>
           <button
             type="button"

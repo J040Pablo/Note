@@ -7,9 +7,9 @@
 .searchInputWrap {
   height: 56px;
   border-radius: 18px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #71717A;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -18,7 +18,7 @@
 }
 
 .searchInputWrap:focus-within {
-  border-color: #111111;
+  border-color: var(--text-primary);
   box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
 }
 
@@ -27,12 +27,12 @@
   border: 0;
   background: transparent;
   outline: none;
-  color: #111111;
+  color: var(--text-primary);
   font-size: 1.1rem;
 }
 
 .searchInputWrap input::placeholder {
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 .chips {
@@ -45,9 +45,9 @@
 .chip {
   height: 44px;
   border-radius: 999px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #71717A;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -59,21 +59,21 @@
 
 .chip:hover {
   transform: translateY(-1px);
-  color: #111111;
-  border-color: #D4D4D8;
+  color: var(--text-primary);
+  border-color: var(--border);
 }
 
 .chipActive {
-  color: #111111;
-  background: #F4F4F5;
-  border-color: #111111;
+  color: var(--text-primary);
+  background: var(--hover);
+  border-color: var(--text-primary);
 }
 
 .emptyState {
   min-height: 320px;
   display: grid;
   place-items: center;
-  color: #A1A1AA;
+  color: var(--text-secondary);
   font-size: 1.95rem;
   text-align: center;
 }
@@ -92,8 +92,8 @@
 
 .resultItem {
   border-radius: 14px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--surface);
   padding: 12px;
   display: flex;
   align-items: flex-start;
@@ -103,20 +103,20 @@
 }
 
 .resultItem:hover {
-  border-color: #D4D4D8;
-  background: #FAFAFA;
+  border-color: var(--border);
+  background: var(--bg);
   transform: translateY(-1px);
 }
 
 .resultMain h3 {
   margin: 6px 0 0;
   font-size: 1.02rem;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .resultMain p {
   margin: 6px 0 0;
-  color: #71717A;
+  color: var(--text-secondary);
   max-width: 640px;
 }
 
@@ -124,9 +124,9 @@
   text-transform: capitalize;
   display: inline-flex;
   width: fit-content;
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
-  color: #71717A;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 0.74rem;
@@ -136,7 +136,7 @@
   display: grid;
   gap: 4px;
   text-align: right;
-  color: #A1A1AA;
+  color: var(--text-secondary);
   font-size: 0.84rem;
   min-width: 180px;
 }

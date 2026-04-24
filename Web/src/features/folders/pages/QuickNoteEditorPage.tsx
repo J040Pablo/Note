@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, Folder, Trash2 } from "lucide-react";
 import {
@@ -15,12 +16,14 @@ import { parseQuickRichNoteDocument, serializeQuickRichNoteHtml } from "../../..
 import styles from "./NoteEditorPage.module.css"; // Reuse Note styles for layout
 
 const QuickNoteEditorPage: React.FC = () => {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { mode } = useAppMode();
   const isMobileSync = mode === "mobile-sync";
   const isNew = id === "new";
 
+  // Load existing note or start fresh
   const [note, setNote] = React.useState<DataQuickNote | null>(() =>
     isNew ? null : (id ? getQuickNoteById(id) : null)
   );
@@ -76,7 +79,7 @@ const QuickNoteEditorPage: React.FC = () => {
         saveTimerRef.current = null;
       }
 
-      const normalizedTitle = title.trim() || "Quick Note";
+      const normalizedTitle = title.trim() || t("quickNote");
       const serializedContent = serializeQuickRichNoteHtml(content);
 
       if (!note && !title.trim() && !content.trim()) return;
@@ -97,7 +100,6 @@ const QuickNoteEditorPage: React.FC = () => {
             setNote(updated);
             setLastSavedTitle(updated.title);
             setLastSavedContent(content);
-
           }
         } else {
           creatingRef.current = true;
@@ -121,7 +123,7 @@ const QuickNoteEditorPage: React.FC = () => {
         setSaving(false);
       }
     },
-    [content, folderId, hasPendingChanges, isMobileSync, note, title]
+    [content, folderId, hasPendingChanges, isMobileSync, note, title, t]
   );
 
   React.useEffect(() => {
@@ -153,7 +155,7 @@ const QuickNoteEditorPage: React.FC = () => {
           const nextContent = incomingContent.blocks.map((block) => block.html).join("");
           const updated: DataQuickNote = {
             ...prev,
-            title: incoming.title ?? "Quick Note",
+            title: incoming.title ?? t("quickNote"),
             content: serializeQuickRichNoteHtml(nextContent),
             text: nextContent,
             updatedAt: incoming.updatedAt,
@@ -167,7 +169,7 @@ const QuickNoteEditorPage: React.FC = () => {
       }
     });
     return unsub;
-  }, [isMobileSync, note]);
+  }, [isMobileSync, note, t]);
 
   const handleBack = React.useCallback(() => {
     if (hasPendingChanges) {
@@ -181,12 +183,12 @@ const QuickNoteEditorPage: React.FC = () => {
       navigate(-1);
       return;
     }
-    const confirmed = window.confirm("Delete this quick note?");
+    const confirmed = window.confirm(t("deleteQuickNoteConfirm"));
     if (!confirmed) return;
 
     deleteQuickNote(note.id);
     navigate(-1);
-  }, [isMobileSync, navigate, note]);
+  }, [navigate, note, t]);
 
   return (
     <div className={styles.editorPage}>
@@ -195,7 +197,7 @@ const QuickNoteEditorPage: React.FC = () => {
           type="button"
           className={styles.backBtn}
           onClick={handleBack}
-          title="Go back"
+          title={t("goBack")}
         >
           <ArrowLeft size={18} />
         </button>
@@ -205,17 +207,17 @@ const QuickNoteEditorPage: React.FC = () => {
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => persistNote({ allowCreate: true })}
-          placeholder="Quick note title..."
+          placeholder={t("placeholderQuickNote")}
         />
 
         <div className={styles.headerActions}>
-          {saving && <span className={styles.savingIndicator}>Saving...</span>}
+          {saving && <span className={styles.savingIndicator}>{t("saving")}</span>}
           <button
             type="button"
             className={styles.saveBtn}
             onClick={() => persistNote({ allowCreate: true })}
           >
-            <Check size={14} /> Save
+            <Check size={14} /> {t("save")}
           </button>
           <button
             type="button"

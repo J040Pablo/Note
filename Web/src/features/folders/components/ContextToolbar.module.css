@@ -1,8 +1,8 @@
 .toolbar {
   position: absolute;
   height: 44px;
-  background-color: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 22px;
   display: flex;
   align-items: center;
@@ -10,7 +10,7 @@
   gap: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   z-index: 10000;
-  color: #111111;
+  color: var(--text-primary);
   white-space: nowrap;
   animation: fadeIn 0.2s ease-out;
 }
@@ -30,19 +30,19 @@
 .magicIcon {
   width: 24px;
   height: 24px;
-  background: #EAEAEA;
+  background: var(--active);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .magicText {
   font-size: 13px;
   font-weight: 500;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .divider {
@@ -78,7 +78,7 @@
 .sizeControl button {
   background: transparent;
   border: none;
-  color: #111111;
+  color: var(--text-primary);
   font-size: 16px;
   cursor: pointer;
   padding: 4px;
@@ -100,7 +100,7 @@
 .toolBtn {
   background: transparent;
   border: none;
-  color: #71717A;
+  color: var(--text-secondary);
   padding: 6px;
   border-radius: 6px;
   cursor: pointer;
@@ -109,10 +109,10 @@
 
 .toolBtn:hover {
   background: rgba(0, 0, 0, 0.05);
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .toolBtn.active {
-    color: #111111;
-    background: #EAEAEA;
+    color: var(--text-primary);
+    background: var(--active);
 }

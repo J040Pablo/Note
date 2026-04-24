@@ -8,8 +8,8 @@
   position: fixed;
   width: 220px;
   border-radius: 14px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
+  border: 1px solid var(--border);
+  background: var(--surface);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   padding: 6px;
   display: grid;
@@ -34,7 +34,7 @@
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: #111111;
+  color: var(--text-primary);
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -45,8 +45,8 @@
 }
 
 .item:hover {
-  background: #F4F4F5;
-  color: #111111;
+  background: var(--hover);
+  color: var(--text-primary);
 }
 
 .danger {

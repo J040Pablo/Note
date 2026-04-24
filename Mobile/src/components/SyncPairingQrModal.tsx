@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Modal, Pressable, StyleSheet, View, Image, Animated, ActivityIndicator, Platform } from "react-native";
+import { Modal, Pressable, StyleSheet, View, Image, Animated, ActivityIndicator, Platform, Share, Clipboard } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
@@ -11,7 +11,7 @@ type SyncPairingQrModalProps = {
   onClose: () => void;
 };
 
-const WEBSITE_URL = "https://life-organizer.app";
+const WEBSITE_URL = "https://spectru-web.vercel.app";
 const QR_API_URL = `https://quickchart.io/qr?size=300&text=${encodeURIComponent(WEBSITE_URL)}&margin=2`;
 
 const SyncPairingQrModal: React.FC<SyncPairingQrModalProps> = ({ visible, onClose }) => {
@@ -121,22 +121,23 @@ const SyncPairingQrModal: React.FC<SyncPairingQrModalProps> = ({ visible, onClos
           </View>
 
           <View style={styles.content}>
-            <View style={styles.descriptionRow}>
-               <Text style={[styles.description, { color: theme.colors.textSecondary }]}>
-                 Digite o endereço abaixo no seu PC para conectar.
-               </Text>
-            </View>
-
-            <View style={styles.urlHero}>
-               <Text style={[styles.urlLabel, { color: theme.colors.primary }]}>URL DE CONEXÃO</Text>
-               <View style={[styles.urlBox, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.primaryAlpha20 }]}>
-                  {loading ? (
-                    <ActivityIndicator size="small" color={theme.colors.primary} />
-                  ) : url ? (
-                    <Text selectable style={[styles.urlText, { color: theme.colors.textPrimary }]}>{url}</Text>
-                  ) : (
-                    <Text style={[styles.urlError, { color: theme.colors.danger }]}>{error || "Não foi possível carregar a URL"}</Text>
-                  )}
+            <View style={styles.webSiteCard}>
+               <View style={styles.webSiteHeader}>
+                  <Ionicons name="globe-outline" size={20} color={theme.colors.secondary} />
+                  <View style={{ flex: 1 }}>
+                     <Text style={[styles.urlLabel, { color: theme.colors.secondary, marginBottom: 0 }]}>SITE WEB</Text>
+                     <Text variant="caption" muted>Abra no computador para conectar</Text>
+                  </View>
+               </View>
+               
+               <View style={[styles.urlBox, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.secondary + '33', marginTop: 12 }]}>
+                  <Text selectable style={[styles.urlText, { color: theme.colors.textPrimary }]}>{WEBSITE_URL}</Text>
+                  <Pressable 
+                    onPress={() => Clipboard.setString(WEBSITE_URL)}
+                    style={({ pressed }) => [styles.copyBtn, { backgroundColor: pressed ? theme.colors.border : 'transparent' }]}
+                  >
+                    <Ionicons name="copy-outline" size={16} color={theme.colors.textSecondary} />
+                  </Pressable>
                </View>
             </View>
 
@@ -144,7 +145,7 @@ const SyncPairingQrModal: React.FC<SyncPairingQrModalProps> = ({ visible, onClos
 
             <View style={styles.qrSection}>
                <View style={styles.qrHeader}>
-                   <Ionicons name="camera-outline" size={16} color={theme.colors.textSecondary} />
+                   <Ionicons name="scan-outline" size={16} color={theme.colors.textSecondary} />
                    <Text style={[styles.qrTitle, { color: theme.colors.textPrimary }]}>Pareamento por QR Code</Text>
                    <View style={[styles.emBreveBadge, { backgroundColor: theme.colors.primaryAlpha20 }]}>
                       <Text style={[styles.emBreveText, { color: theme.colors.primary }]}>EM BREVE</Text>
@@ -157,7 +158,24 @@ const SyncPairingQrModal: React.FC<SyncPairingQrModalProps> = ({ visible, onClos
                     <Animated.View style={[styles.shimmerOverlay, { backgroundColor: theme.colors.primaryAlpha20, opacity: shimmerOpacity }]} />
                   </View>
                </View>
+
+               <View style={[styles.urlHero, { marginTop: 24, width: '100%' }]}>
+                  <Text style={[styles.urlLabel, { color: theme.colors.primary, textAlign: 'center' }]}>URL DE CONEXÃO</Text>
+                  <View style={[styles.urlBox, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.primaryAlpha20 }]}>
+                      {loading ? (
+                        <ActivityIndicator size="small" color={theme.colors.primary} />
+                      ) : url ? (
+                        <Text selectable style={[styles.urlText, { color: theme.colors.textPrimary }]}>{url}</Text>
+                      ) : (
+                        <Text style={[styles.urlError, { color: theme.colors.danger }]}>{error || "Não foi possível carregar a URL"}</Text>
+                      )}
+                  </View>
+                  <Text variant="caption" muted style={{ marginTop: 6, textAlign: 'center' }}>
+                    Use este endereço no campo de pareamento do site.
+                  </Text>
+               </View>
             </View>
+
 
             <Pressable
               onPress={onClose}
@@ -214,13 +232,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 10,
   },
-  descriptionRow: {
-    marginBottom: 20,
-  },
   description: {
     fontSize: 14,
     lineHeight: 20,
     opacity: 0.8,
+  },
+  webSiteCard: {
+    marginBottom: 20,
+  },
+  webSiteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   urlHero: {
     marginBottom: 24,
@@ -252,6 +275,12 @@ const styles = StyleSheet.create({
   urlError: {
     fontSize: 12,
     textAlign: "center",
+  },
+  copyBtn: {
+    position: 'absolute',
+    right: 8,
+    padding: 8,
+    borderRadius: 8,
   },
   divider: {
     height: 1,

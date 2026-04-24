@@ -24,9 +24,9 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  border: 1px dashed #E5E5E5;
+  border: 1px dashed var(--border);
   background: transparent;
-  color: #A1A1AA;
+  color: var(--text-secondary);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -34,9 +34,9 @@
 }
 
 .addBlockBtn:hover {
-  background: #F4F4F5;
-  border-color: #D4D4D8;
-  color: #111111;
+  background: var(--hover);
+  border-color: var(--border);
+  color: var(--text-primary);
 }
 
 .addBlockMenu {
@@ -54,9 +54,9 @@
 .addBlockMenuItem {
   height: 30px;
   border-radius: 8px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #71717A;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
   padding: 0 10px;
   font-size: 0.82rem;
   font-weight: 600;
@@ -68,9 +68,9 @@
 }
 
 .addBlockMenuItem:hover {
-  background: #F4F4F5;
-  color: #111111;
-  border-color: #D4D4D8;
+  background: var(--hover);
+  color: var(--text-primary);
+  border-color: var(--border);
 }
 
 /* ─── Block Wrapper ─────────────────────────────────── */
@@ -83,11 +83,11 @@
 }
 
 .blockWrapper:hover {
-  border-color: #E5E5E5;
+  border-color: var(--border);
 }
 
 .blockWrapper:focus-within {
-  border-color: #D4D4D8;
+  border-color: var(--border);
   background: rgba(0, 0, 0, 0.02);
 }
 
@@ -111,9 +111,9 @@
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #A1A1AA;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -121,8 +121,8 @@
 }
 
 .blockToolbarBtn:hover {
-  background: #F4F4F5;
-  color: #111111;
+  background: var(--hover);
+  color: var(--text-primary);
 }
 
 .blockToolbarBtnDanger:hover {
@@ -138,7 +138,7 @@
   min-height: 36px;
   border: none;
   background: transparent;
-  color: #111111;
+  color: var(--text-primary);
   font-size: 1rem;
   line-height: 1.7;
   padding: 8px 12px;
@@ -149,7 +149,7 @@
 }
 
 .textBlock::placeholder {
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 /* ─── Code Block ────────────────────────────────────── */
@@ -168,9 +168,9 @@
 .codeBlockLang {
   height: 26px;
   border-radius: 6px;
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
-  color: #71717A;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
   font-size: 0.78rem;
   padding: 0 8px;
   cursor: pointer;
@@ -179,9 +179,9 @@
 .codeBlockTextarea {
   width: 100%;
   min-height: 80px;
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-primary);
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Consolas, monospace;
   font-size: 0.88rem;
   line-height: 1.65;
@@ -193,7 +193,7 @@
 }
 
 .codeBlockTextarea::placeholder {
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 /* ─── Image Block ───────────────────────────────────── */
@@ -207,33 +207,33 @@
   max-height: 440px;
   border-radius: 10px;
   object-fit: contain;
-  background: #FAFAFA;
-  border: 1px solid #E5E5E5;
+  background: var(--bg);
+  border: 1px solid var(--border);
 }
 
 .imageBlockUpload {
   min-height: 100px;
   border-radius: 10px;
-  border: 2px dashed #E5E5E5;
+  border: 2px dashed var(--border);
   display: grid;
   place-items: center;
-  color: #A1A1AA;
+  color: var(--text-secondary);
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 180ms;
 }
 
 .imageBlockUpload:hover {
-  border-color: #D4D4D8;
-  color: #111111;
-  background: #FAFAFA;
+  border-color: var(--border);
+  color: var(--text-primary);
+  background: var(--bg);
 }
 
 .imageBlockCaption {
   width: 100%;
   border: none;
   background: transparent;
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 0.85rem;
   padding: 6px 4px;
   outline: none;
@@ -241,7 +241,7 @@
 }
 
 .imageBlockCaption::placeholder {
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 /* ─── Drawing Block ─────────────────────────────────── */
@@ -253,8 +253,8 @@
 .drawingCanvas {
   width: 100%;
   border-radius: 10px;
-  background: #FAFAFA;
-  border: 1px solid #E5E5E5;
+  background: var(--bg);
+  border: 1px solid var(--border);
   cursor: crosshair;
   touch-action: none;
 }
@@ -269,9 +269,9 @@
 .drawingToolBtn {
   height: 28px;
   border-radius: 6px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #71717A;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
   padding: 0 10px;
   font-size: 0.78rem;
   font-weight: 600;
@@ -282,14 +282,14 @@
 }
 
 .drawingToolBtn:hover {
-  background: #F4F4F5;
-  color: #111111;
+  background: var(--hover);
+  color: var(--text-primary);
 }
 
 .drawingToolBtnActive {
-  background: #EAEAEA;
-  color: #111111;
-  border-color: #D4D4D8;
+  background: var(--active);
+  color: var(--text-primary);
+  border-color: var(--border);
 }
 
 .drawingColorInput {

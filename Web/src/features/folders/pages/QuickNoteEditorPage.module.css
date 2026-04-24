@@ -12,19 +12,19 @@
   position: sticky;
   top: 0;
   z-index: 10;
-  background: rgba(250, 250, 250, 0.85);
+  background: var(--surface);
   backdrop-filter: blur(12px);
   padding: 12px 0;
-  border-bottom: 1px solid #E5E5E5;
+  border-bottom: 1px solid var(--border);
 }
 
 .backBtn {
   width: 38px;
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #E5E5E5;
-  background: #FFFFFF;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -33,7 +33,7 @@
 }
 
 .backBtn:hover {
-  background: #F4F4F5;
+  background: var(--hover);
 }
 
 .titleInput {
@@ -41,7 +41,7 @@
   min-width: 0;
   border: none;
   background: transparent;
-  color: #111111;
+  color: var(--text-primary);
   font-size: 1.5rem;
   font-weight: 800;
   letter-spacing: -0.01em;
@@ -50,7 +50,7 @@
 }
 
 .titleInput::placeholder {
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 .headerActions {
@@ -63,9 +63,9 @@
 .saveBtn {
   height: 36px;
   border-radius: 10px;
-  border: 1px solid #111111;
-  background: #111111;
-  color: #FFFFFF;
+  border: 1px solid var(--text-primary);
+  background: var(--text-primary);
+  color: var(--surface);
   font-weight: 700;
   font-size: 0.85rem;
   padding: 0 14px;
@@ -102,7 +102,7 @@
 }
 
 .savingIndicator {
-  color: #A1A1AA;
+  color: var(--text-secondary);
   font-size: 0.82rem;
   font-weight: 600;
   animation: pulse 1s infinite;
@@ -124,9 +124,9 @@
   height: 28px;
   padding: 0 10px;
   border-radius: 8px;
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
-  color: #71717A;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
   font-size: 0.78rem;
   font-weight: 600;
   margin-bottom: 12px;

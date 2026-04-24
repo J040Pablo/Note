@@ -1,5 +1,6 @@
 import React from "react";
 import { Folder, FileText, Pin, MapPin } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import styles from "../HomeFeed.module.css";
 import { PinnedItemType } from "../../../../types";
 
@@ -19,14 +20,16 @@ type Props = {
 };
 
 const QuickAccessSection: React.FC<Props> = ({ items, onItemClick, onTogglePin }) => {
+  const { t } = useTranslation();
+
   return (
     <section className={styles.section}>
       <header className={styles.sectionHeader}>
-        <h2 className={styles.sectionTitle}>Quick Access</h2>
+        <h2 className={styles.sectionTitle}>{t("quickAccess")}</h2>
       </header>
       {items.length === 0 ? (
         <div className={styles.emptyCard}>
-          <p className={styles.emptyTasks}>Nenhum item no acesso rápido</p>
+          <p className={styles.emptyTasks}>{t("emptyQuickAccess")}</p>
         </div>
       ) : (
         <div className={styles.quickGrid}>

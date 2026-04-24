@@ -10,7 +10,10 @@ import {
 } from "../../tasks/sync";
 import styles from "./EntryModePage.module.css";
 
+import { useTranslation } from "react-i18next";
+
 const EntryModePage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { setMode } = useAppMode();
 
@@ -56,8 +59,8 @@ const EntryModePage: React.FC = () => {
     <main className={styles.page}>
       <section className={styles.shell}>
         <header className={styles.header}>
-          <h1>Choose how you want to use Spectru</h1>
-          <p>Use web-only local data, or pair with your phone for real-time sync.</p>
+          <h1>{t("entryTitle")}</h1>
+          <p>{t("entrySubtitle")}</p>
         </header>
 
         <div className={styles.grid}>
@@ -65,17 +68,17 @@ const EntryModePage: React.FC = () => {
             <div className={styles.cardIconWrap}>
               <Monitor size={20} />
             </div>
-            <h2>Use Web App Only</h2>
+            <h2>{t("useWebOnly")}</h2>
             <p>
-              Run everything in the browser with local-first storage. No mobile connection required.
+              {t("useWebOnlyDescription")}
             </p>
             <ul>
-              <li>Local data on this browser</li>
-              <li>No WebSocket connection</li>
-              <li>Independent web workflow</li>
+              <li>{t("localDataBrowser")}</li>
+              <li>{t("noWebSocket")}</li>
+              <li>{t("independentWorkflow")}</li>
             </ul>
             <button type="button" className={styles.primaryButton} onClick={handleStandalone}>
-              Continue in Standalone Mode
+              {t("continueStandalone")}
             </button>
           </article>
 
@@ -83,14 +86,14 @@ const EntryModePage: React.FC = () => {
             <div className={styles.cardIconWrap}>
               <Smartphone size={20} />
             </div>
-            <h2>Connect with Mobile</h2>
+            <h2>{t("connectWithMobile")}</h2>
             <p>
-              Open the mobile app, display its pairing QR/URL, then connect this browser to that ws:// address.
+              {t("connectWithMobileDescription")}
             </p>
 
             <div className={styles.inputsRow}>
               <label>
-                Mobile IP
+                {t("mobileIpLabel")}
                 <input
                   value={mobileIp}
                   onChange={(event) => setMobileIp(event.target.value)}
@@ -98,7 +101,7 @@ const EntryModePage: React.FC = () => {
                 />
               </label>
               <label>
-                Port
+                {t("mobilePortLabel")}
                 <input
                   value={mobilePort}
                   onChange={(event) => setMobilePort(event.target.value.replace(/\D+/g, ""))}
@@ -112,14 +115,14 @@ const EntryModePage: React.FC = () => {
                 <p className={styles.wsUrl}>{pairingUrl || "ws://<mobile-ip>:8787"}</p>
                 <p className={styles.statusLine}>
                   <Link2 size={14} />
-                  Status: {syncStatus}
+                  {t("pairingStatus", { status: t(syncStatus) })}
                 </p>
               </div>
             </div>
 
             <div className={styles.actionsRow}>
               <button type="button" className={styles.secondaryButton} onClick={handleConnectMobile}>
-                Start Pairing
+                {t("startPairing")}
               </button>
               <button
                 type="button"
@@ -127,7 +130,7 @@ const EntryModePage: React.FC = () => {
                 onClick={handleEnterMobileSync}
                 disabled={syncStatus !== "connected"}
               >
-                Enter Mobile Sync Mode
+                {t("enterMobileSyncMode")}
               </button>
             </div>
           </article>
@@ -136,5 +139,6 @@ const EntryModePage: React.FC = () => {
     </main>
   );
 };
+
 
 export default EntryModePage;

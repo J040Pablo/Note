@@ -22,14 +22,14 @@
   margin: 0;
   font-size: 1.25rem;
   font-weight: 800;
-  color: #111111;
+  color: var(--text-primary);
   letter-spacing: -0.02em;
 }
 
 .viewAll {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #111111;
+  color: var(--text-primary);
   text-decoration: none;
   opacity: 0.7;
   transition: opacity 160ms;
@@ -47,8 +47,8 @@
 }
 
 .quickCard {
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px;
   display: flex;
@@ -62,7 +62,7 @@
 
 .quickCard:hover {
   transform: translateY(-2px);
-  border-color: #111111;
+  border-color: var(--text-primary);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
@@ -75,31 +75,31 @@
 .quickIcon {
   width: 40px;
   height: 40px;
-  background: #F4F4F5;
+  background: var(--hover);
   border-radius: 12px;
   display: grid;
   place-items: center;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .pinButton {
   background: transparent;
   border: none;
   padding: 4px;
-  color: #A1A1AA;
+  color: var(--text-secondary);
   cursor: pointer;
   transition: color 160ms;
 }
 
 .pinActive {
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .quickCardTitle {
   margin: 0;
   font-size: 0.95rem;
   font-weight: 700;
-  color: #111111;
+  color: var(--text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -108,7 +108,7 @@
 .quickCardSubtitle {
   margin: 4px 0 0;
   font-size: 0.8rem;
-  color: #71717A;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -122,8 +122,8 @@
 }
 
 .folderCard {
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 12px 14px;
   display: flex;
@@ -136,12 +136,12 @@
 }
 
 .folderCard:hover {
-  border-color: #111111;
-  background: #F4F4F5;
+  border-color: var(--text-primary);
+  background: var(--hover);
 }
 
 .folderIcon {
-  color: #111111;
+  color: var(--text-primary);
   opacity: 0.7;
 }
 
@@ -153,12 +153,12 @@
 .folderName {
   font-size: 0.95rem;
   font-weight: 700;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .folderNotes {
   font-size: 0.75rem;
-  color: #71717A;
+  color: var(--text-secondary);
 }
 
 /* Task Overview */
@@ -169,8 +169,8 @@
 }
 
 .statCard {
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px;
   display: flex;
@@ -181,7 +181,7 @@
 .statLabel {
   font-size: 0.8rem;
   font-weight: 600;
-  color: #71717A;
+  color: var(--text-secondary);
   margin-bottom: 8px;
 }
 
@@ -195,39 +195,39 @@
 .statValue {
   font-size: 1.5rem;
   font-weight: 800;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .statTotal {
   font-size: 0.9rem;
   font-weight: 600;
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 .statSubtitle {
   margin: 4px 0 0;
   font-size: 0.8rem;
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 .miniProgress {
   height: 6px;
-  background: #F4F4F5;
+  background: var(--hover);
   border-radius: 99px;
   overflow: hidden;
 }
 
 .miniProgressFill {
   height: 100%;
-  background: #111111;
+  background: var(--text-primary);
   border-radius: inherit;
   transition: width 200ms;
 }
 
 /* Today Tasks */
 .todayCard {
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 16px;
   min-height: 100px;
@@ -238,7 +238,7 @@
 
 .emptyTasks {
   margin: auto;
-  color: #A1A1AA;
+  color: var(--text-secondary);
   font-size: 0.9rem;
 }
 
@@ -258,38 +258,38 @@
 .checkbox {
   width: 20px;
   height: 20px;
-  border: 2px solid #E5E5E5;
+  border: 2px solid var(--border);
   border-radius: 6px;
   background: transparent;
   display: grid;
   place-items: center;
   cursor: pointer;
-  color: #FFFFFF;
+  color: var(--surface);
   transition: background-color 160ms, border-color 160ms;
 }
 
 .checked {
-  background: #111111;
-  border-color: #111111;
+  background: var(--text-primary);
+  border-color: var(--text-primary);
 }
 
 .taskText {
   font-size: 0.95rem;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .taskDone {
   text-decoration: line-through;
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 .emptyCard {
-  background: #FFFFFF;
-  border: 1px solid #E5E5E5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 32px;
   text-align: center;
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 @media (max-width: 768px) {

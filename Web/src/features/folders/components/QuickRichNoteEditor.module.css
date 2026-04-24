@@ -4,10 +4,10 @@
 }
 
 .richPreview {
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #FFFFFF;
-  color: #111111;
+  background: var(--surface);
+  color: var(--text-primary);
   padding: 18px 16px;
   min-height: 320px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
@@ -19,7 +19,7 @@
 
 .richPreview[contenteditable="true"]:empty::before {
   content: attr(data-placeholder);
-  color: #A1A1AA;
+  color: var(--text-secondary);
 }
 
 .richPreview :global(.quick-rich-block) + :global(.quick-rich-block) {
@@ -29,7 +29,7 @@
 .richPreview :global(p) {
   margin: 0;
   line-height: 1.75;
-  color: #111111;
+  color: var(--text-primary);
   word-break: break-word;
 }
 
@@ -48,7 +48,7 @@
 .richPreview :global(h3),
 .richPreview :global(h4) {
   margin: 0;
-  color: #111111;
+  color: var(--text-primary);
   line-height: 1.2;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -69,17 +69,17 @@
 .richPreview :global(blockquote) {
   margin: 0;
   padding: 10px 14px;
-  border-left: 3px solid #111111;
-  background: #F4F4F5;
+  border-left: 3px solid var(--text-primary);
+  background: var(--hover);
   border-radius: 0 10px 10px 0;
-  color: #71717A;
+  color: var(--text-secondary);
 }
 
 .richPreview :global(ul),
 .richPreview :global(ol) {
   margin: 0;
   padding-left: 22px;
-  color: #111111;
+  color: var(--text-primary);
 }
 
 .richPreview :global(li) {
@@ -90,42 +90,42 @@
 .richPreview :global(code) {
   padding: 0.15rem 0.35rem;
   border-radius: 0.4rem;
-  background: #F4F4F5;
-  color: #111111;
+  background: var(--hover);
+  color: var(--text-primary);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
 }
 
 .richPreview :global(pre) {
   margin: 0;
   padding: 14px;
   border-radius: 12px;
-  background: #FAFAFA;
-  border: 1px solid #E5E5E5;
-  color: #111111;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .richPreview :global(a) {
-  color: #111111;
+  color: var(--text-primary);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .richPreview :global(hr) {
   border: 0;
-  border-top: 1px solid #E5E5E5;
+  border-top: 1px solid var(--border);
   margin: 16px 0;
 }
 
 .sourceToggle {
   justify-self: start;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: #FFFFFF;
-  color: #111111;
+  background: var(--surface);
+  color: var(--text-primary);
   height: 36px;
   padding: 0 12px;
   cursor: pointer;
@@ -136,16 +136,16 @@
   min-height: 220px;
   resize: vertical;
   border-radius: 12px;
-  border: 1px solid #E5E5E5;
-  background: #FAFAFA;
-  color: #111111;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-primary);
   padding: 12px;
   font: inherit;
   outline: none;
 }
 
 .hint {
-  color: #71717A;
+  color: var(--text-secondary);
   font-size: 0.82rem;
   line-height: 1.4;
 }

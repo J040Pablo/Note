@@ -22,10 +22,10 @@
 .actionButton {
   min-width: 172px;
   height: 40px;
-  border: 1px solid #E5E5E5;
+  border: 1px solid var(--border);
   border-radius: 12px;
-  background: #FFFFFF;
-  color: #111111;
+  background: var(--surface);
+  color: var(--text-primary);
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
@@ -38,8 +38,8 @@
 }
 
 .actionButton:hover {
-  border-color: #D4D4D8;
-  background: #F4F4F5;
+  border-color: var(--border);
+  background: var(--hover);
   transform: translateY(-1px);
 }
 

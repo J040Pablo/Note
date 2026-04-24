@@ -1,5 +1,6 @@
 import React from 'react';
 import { AppModeProvider } from './mode';
+import { ThemeProvider } from './theme';
 import { initSyncBridge } from '../services/syncBridge';
 
 export const Providers: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -10,7 +11,11 @@ export const Providers: React.FC<{ children: React.ReactNode }> = ({ children })
     };
   }, []);
 
-  return <AppModeProvider>{children}</AppModeProvider>;
+  return (
+    <ThemeProvider>
+      <AppModeProvider>{children}</AppModeProvider>
+    </ThemeProvider>
+  );
 };
 
 export default Providers;

@@ -230,3 +230,7 @@ export const getNotes = (): DataNote[] => loadData().notes;
 export const getQuickNotes = (): DataQuickNote[] => loadData().quickNotes;
 
 export const getTasks = (): DataTask[] => loadData().tasks;
+
+export const importCompleteStore = (data: DataStore): void => {
+  saveData(data);
+};

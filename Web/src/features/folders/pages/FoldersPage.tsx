@@ -9,6 +9,7 @@ import {
   PenSquare,
   StickyNote,
   X,
+  Upload,
 } from "lucide-react";
 import PageContainer from "../../../components/ui/PageContainer";
 import Breadcrumb from "../components/Breadcrumb";
@@ -32,6 +33,8 @@ import { createFolder, deleteFolder, updateFolder } from "../../../services/fold
 import { createNote, deleteNote, updateNote, deleteQuickNote, updateQuickNote } from "../../../services/notesService.web";
 import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQuickNote } from "../../tasks/sync";
 import { subscribeSyncBridge } from "../../../services/syncBridge";
+import { exportFolderPackage, importFolderPackage } from "../../../services/folderPackageService";
+import { useTranslation } from "react-i18next";
 import styles from "./FoldersPage.module.css";
 
 const VIEW_MODE_STORAGE_KEY = "folders:view-mode";
@@ -228,6 +231,7 @@ const deleteFolderEntry = (entry: FolderEntry): void => {
 };
 
 const FoldersPage: React.FC = () => {
+  const { t } = useTranslation();
   const { mode } = useAppMode();
   const navigate = useNavigate();
   const isMobileSync = mode === "mobile-sync";
@@ -262,6 +266,7 @@ const FoldersPage: React.FC = () => {
   const [moveTarget, setMoveTarget] = React.useState<string | null>(null);
   const [uploadedImage, setUploadedImage] = React.useState<string | undefined>(undefined);
   const [uploadedBanner, setUploadedBanner] = React.useState<string | undefined>(undefined);
+  const importInputRef = React.useRef<HTMLInputElement>(null);
 
   const leaveTimerRef = React.useRef<number | null>(null);
   const enterTimerRef = React.useRef<number | null>(null);
@@ -360,16 +365,16 @@ const FoldersPage: React.FC = () => {
   }, [filters, visibleEntries]);
 
   const breadcrumbSegments = React.useMemo(() => {
-    const root = [{ id: null, label: "Home" }];
+    const root = [{ id: null, label: t("home") }];
     const nested = path
       .map((folderId) => foldersById.get(folderId))
       .filter(Boolean)
       .map((folder) => ({ id: folder!.id, label: folder!.name }));
 
     return [...root, ...nested];
-  }, [foldersById, path]);
+  }, [foldersById, path, t]);
 
-  const currentFolderLabel = path.length === 0 ? "Root folders" : breadcrumbSegments[breadcrumbSegments.length - 1].label;
+  const currentFolderLabel = path.length === 0 ? t("rootFolders") : breadcrumbSegments[breadcrumbSegments.length - 1].label;
 
   const navigateWithTransition = React.useCallback((nextPath: string[], direction: NavigationDirection) => {
     const samePath =
@@ -476,6 +481,11 @@ const FoldersPage: React.FC = () => {
         navigate(`/notes/new${currentFolderId ? `?folderId=${currentFolderId}` : ""}`);
         return;
       }
+
+      if (actionId === "import-folder" as any) {
+        importInputRef.current?.click();
+        return;
+      }
     },
     [currentFolderId, navigate, visibleEntries]
   );
@@ -549,6 +559,11 @@ const FoldersPage: React.FC = () => {
         return;
       }
 
+      if (action === "export") {
+        exportFolderPackage(selectedContextItem.id);
+        return;
+      }
+
       setUploadedImage(selectedContextItem.imageUrl);
       setUploadedBanner(selectedContextItem.bannerUrl);
       setModalState({ mode: "media", itemId: selectedContextItem.id });
@@ -592,8 +607,8 @@ const FoldersPage: React.FC = () => {
       : styles.enteringBackward;
 
   const rootMoveOptions = React.useMemo(
-    () => [{ id: null, label: "Home" }, ...entries.filter((entry) => entry.type === "folder").map((folder) => ({ id: folder.id, label: folder.name }))],
-    [entries]
+    () => [{ id: null, label: t("home") }, ...entries.filter((entry) => entry.type === "folder").map((folder) => ({ id: folder.id, label: folder.name }))],
+    [entries, t]
   );
 
   const blockedMoveTargets = React.useMemo(() => {
@@ -611,12 +626,13 @@ const FoldersPage: React.FC = () => {
 
   const fabActions = React.useMemo(
     () => [
-      { id: "add-file" as const, label: "Add File", icon: <FilePlus size={16} /> },
-      { id: "create-folder" as const, label: "Create Folder", icon: <FolderPlus size={16} /> },
-      { id: "quick-note" as const, label: "Quick Note", icon: <StickyNote size={16} /> },
-      { id: "create-note" as const, label: "Create Note", icon: <PenSquare size={16} /> },
-    ],
-    []
+      { id: "add-file" as const, label: t("addFile"), icon: <FilePlus size={16} /> },
+      { id: "create-folder" as const, label: t("createFolder"), icon: <FolderPlus size={16} /> },
+      { id: "import-folder" as const, label: t("importFolder"), icon: <Upload size={16} /> },
+      { id: "quick-note" as const, label: t("quickNote"), icon: <StickyNote size={16} /> },
+      { id: "create-note" as const, label: t("createNote"), icon: <PenSquare size={16} /> },
+    ] as any[],
+    [t]
   );
 
   const pickFileAsDataUrl =
@@ -632,7 +648,7 @@ const FoldersPage: React.FC = () => {
 
   return (
     <PageContainer
-      title="Folders"
+      title={t("folders")}
       subtitle={currentFolderLabel}
       action={
         <button
@@ -641,10 +657,28 @@ const FoldersPage: React.FC = () => {
           onClick={() => setShowModal(true)}
         >
           <FolderPlus size={17} />
-          <span>Folder</span>
+          <span>{t("folder")}</span>
         </button>
       }
     >
+      <input 
+        type="file" 
+        accept=".zip" 
+        ref={importInputRef} 
+        style={{ display: "none" }} 
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+          try {
+            await importFolderPackage(file);
+            setEntries(loadFolderEntries()); // Refresh breadcrumbs and list
+            alert(t("importSuccess"));
+          } catch (err) {
+            alert(t("importError"));
+          }
+          e.target.value = "";
+        }}
+      />
       {path.length > 0 ? (
         <button
           type="button"
@@ -652,7 +686,7 @@ const FoldersPage: React.FC = () => {
           onClick={handleGoBack}
         >
           <ArrowLeft size={16} />
-          <span>Back</span>
+          <span>{t("back")}</span>
         </button>
       ) : null}
 
@@ -660,7 +694,7 @@ const FoldersPage: React.FC = () => {
 
       <div className={styles.controls}>
         <div className={styles.meta}>
-          <span>{filteredEntries.length} items</span>
+          <span>{filteredEntries.length} {t("items")}</span>
         </div>
         <div className={styles.actions}>
           <FilterDropdown
@@ -700,8 +734,8 @@ const FoldersPage: React.FC = () => {
 
         {filteredEntries.length === 0 ? (
           <div className={styles.emptyState}>
-            <p>No items yet in this folder.</p>
-            <span>Use + to add a file, folder or note.</span>
+            <p>{t("noItemsFolder")}</p>
+            <span>{t("usePlusToAdd")}</span>
           </div>
         ) : null}
       </div>
@@ -732,12 +766,12 @@ const FoldersPage: React.FC = () => {
           <div className={styles.inlineModal} onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true">
             <header className={styles.inlineHeader}>
               <h3>
-                {modalState.mode === "rename" && "Rename item"}
-                {modalState.mode === "edit" && "Edit item"}
-                {modalState.mode === "move" && "Move item"}
-                {modalState.mode === "color" && "Change color"}
-                {modalState.mode === "media" && "Add image/banner"}
-                {modalState.mode === "create-note" && "Create note"}
+                {modalState.mode === "rename" && t("renameItem")}
+                {modalState.mode === "edit" && t("editItem")}
+                {modalState.mode === "move" && t("moveItem")}
+                {modalState.mode === "color" && t("changeColor")}
+                {modalState.mode === "media" && t("addMedia")}
+                {modalState.mode === "create-note" && t("createNote")}
               </h3>
               <button type="button" className={styles.iconButton} onClick={closeModalState} aria-label="Close">
                 <X size={16} />
@@ -747,7 +781,7 @@ const FoldersPage: React.FC = () => {
             {(modalState.mode === "rename" || modalState.mode === "edit" || modalState.mode === "create-note") ? (
               <div className={styles.modalBody}>
                 <label className={styles.modalField}>
-                  <span>Title</span>
+                  <span>{t("title")}</span>
                   <input
                     value={modalState.mode === "rename" ? renameValue : editorTitle}
                     onChange={(event) =>
@@ -760,12 +794,12 @@ const FoldersPage: React.FC = () => {
 
                 {modalState.mode !== "rename" ? (
                   <label className={styles.modalField}>
-                    <span>Content</span>
+                    <span>{t("content")}</span>
                     <textarea
                       rows={8}
                       value={editorBody}
                       onChange={(event) => setEditorBody(event.target.value)}
-                      placeholder="Write your note..."
+                      placeholder={t("writeNotePlaceholder")}
                     />
                   </label>
                 ) : null}
@@ -775,14 +809,14 @@ const FoldersPage: React.FC = () => {
             {modalState.mode === "move" ? (
               <div className={styles.modalBody}>
                 <label className={styles.modalField}>
-                  <span>Destination folder</span>
+                  <span>{t("destinationFolder")}</span>
                   <select value={moveTarget ?? "root"} onChange={(event) => setMoveTarget(event.target.value === "root" ? null : event.target.value)}>
                     {rootMoveOptions
                       .filter((option) => (option.id ? !blockedMoveTargets.has(option.id) : true))
                       .map((option) => (
-                        <option key={option.id ?? "root"} value={option.id ?? "root"}>
-                          {option.label}
-                        </option>
+                         <option key={option.id ?? "root"} value={option.id ?? "root"}>
+                           {option.id === null ? t("home") : option.label}
+                         </option>
                       ))}
                   </select>
                 </label>
@@ -792,7 +826,7 @@ const FoldersPage: React.FC = () => {
             {modalState.mode === "color" ? (
               <div className={styles.modalBody}>
                 <label className={styles.modalField}>
-                  <span>Color</span>
+                  <span>{t("changeColor")}</span>
                   <input type="color" value={selectedColor} onChange={(event) => setSelectedColor(event.target.value)} />
                 </label>
               </div>
@@ -801,11 +835,11 @@ const FoldersPage: React.FC = () => {
             {modalState.mode === "media" ? (
               <div className={styles.modalBody}>
                 <label className={styles.modalField}>
-                  <span>Image</span>
+                  <span>{t("image")}</span>
                   <input type="file" accept="image/*" onChange={pickFileAsDataUrl(setUploadedImage)} />
                 </label>
                 <label className={styles.modalField}>
-                  <span>Banner</span>
+                  <span>{t("banner")}</span>
                   <input type="file" accept="image/*" onChange={pickFileAsDataUrl(setUploadedBanner)} />
                 </label>
                 <div className={styles.previewGrid}>
@@ -817,7 +851,7 @@ const FoldersPage: React.FC = () => {
 
             <footer className={styles.inlineFooter}>
               <button type="button" className={styles.cancelInline} onClick={closeModalState}>
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="button"
@@ -937,7 +971,7 @@ const FoldersPage: React.FC = () => {
                 }}
               >
                 <Check size={15} />
-                <span>Save</span>
+                <span>{t("save")}</span>
               </button>
             </footer>
           </div>
