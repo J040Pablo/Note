@@ -56,7 +56,7 @@ const EntryModePage: React.FC = () => {
     <main className={styles.page}>
       <section className={styles.shell}>
         <header className={styles.header}>
-          <h1>Choose how you want to use Life Organizer</h1>
+          <h1>Choose how you want to use Spectru</h1>
           <p>Use web-only local data, or pair with your phone for real-time sync.</p>
         </header>
 

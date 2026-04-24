@@ -1,11 +1,11 @@
-# Life Organizer Web
+# Spectru Web
 
 ## Overview
-Life Organizer is a web application designed to help users manage their tasks and notes efficiently. This project is structured to provide a seamless user experience with a desktop layout that features a sidebar navigation similar to Instagram's web interface.
+Spectru is a web application designed to help users manage their tasks and notes efficiently. This project is structured to provide a seamless user experience with a desktop layout that features a sidebar navigation similar to Instagram's web interface.
 
 ## Project Structure
 ```
-life-organizer-web
+spectru-web
 ├── public
 │   └── favicon.svg          # Favicon for the web application
 ├── src
@@ -55,7 +55,7 @@ life-organizer-web
 1. Clone the repository:
    ```
    git clone <repository-url>
-   cd life-organizer-web
+   cd spectru-web
    ```
 
 2. Install dependencies:

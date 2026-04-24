@@ -73,12 +73,12 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
 
       <div className={styles.brand}>
         <div className={styles.brandMark} aria-hidden="true">
-          L
+          S
         </div>
 
         {!collapsed ? (
           <div>
-            <p className={styles.brandTitle}>Life Organizer</p>
+            <p className={styles.brandTitle}>Spectru</p>
             <p className={styles.brandSubtitle}>Desktop</p>
           </div>
         ) : null}

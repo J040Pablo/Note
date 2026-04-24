@@ -8,7 +8,8 @@
 .main-content {
     margin-left: 252px;
     height: 100vh;
-    overflow-y: auto; /* ALLOW LOCAL SCROLL FOR FEED PAGES */
+    overflow-y: auto;
+    /* ALLOW LOCAL SCROLL FOR FEED PAGES */
     overflow-x: hidden;
     padding: 28px;
     transition: margin-left 200ms ease;

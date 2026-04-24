@@ -4,17 +4,21 @@
   background: #020617;
 }
 
-html, body {
+html,
+body {
   overflow: hidden;
   position: fixed;
 }
 
-html, body, #root {
+html,
+body,
+#root {
   margin: 0;
   padding: 0;
   height: 100%;
   width: 100%;
-  overflow: hidden; /* BLOCK BROWSER SCROLL */
+  overflow: hidden;
+  /* BLOCK BROWSER SCROLL */
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
   background: #020617;
   color: #e2e8f0;
