@@ -14,9 +14,9 @@
   height: 38px;
   min-width: 220px;
   border-radius: 10px;
-  border: 1px solid #334155;
-  background: #0b1220;
-  color: #e2e8f0;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #111111;
   padding: 0 10px;
 }
 
@@ -24,18 +24,18 @@
   height: 38px;
   width: 86px;
   border-radius: 10px;
-  border: 1px solid #334155;
-  background: #0b1220;
-  color: #e2e8f0;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #111111;
   padding: 0 10px;
 }
 
 .syncButton {
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #334155;
-  background: #111827;
-  color: #e2e8f0;
+  border: 1px solid #111111;
+  background: #111111;
+  color: #FFFFFF;
   padding: 0 10px;
   font-weight: 700;
   cursor: pointer;
@@ -44,9 +44,9 @@
 .standaloneBadge {
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #334155;
-  background: #0f172a;
-  color: #93c5fd;
+  border: 1px solid #E5E5E5;
+  background: #FAFAFA;
+  color: #71717A;
   padding: 0 12px;
   font-weight: 700;
   display: inline-flex;
@@ -56,9 +56,9 @@
 .createButton {
   height: 42px;
   border-radius: 999px;
-  border: 1px solid #f8fafc;
-  background: #f8fafc;
-  color: #020617;
+  border: 1px solid #111111;
+  background: #111111;
+  color: #FFFFFF;
   padding: 0 16px;
   display: inline-flex;
   align-items: center;
@@ -77,18 +77,18 @@
 
 .qrTitle {
   margin: 0;
-  color: #f8fafc;
+  color: #111111;
   font-size: 1.1rem;
 }
 
 .qrText {
   margin: 6px 0 4px;
-  color: #94a3b8;
+  color: #71717A;
 }
 
 .qrUrl {
   margin: 0;
-  color: #cbd5e1;
+  color: #111111;
   font-weight: 700;
 }
 
@@ -96,12 +96,12 @@
   width: 148px;
   height: 148px;
   border-radius: 12px;
-  border: 1px solid #334155;
-  background: #ffffff;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
   display: grid;
   place-items: center;
   padding: 8px;
-  color: #111827;
+  color: #111111;
   font-size: 0.8rem;
   text-align: center;
 }
@@ -110,8 +110,8 @@
 .calendarCard,
 .listSection {
   border-radius: 20px;
-  border: 1px solid #1f2937;
-  background: #111318;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
 }
 
 .progressCard {
@@ -128,27 +128,27 @@
 
 .progressHeader h3 {
   margin: 0;
-  color: #f8fafc;
+  color: #111111;
   font-size: 2rem;
 }
 
 .progressHeader span,
 .progressCard p {
-  color: #9ca3af;
+  color: #71717A;
 }
 
 .progressTrack {
   margin-top: 10px;
   height: 10px;
   border-radius: 999px;
-  background: #1f2937;
+  background: #EAEAEA;
   overflow: hidden;
 }
 
 .progressFill {
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, #64748b, #e2e8f0);
+  background: #111111;
 }
 
 .progressCard p {
@@ -171,16 +171,16 @@
   margin: 0;
   text-transform: capitalize;
   font-size: 2rem;
-  color: #e2e8f0;
+  color: #111111;
 }
 
 .monthButton {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid #263244;
-  background: #0f172a;
-  color: #e2e8f0;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #111111;
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -194,7 +194,7 @@
 
 .weekHeaderRow span {
   text-align: center;
-  color: #6b7280;
+  color: #71717A;
   font-size: 0.95rem;
 }
 
@@ -209,7 +209,7 @@
   border-radius: 12px;
   border: 0;
   background: transparent;
-  color: #e2e8f0;
+  color: #111111;
   display: grid;
   align-content: center;
   justify-items: center;
@@ -218,18 +218,18 @@
 }
 
 .dayCellSelected {
-  background: #374151;
+  background: #F4F4F5;
 }
 
 .outsideMonth {
-  color: #4b5563;
+  color: #A1A1AA;
 }
 
 .dayDot {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: #d1d5db;
+  background: #111111;
 }
 
 .listSection {
@@ -246,11 +246,11 @@
 .listHeader h3 {
   margin: 0;
   font-size: 1.8rem;
-  color: #f8fafc;
+  color: #111111;
 }
 
 .listHeader span {
-  color: #9ca3af;
+  color: #71717A;
 }
 
 .taskList {
@@ -259,7 +259,7 @@
 
 .taskRow {
   min-height: 68px;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid #E5E5E5;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -279,16 +279,17 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  border: 2px solid #dbeafe;
+  border: 2px solid #E5E5E5;
   background: transparent;
-  color: #0f172a;
+  color: #FFFFFF;
   display: grid;
   place-items: center;
   cursor: pointer;
 }
 
 .checkboxDone {
-  background: #f8fafc;
+  background: #111111;
+  border-color: #111111;
 }
 
 .taskBody {
@@ -297,14 +298,14 @@
 }
 
 .taskBody strong {
-  color: #f8fafc;
+  color: #111111;
   font-size: 1.05rem;
   line-height: 1.2;
 }
 
 .taskBody p {
   margin: 4px 0 0;
-  color: #9ca3af;
+  color: #71717A;
   font-size: 0.95rem;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -318,19 +319,19 @@
   padding: 4px 8px;
   font-size: 0.78rem;
   font-weight: 800;
-  color: #0f172a;
+  color: #111111;
 }
 
 .priorityLow {
-  background: #93c5fd;
+  background: #F0FDF4;
 }
 
 .priorityMedium {
-  background: #fdba74;
+  background: #FEF3C7;
 }
 
 .priorityHigh {
-  background: #fca5a5;
+  background: #FEE2E2;
 }
 
 .moveActions {
@@ -343,9 +344,9 @@
 .moveDoneButton {
   height: 30px;
   border-radius: 8px;
-  border: 1px solid #334155;
-  background: #111827;
-  color: #dbe7ff;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #111111;
   cursor: pointer;
 }
 
@@ -362,10 +363,10 @@
 .emptyState {
   min-height: 140px;
   border-radius: 12px;
-  border: 1px dashed #334155;
+  border: 1px dashed #E5E5E5;
   display: grid;
   place-items: center;
-  color: #9ca3af;
+  color: #A1A1AA;
   text-align: center;
   margin-top: 8px;
 }

@@ -7,9 +7,9 @@
 .searchInputWrap {
   height: 56px;
   border-radius: 18px;
-  border: 1px solid #1f2937;
-  background: #111317;
-  color: #64748b;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #71717A;
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -18,8 +18,8 @@
 }
 
 .searchInputWrap:focus-within {
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px #3b82f62a;
+  border-color: #111111;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.05);
 }
 
 .searchInputWrap input {
@@ -27,12 +27,12 @@
   border: 0;
   background: transparent;
   outline: none;
-  color: #e2e8f0;
+  color: #111111;
   font-size: 1.1rem;
 }
 
 .searchInputWrap input::placeholder {
-  color: #6b7280;
+  color: #A1A1AA;
 }
 
 .chips {
@@ -45,9 +45,9 @@
 .chip {
   height: 44px;
   border-radius: 999px;
-  border: 1px solid #1f2937;
-  background: #111317;
-  color: #a1a1aa;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #71717A;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -59,21 +59,21 @@
 
 .chip:hover {
   transform: translateY(-1px);
-  color: #e2e8f0;
-  border-color: #273244;
+  color: #111111;
+  border-color: #D4D4D8;
 }
 
 .chipActive {
-  color: #f8fafc;
-  background: #1f2937;
-  border-color: #334155;
+  color: #111111;
+  background: #F4F4F5;
+  border-color: #111111;
 }
 
 .emptyState {
   min-height: 320px;
   display: grid;
   place-items: center;
-  color: #71717a;
+  color: #A1A1AA;
   font-size: 1.95rem;
   text-align: center;
 }
@@ -92,8 +92,8 @@
 
 .resultItem {
   border-radius: 14px;
-  border: 1px solid #1f2937;
-  background: #0f172a;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
   padding: 12px;
   display: flex;
   align-items: flex-start;
@@ -103,20 +103,20 @@
 }
 
 .resultItem:hover {
-  border-color: #334155;
-  background: #101b2f;
+  border-color: #D4D4D8;
+  background: #FAFAFA;
   transform: translateY(-1px);
 }
 
 .resultMain h3 {
   margin: 6px 0 0;
   font-size: 1.02rem;
-  color: #f8fafc;
+  color: #111111;
 }
 
 .resultMain p {
   margin: 6px 0 0;
-  color: #94a3b8;
+  color: #71717A;
   max-width: 640px;
 }
 
@@ -124,9 +124,9 @@
   text-transform: capitalize;
   display: inline-flex;
   width: fit-content;
-  border: 1px solid #1e3a8a;
-  background: #172554;
-  color: #93c5fd;
+  border: 1px solid #E5E5E5;
+  background: #FAFAFA;
+  color: #71717A;
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 0.74rem;
@@ -136,7 +136,7 @@
   display: grid;
   gap: 4px;
   text-align: right;
-  color: #64748b;
+  color: #A1A1AA;
   font-size: 0.84rem;
   min-width: 180px;
 }

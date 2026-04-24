@@ -5,9 +5,9 @@
 .trigger {
   height: 38px;
   border-radius: 10px;
-  border: 1px solid #263244;
-  background: #111827;
-  color: #dbe7ff;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #111111;
   padding: 0 12px;
   display: inline-flex;
   align-items: center;
@@ -21,9 +21,9 @@
   right: 0;
   width: 280px;
   border-radius: 12px;
-  border: 1px solid #263244;
-  background: #0b1220;
-  box-shadow: 0 18px 34px rgba(2, 6, 23, 0.52);
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
   padding: 12px;
   z-index: 120;
   display: grid;
@@ -36,7 +36,7 @@
 }
 
 .label {
-  color: #cbd5e1;
+  color: #71717A;
   font-size: 0.84rem;
 }
 
@@ -44,10 +44,10 @@
 .field select {
   width: 100%;
   height: 36px;
-  border: 1px solid #263244;
+  border: 1px solid #E5E5E5;
   border-radius: 10px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #FAFAFA;
+  color: #111111;
   padding: 0 10px;
   font: inherit;
   outline: none;
@@ -55,15 +55,15 @@
 
 .field input:focus,
 .field select:focus {
-  border-color: #3b82f6;
+  border-color: #111111;
 }
 
 .searchWrap {
   height: 36px;
-  border: 1px solid #263244;
+  border: 1px solid #E5E5E5;
   border-radius: 10px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #FAFAFA;
+  color: #71717A;
   display: flex;
   align-items: center;
   gap: 7px;
@@ -74,16 +74,16 @@
   border: 0;
   background: transparent;
   outline: none;
-  color: inherit;
+  color: #111111;
   font: inherit;
   width: 100%;
 }
 
 .resetButton {
   height: 34px;
-  border: 1px solid #334155;
+  border: 1px solid #E5E5E5;
   border-radius: 8px;
-  background: #111827;
-  color: #cbd5e1;
+  background: #FFFFFF;
+  color: #111111;
   cursor: pointer;
 }

@@ -1,9 +1,9 @@
 .createButton {
   height: 42px;
   border-radius: 999px;
-  border: 1px solid #f8fafc;
-  background: #f8fafc;
-  color: #020617;
+  border: 1px solid #111111;
+  background: #111111;
+  color: #FFFFFF;
   padding: 0 16px;
   display: inline-flex;
   align-items: center;
@@ -15,28 +15,28 @@
 
 .createButton:hover {
   transform: translateY(-1px);
-  filter: brightness(1.02);
+  filter: brightness(1.2);
 }
 
 .backButton {
   height: 34px;
   border-radius: 999px;
-  border: 1px solid #273244;
-  background: #0b1220;
-  color: #dbe7ff;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #111111;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   padding: 0 12px;
   margin-bottom: 8px;
   cursor: pointer;
-  transition: border-color 170ms ease, background-color 170ms ease,
-    transform 170ms ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  transition: border-color 170ms ease, background-color 170ms ease, transform 170ms ease;
 }
 
 .backButton:hover {
-  border-color: #3b82f6;
-  background: #111827;
+  border-color: #D4D4D8;
+  background: #F4F4F5;
   transform: translateX(-1px);
 }
 
@@ -49,7 +49,7 @@
 }
 
 .meta {
-  color: #94a3b8;
+  color: #71717A;
   font-size: 0.95rem;
 }
 
@@ -82,10 +82,11 @@
 .emptyState {
   min-height: 220px;
   border-radius: 14px;
-  border: 1px dashed #273244;
+  border: 1px dashed #D4D4D8;
+  background: #FAFAFA;
   display: grid;
   place-items: center;
-  color: #94a3b8;
+  color: #71717A;
   text-align: center;
   padding: 20px;
 }
@@ -93,7 +94,7 @@
 .emptyState p {
   margin: 0;
   font-size: 1.02rem;
-  color: #cbd5e1;
+  color: #111111;
 }
 
 .emptyState span {
@@ -165,7 +166,7 @@
   position: fixed;
   inset: 0;
   z-index: 145;
-  background: rgba(2, 6, 23, 0.6);
+  background: rgba(0, 0, 0, 0.4);
   display: grid;
   place-items: center;
   padding: 24px;
@@ -174,15 +175,15 @@
 .inlineModal {
   width: min(580px, 100%);
   border-radius: 18px;
-  border: 1px solid #263244;
-  background: #0b1220;
-  box-shadow: 0 24px 42px rgba(2, 6, 23, 0.62);
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
 }
 
 .inlineHeader {
   height: 62px;
   padding: 0 16px;
-  border-bottom: 1px solid #1f2937;
+  border-bottom: 1px solid #E5E5E5;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -191,19 +192,24 @@
 .inlineHeader h3 {
   margin: 0;
   font-size: 1.05rem;
-  color: #f8fafc;
+  color: #111111;
 }
 
 .iconButton {
   width: 32px;
   height: 32px;
   border-radius: 10px;
-  border: 1px solid #263244;
-  background: #111827;
-  color: #dbe7ff;
+  border: 1px solid transparent;
+  background: #F4F4F5;
+  color: #111111;
   display: inline-grid;
   place-items: center;
   cursor: pointer;
+  transition: background-color 150ms ease;
+}
+
+.iconButton:hover {
+  background: #EAEAEA;
 }
 
 .modalBody {
@@ -218,7 +224,7 @@
 }
 
 .modalField > span {
-  color: #cbd5e1;
+  color: #71717A;
   font-size: 0.95rem;
 }
 
@@ -226,13 +232,14 @@
 .modalField select,
 .modalField textarea {
   width: 100%;
-  border: 1px solid #263244;
+  border: 1px solid #E5E5E5;
   border-radius: 10px;
-  background: #0f172a;
-  color: #eff6ff;
+  background: #FAFAFA;
+  color: #111111;
   padding: 10px 11px;
   font: inherit;
   outline: none;
+  transition: border-color 150ms ease, background-color 150ms ease;
 }
 
 .modalField textarea {
@@ -242,7 +249,8 @@
 .modalField input:focus,
 .modalField select:focus,
 .modalField textarea:focus {
-  border-color: #3b82f6;
+  border-color: #111111;
+  background: #FFFFFF;
 }
 
 .previewGrid {
@@ -256,12 +264,12 @@
   height: 100px;
   object-fit: cover;
   border-radius: 10px;
-  border: 1px solid #263244;
+  border: 1px solid #E5E5E5;
 }
 
 .inlineFooter {
   height: 66px;
-  border-top: 1px solid #1f2937;
+  border-top: 1px solid #E5E5E5;
   padding: 0 16px;
   display: flex;
   align-items: center;
@@ -279,19 +287,28 @@
 }
 
 .cancelInline {
-  background: #111827;
-  border-color: #263244;
-  color: #cbd5e1;
+  background: #FFFFFF;
+  border-color: #E5E5E5;
+  color: #111111;
+}
+
+.cancelInline:hover {
+  background: #F4F4F5;
+  border-color: #D4D4D8;
 }
 
 .saveInline {
-  background: #2563eb;
-  border-color: #3b82f6;
-  color: #eff6ff;
+  background: #111111;
+  border-color: #111111;
+  color: #FFFFFF;
   display: inline-flex;
   align-items: center;
   gap: 6px;
   font-weight: 700;
+}
+
+.saveInline:hover {
+  filter: brightness(1.2);
 }
 
 @media (max-width: 1100px) {

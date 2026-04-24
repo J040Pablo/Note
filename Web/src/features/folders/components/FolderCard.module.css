@@ -1,16 +1,16 @@
 .card {
   border-radius: 18px;
   overflow: hidden;
-  border: 1px solid #1f2937;
-  background: #0f172a;
-  box-shadow: 0 10px 28px rgba(2, 6, 23, 0.32);
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .card:hover {
   transform: translateY(-2px);
-  border-color: #3b82f655;
-  box-shadow: 0 14px 32px rgba(2, 6, 23, 0.45);
+  border-color: #D4D4D8;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 .openButton {
@@ -25,7 +25,7 @@
 
 .banner {
   height: 138px;
-  background: #111827;
+  background: #F4F4F5;
   overflow: hidden;
 }
 
@@ -38,7 +38,7 @@
 .bannerFallback {
   width: 100%;
   height: 100%;
-  background: linear-gradient(145deg, #111827, #1f2937);
+  background: linear-gradient(145deg, #F4F4F5, #E5E5E5);
 }
 
 .content {
@@ -54,7 +54,7 @@
   width: 46px;
   height: 46px;
   border-radius: 14px;
-  border: 1px solid #2f3f58;
+  border: 1px solid #E5E5E5;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -68,13 +68,13 @@
 
 .textContent h3 {
   margin: 0;
-  color: #f8fafc;
+  color: #111111;
   font-size: 1.08rem;
 }
 
 .textContent p {
   margin: 5px 0 0;
-  color: #94a3b8;
+  color: #71717A;
   font-size: 0.95rem;
 }
 
@@ -83,10 +83,10 @@
   display: inline-flex;
   width: fit-content;
   text-transform: capitalize;
-  color: #93c5fd;
+  color: #71717A;
   font-size: 0.74rem;
-  border: 1px solid #1e3a8a;
-  background: #172554;
+  border: 1px solid #E5E5E5;
+  background: #F4F4F5;
   border-radius: 999px;
   padding: 2px 8px;
 }
@@ -97,7 +97,7 @@
   border-radius: 10px;
   border: 1px solid transparent;
   background: transparent;
-  color: #64748b;
+  color: #A1A1AA;
   display: inline-grid;
   place-items: center;
   cursor: pointer;
@@ -105,7 +105,7 @@
 }
 
 .menuButton:hover {
-  color: #f8fafc;
-  background: #111827;
-  border-color: #273244;
+  color: #111111;
+  background: #F4F4F5;
+  border-color: #D4D4D8;
 }

@@ -1,16 +1,16 @@
 .toolbar {
   position: absolute;
   height: 44px;
-  background-color: #0d0f14;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  background-color: #FFFFFF;
+  border: 1px solid #E5E5E5;
   border-radius: 22px;
   display: flex;
   align-items: center;
   padding: 0 12px;
   gap: 8px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   z-index: 10000;
-  color: white;
+  color: #111111;
   white-space: nowrap;
   animation: fadeIn 0.2s ease-out;
 }
@@ -30,24 +30,25 @@
 .magicIcon {
   width: 24px;
   height: 24px;
-  background: linear-gradient(135deg, #4ade80, #3b82f6);
+  background: #EAEAEA;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  color: #111111;
 }
 
 .magicText {
   font-size: 13px;
   font-weight: 500;
-  color: #fff;
+  color: #111111;
 }
 
 .divider {
   width: 1px;
   height: 24px;
-  background-color: rgba(255, 255, 255, 0.15);
+  background-color: rgba(0, 0, 0, 0.1);
 }
 
 .fontSelect {
@@ -57,7 +58,7 @@
   padding: 4px 12px;
   border-radius: 12px;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.05);
 }
 
 .fontSelect span {
@@ -70,14 +71,14 @@
   align-items: center;
   gap: 8px;
   padding: 4px 12px;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.05);
   border-radius: 12px;
 }
 
 .sizeControl button {
   background: transparent;
   border: none;
-  color: white;
+  color: #111111;
   font-size: 16px;
   cursor: pointer;
   padding: 4px;
@@ -99,7 +100,7 @@
 .toolBtn {
   background: transparent;
   border: none;
-  color: #8b92a5;
+  color: #71717A;
   padding: 6px;
   border-radius: 6px;
   cursor: pointer;
@@ -107,11 +108,11 @@
 }
 
 .toolBtn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
+  background: rgba(0, 0, 0, 0.05);
+  color: #111111;
 }
 
 .toolBtn.active {
-    color: #3b82f6;
-    background: rgba(59, 130, 246, 0.15);
+    color: #111111;
+    background: #EAEAEA;
 }

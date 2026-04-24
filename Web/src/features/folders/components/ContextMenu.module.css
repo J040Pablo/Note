@@ -8,9 +8,9 @@
   position: fixed;
   width: 220px;
   border-radius: 14px;
-  border: 1px solid #263244;
-  background: #0b1220;
-  box-shadow: 0 20px 36px rgba(2, 6, 23, 0.56);
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
   padding: 6px;
   display: grid;
   gap: 2px;
@@ -34,7 +34,7 @@
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: #dbe7ff;
+  color: #111111;
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -45,15 +45,15 @@
 }
 
 .item:hover {
-  background: #111827;
-  color: #f8fafc;
+  background: #F4F4F5;
+  color: #111111;
 }
 
 .danger {
-  color: #fca5a5;
+  color: #DC2626;
 }
 
 .danger:hover {
-  background: #3f1018;
-  color: #fecaca;
+  background: #FEE2E2;
+  color: #991B1B;
 }

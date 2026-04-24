@@ -46,7 +46,7 @@ const loadFolderEntries = (): FolderEntry[] => {
       type: "folder",
       name: typeof folder.name === "string" ? folder.name : "Untitled folder",
       description: typeof folder.description === "string" ? folder.description : "",
-      color: typeof folder.color === "string" ? folder.color : "#3b82f6",
+      color: typeof folder.color === "string" ? folder.color : "#111111",
       createdAt: typeof folder.createdAt === "number" ? folder.createdAt : Date.now(),
       imageUrl: typeof folder.imageUrl === "string" ? folder.imageUrl : undefined,
       bannerUrl: typeof folder.bannerUrl === "string" ? folder.bannerUrl : undefined,
@@ -61,7 +61,7 @@ const loadFolderEntries = (): FolderEntry[] => {
       // load real notes
       name: typeof note.title === "string" ? note.title : "Untitled note",
       description: typeof note.content === "string" ? note.content.slice(0, 120) : "",
-      color: "#f59e0b",
+      color: "#71717A",
       content: typeof note.content === "string" ? note.content : "",
       createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
     }));
@@ -74,7 +74,7 @@ const loadFolderEntries = (): FolderEntry[] => {
       type: "quick-note" as any,
       name: typeof note.title === "string" ? note.title : "Untitled quick note",
       description: typeof note.text === "string" ? note.text.slice(0, 120) : "",
-      color: "#f59e0b",
+      color: "#71717A",
       content: typeof note.content === "string" ? note.content : "",
       createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
     }));
@@ -146,7 +146,7 @@ const mapSyncFolderToEntry = (folder: SyncFolder): FolderEntry => ({
   type: "folder",
   name: folder.name,
   description: folder.description ?? "",
-  color: folder.color ?? "#3b82f6",
+  color: folder.color ?? "#111111",
   createdAt: folder.createdAt,
   imageUrl: folder.imageUrl,
   bannerUrl: folder.bannerUrl,
@@ -158,7 +158,7 @@ const mapSyncNoteToEntry = (note: SyncNote): FolderEntry => ({
   type: "note",
   name: note.title || "Untitled note",
   description: note.content.slice(0, 120),
-  color: "#f59e0b",
+  color: "#71717A",
   content: note.content,
   createdAt: note.createdAt,
 });
@@ -258,7 +258,7 @@ const FoldersPage: React.FC = () => {
   const [editorTitle, setEditorTitle] = React.useState("");
   const [editorBody, setEditorBody] = React.useState("");
   const [renameValue, setRenameValue] = React.useState("");
-  const [selectedColor, setSelectedColor] = React.useState("#3b82f6");
+  const [selectedColor, setSelectedColor] = React.useState("#111111");
   const [moveTarget, setMoveTarget] = React.useState<string | null>(null);
   const [uploadedImage, setUploadedImage] = React.useState<string | undefined>(undefined);
   const [uploadedBanner, setUploadedBanner] = React.useState<string | undefined>(undefined);

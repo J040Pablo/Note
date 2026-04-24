@@ -24,9 +24,9 @@
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  border: 1px dashed #334155;
+  border: 1px dashed #E5E5E5;
   background: transparent;
-  color: #94a3b8;
+  color: #A1A1AA;
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -34,9 +34,9 @@
 }
 
 .addBlockBtn:hover {
-  background: #1e293b;
-  border-color: #64748b;
-  color: #e2e8f0;
+  background: #F4F4F5;
+  border-color: #D4D4D8;
+  color: #111111;
 }
 
 .addBlockMenu {
@@ -54,9 +54,9 @@
 .addBlockMenuItem {
   height: 30px;
   border-radius: 8px;
-  border: 1px solid #1e293b;
-  background: #0f172a;
-  color: #94a3b8;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #71717A;
   padding: 0 10px;
   font-size: 0.82rem;
   font-weight: 600;
@@ -68,9 +68,9 @@
 }
 
 .addBlockMenuItem:hover {
-  background: #1e293b;
-  color: #e2e8f0;
-  border-color: #334155;
+  background: #F4F4F5;
+  color: #111111;
+  border-color: #D4D4D8;
 }
 
 /* ─── Block Wrapper ─────────────────────────────────── */
@@ -83,12 +83,12 @@
 }
 
 .blockWrapper:hover {
-  border-color: #1e293b;
+  border-color: #E5E5E5;
 }
 
 .blockWrapper:focus-within {
-  border-color: #334155;
-  background: rgba(15, 23, 42, 0.35);
+  border-color: #D4D4D8;
+  background: rgba(0, 0, 0, 0.02);
 }
 
 .blockToolbar {
@@ -111,9 +111,9 @@
   width: 26px;
   height: 26px;
   border-radius: 6px;
-  border: none;
-  background: #1e293b;
-  color: #94a3b8;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #A1A1AA;
   display: grid;
   place-items: center;
   cursor: pointer;
@@ -121,13 +121,14 @@
 }
 
 .blockToolbarBtn:hover {
-  background: #334155;
-  color: #e2e8f0;
+  background: #F4F4F5;
+  color: #111111;
 }
 
 .blockToolbarBtnDanger:hover {
-  background: #7f1d1d;
-  color: #fca5a5;
+  background: #FEE2E2;
+  color: #DC2626;
+  border-color: #FEE2E2;
 }
 
 /* ─── Text Block ────────────────────────────────────── */
@@ -137,7 +138,7 @@
   min-height: 36px;
   border: none;
   background: transparent;
-  color: #e2e8f0;
+  color: #111111;
   font-size: 1rem;
   line-height: 1.7;
   padding: 8px 12px;
@@ -148,7 +149,7 @@
 }
 
 .textBlock::placeholder {
-  color: #475569;
+  color: #A1A1AA;
 }
 
 /* ─── Code Block ────────────────────────────────────── */
@@ -167,9 +168,9 @@
 .codeBlockLang {
   height: 26px;
   border-radius: 6px;
-  border: 1px solid #1e293b;
-  background: #0c1322;
-  color: #94a3b8;
+  border: 1px solid #E5E5E5;
+  background: #FAFAFA;
+  color: #71717A;
   font-size: 0.78rem;
   padding: 0 8px;
   cursor: pointer;
@@ -178,9 +179,9 @@
 .codeBlockTextarea {
   width: 100%;
   min-height: 80px;
-  border: none;
-  background: #0a0e17;
-  color: #a5f3fc;
+  border: 1px solid #E5E5E5;
+  background: #FAFAFA;
+  color: #111111;
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", "SF Mono", Consolas, monospace;
   font-size: 0.88rem;
   line-height: 1.65;
@@ -192,7 +193,7 @@
 }
 
 .codeBlockTextarea::placeholder {
-  color: #334155;
+  color: #A1A1AA;
 }
 
 /* ─── Image Block ───────────────────────────────────── */
@@ -206,33 +207,33 @@
   max-height: 440px;
   border-radius: 10px;
   object-fit: contain;
-  background: #0a0e17;
-  border: 1px solid #1e293b;
+  background: #FAFAFA;
+  border: 1px solid #E5E5E5;
 }
 
 .imageBlockUpload {
   min-height: 100px;
   border-radius: 10px;
-  border: 2px dashed #1e293b;
+  border: 2px dashed #E5E5E5;
   display: grid;
   place-items: center;
-  color: #475569;
+  color: #A1A1AA;
   font-size: 0.9rem;
   cursor: pointer;
   transition: all 180ms;
 }
 
 .imageBlockUpload:hover {
-  border-color: #334155;
-  color: #94a3b8;
-  background: rgba(15, 23, 42, 0.3);
+  border-color: #D4D4D8;
+  color: #111111;
+  background: #FAFAFA;
 }
 
 .imageBlockCaption {
   width: 100%;
   border: none;
   background: transparent;
-  color: #94a3b8;
+  color: #71717A;
   font-size: 0.85rem;
   padding: 6px 4px;
   outline: none;
@@ -240,7 +241,7 @@
 }
 
 .imageBlockCaption::placeholder {
-  color: #334155;
+  color: #A1A1AA;
 }
 
 /* ─── Drawing Block ─────────────────────────────────── */
@@ -252,8 +253,8 @@
 .drawingCanvas {
   width: 100%;
   border-radius: 10px;
-  background: #0a0e17;
-  border: 1px solid #1e293b;
+  background: #FAFAFA;
+  border: 1px solid #E5E5E5;
   cursor: crosshair;
   touch-action: none;
 }
@@ -268,9 +269,9 @@
 .drawingToolBtn {
   height: 28px;
   border-radius: 6px;
-  border: 1px solid #1e293b;
-  background: #0f172a;
-  color: #94a3b8;
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  color: #71717A;
   padding: 0 10px;
   font-size: 0.78rem;
   font-weight: 600;
@@ -281,14 +282,14 @@
 }
 
 .drawingToolBtn:hover {
-  background: #1e293b;
-  color: #e2e8f0;
+  background: #F4F4F5;
+  color: #111111;
 }
 
 .drawingToolBtnActive {
-  background: #334155;
-  color: #f8fafc;
-  border-color: #475569;
+  background: #EAEAEA;
+  color: #111111;
+  border-color: #D4D4D8;
 }
 
 .drawingColorInput {

@@ -4,13 +4,13 @@
 }
 
 .richPreview {
-  border: 1px solid #1f2937;
+  border: 1px solid #E5E5E5;
   border-radius: 16px;
-  background: #0b1220;
-  color: #e2e8f0;
+  background: #FFFFFF;
+  color: #111111;
   padding: 18px 16px;
   min-height: 320px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .richPreview[contenteditable="true"] {
@@ -19,7 +19,7 @@
 
 .richPreview[contenteditable="true"]:empty::before {
   content: attr(data-placeholder);
-  color: #64748b;
+  color: #A1A1AA;
 }
 
 .richPreview :global(.quick-rich-block) + :global(.quick-rich-block) {
@@ -29,7 +29,7 @@
 .richPreview :global(p) {
   margin: 0;
   line-height: 1.75;
-  color: #e2e8f0;
+  color: #111111;
   word-break: break-word;
 }
 
@@ -48,7 +48,7 @@
 .richPreview :global(h3),
 .richPreview :global(h4) {
   margin: 0;
-  color: #f8fafc;
+  color: #111111;
   line-height: 1.2;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -69,17 +69,17 @@
 .richPreview :global(blockquote) {
   margin: 0;
   padding: 10px 14px;
-  border-left: 3px solid #3b82f6;
-  background: rgba(59, 130, 246, 0.08);
+  border-left: 3px solid #111111;
+  background: #F4F4F5;
   border-radius: 0 10px 10px 0;
-  color: #cbd5e1;
+  color: #71717A;
 }
 
 .richPreview :global(ul),
 .richPreview :global(ol) {
   margin: 0;
   padding-left: 22px;
-  color: #e2e8f0;
+  color: #111111;
 }
 
 .richPreview :global(li) {
@@ -90,40 +90,42 @@
 .richPreview :global(code) {
   padding: 0.15rem 0.35rem;
   border-radius: 0.4rem;
-  background: rgba(148, 163, 184, 0.12);
-  color: #f8fafc;
+  background: #F4F4F5;
+  color: #111111;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  border: 1px solid #E5E5E5;
 }
 
 .richPreview :global(pre) {
   margin: 0;
   padding: 14px;
   border-radius: 12px;
-  background: #111827;
-  color: #e5e7eb;
+  background: #FAFAFA;
+  border: 1px solid #E5E5E5;
+  color: #111111;
   overflow-x: auto;
   white-space: pre-wrap;
   word-break: break-word;
 }
 
 .richPreview :global(a) {
-  color: #60a5fa;
+  color: #111111;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .richPreview :global(hr) {
   border: 0;
-  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  border-top: 1px solid #E5E5E5;
   margin: 16px 0;
 }
 
 .sourceToggle {
   justify-self: start;
-  border: 1px solid #334155;
+  border: 1px solid #E5E5E5;
   border-radius: 10px;
-  background: #0f172a;
-  color: #e2e8f0;
+  background: #FFFFFF;
+  color: #111111;
   height: 36px;
   padding: 0 12px;
   cursor: pointer;
@@ -134,16 +136,16 @@
   min-height: 220px;
   resize: vertical;
   border-radius: 12px;
-  border: 1px solid #243142;
-  background: #0b1220;
-  color: #e2e8f0;
+  border: 1px solid #E5E5E5;
+  background: #FAFAFA;
+  color: #111111;
   padding: 12px;
   font: inherit;
   outline: none;
 }
 
 .hint {
-  color: #94a3b8;
+  color: #71717A;
   font-size: 0.82rem;
   line-height: 1.4;
 }

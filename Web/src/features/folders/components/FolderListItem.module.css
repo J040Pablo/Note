@@ -1,16 +1,16 @@
 .item {
   border-radius: 16px;
   overflow: hidden;
-  border: 1px solid #1f2937;
-  background: #0f172a;
-  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.28);
+  border: 1px solid #E5E5E5;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .item:hover {
   transform: translateY(-1px);
-  border-color: #3b82f655;
-  box-shadow: 0 16px 30px rgba(2, 6, 23, 0.35);
+  border-color: #D4D4D8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .openButton {
@@ -41,14 +41,14 @@
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 10px;
-  background: #0f172a;
+  background: #FFFFFF;
 }
 
 .avatar {
   width: 48px;
   height: 48px;
   border-radius: 14px;
-  border: 1px solid #2f3f58;
+  border: 1px solid #E5E5E5;
   overflow: hidden;
   display: grid;
   place-items: center;
@@ -62,13 +62,13 @@
 
 .textContent h3 {
   margin: 0;
-  color: #f8fafc;
+  color: #111111;
   font-size: 1.1rem;
 }
 
 .textContent p {
   margin: 4px 0 0;
-  color: #94a3b8;
+  color: #71717A;
 }
 
 .itemType {
@@ -76,10 +76,10 @@
   display: inline-flex;
   width: fit-content;
   text-transform: capitalize;
-  color: #93c5fd;
+  color: #71717A;
   font-size: 0.74rem;
-  border: 1px solid #1e3a8a;
-  background: #172554;
+  border: 1px solid #E5E5E5;
+  background: #F4F4F5;
   border-radius: 999px;
   padding: 2px 8px;
 }
@@ -90,7 +90,7 @@
   border-radius: 10px;
   border: 1px solid transparent;
   background: transparent;
-  color: #64748b;
+  color: #A1A1AA;
   display: inline-grid;
   place-items: center;
   cursor: pointer;
@@ -98,7 +98,7 @@
 }
 
 .menuButton:hover {
-  color: #f8fafc;
-  background: #111827;
-  border-color: #273244;
+  color: #111111;
+  background: #F4F4F5;
+  border-color: #D4D4D8;
 }

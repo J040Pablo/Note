@@ -22,24 +22,24 @@
 .actionButton {
   min-width: 172px;
   height: 40px;
-  border: 1px solid #263244;
+  border: 1px solid #E5E5E5;
   border-radius: 12px;
-  background: #0b1220;
-  color: #dbe7ff;
+  background: #FFFFFF;
+  color: #111111;
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
   padding: 0 12px;
-  box-shadow: 0 8px 22px rgba(2, 6, 23, 0.45);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   cursor: pointer;
   pointer-events: auto;
   transition: border-color 170ms ease, background-color 170ms ease, transform 170ms ease;
 }
 
 .actionButton:hover {
-  border-color: #3b82f6;
-  background: #111827;
+  border-color: #D4D4D8;
+  background: #F4F4F5;
   transform: translateY(-1px);
 }
 

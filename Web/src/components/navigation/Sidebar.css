@@ -1,8 +1,8 @@
 .sidebar {
   width: 240px;
   min-height: 100vh;
-  background: #1f2937;
-  color: #ffffff;
+  background: #F9F9F9;
+  color: #111111;
   padding: 1rem;
   box-sizing: border-box;
 }
@@ -22,10 +22,10 @@
 }
 
 .sidebar__menu a {
-  color: #e5e7eb;
+  color: #71717A;
   text-decoration: none;
 }
 
 .sidebar__menu a:hover {
-  color: #ffffff;
+  color: #111111;
 }

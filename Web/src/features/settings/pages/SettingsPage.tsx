@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import PageContainer from "../../../components/ui/PageContainer";
 import { useAppMode } from "../../../app/mode";
 import { disconnectTaskSync } from "../../tasks/sync";
+import styles from "./SettingsPage.module.css";
 
 const SettingsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -20,23 +21,15 @@ const SettingsPage: React.FC = () => {
 
   return (
     <PageContainer title="Settings" subtitle="Account and app session">
-      <div style={{ maxWidth: 520 }}>
-        <p style={{ color: "#94a3b8", marginTop: 0 }}>
+      <div className={styles.container}>
+        <p className={styles.description}>
           Saia da sessao atual para voltar para a tela de entrada.
         </p>
 
         <button
           type="button"
           onClick={handleLogout}
-          style={{
-            border: "none",
-            borderRadius: 10,
-            padding: "0.7rem 1rem",
-            background: "#ef4444",
-            color: "#ffffff",
-            fontWeight: 600,
-            cursor: "pointer",
-          }}
+          className={styles.logoutButton}
         >
           Sair
         </button>

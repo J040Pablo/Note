@@ -1,7 +1,7 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(2, 6, 23, 0.64);
+  background: rgba(0, 0, 0, 0.4);
   display: grid;
   place-items: center;
   z-index: 120;
@@ -12,15 +12,15 @@
   width: min(760px, 100%);
   max-height: calc(100vh - 56px);
   overflow: auto;
-  background: #0f172a;
-  border: 1px solid #263244;
+  background: #FFFFFF;
+  border: 1px solid #E5E5E5;
   border-radius: 20px;
-  box-shadow: 0 28px 48px rgba(2, 6, 23, 0.58);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
 }
 
 .header {
   padding: 18px 20px 14px;
-  border-bottom: 1px solid #1f2a3a;
+  border-bottom: 1px solid #E5E5E5;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -30,21 +30,21 @@
 .header h2 {
   margin: 0;
   font-size: 1.6rem;
-  color: #f8fafc;
+  color: #111111;
 }
 
 .header p {
   margin: 6px 0 0;
-  color: #94a3b8;
+  color: #71717A;
 }
 
 .closeButton {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  border: 1px solid #2a3a52;
-  background: #111827;
-  color: #cbd5e1;
+  border: 1px solid transparent;
+  background: #F4F4F5;
+  color: #111111;
   cursor: pointer;
 }
 
@@ -60,16 +60,16 @@
 }
 
 .field span {
-  color: #cbd5e1;
+  color: #71717A;
 }
 
 .field input,
 .field textarea {
   width: 100%;
-  border: 1px solid #263244;
+  border: 1px solid #E5E5E5;
   border-radius: 12px;
-  background: #0b1220;
-  color: #f8fafc;
+  background: #FAFAFA;
+  color: #111111;
   font: inherit;
   padding: 11px 12px;
   outline: none;
@@ -81,7 +81,7 @@
 
 .field input:focus,
 .field textarea:focus {
-  border-color: #3b82f6;
+  border-color: #111111;
 }
 
 .uploadGrid {
@@ -96,7 +96,7 @@
 }
 
 .uploadField > span {
-  color: #cbd5e1;
+  color: #71717A;
 }
 
 .uploadField input {
@@ -106,9 +106,9 @@
 .uploadButton {
   height: 38px;
   border-radius: 10px;
-  border: 1px dashed #334155;
-  background: #111827;
-  color: #cbd5e1;
+  border: 1px dashed #E5E5E5;
+  background: #FAFAFA;
+  color: #71717A;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -120,7 +120,7 @@
 .previewBanner {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid #263244;
+  border: 1px solid #E5E5E5;
   object-fit: cover;
 }
 
@@ -138,7 +138,7 @@
 }
 
 .colorSection > span {
-  color: #cbd5e1;
+  color: #71717A;
 }
 
 .colorRow {
@@ -151,13 +151,13 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 2px solid #0f172a;
-  box-shadow: 0 0 0 1px #334155;
+  border: 2px solid #FFFFFF;
+  box-shadow: 0 0 0 1px #E5E5E5;
   cursor: pointer;
 }
 
 .colorSwatchSelected {
-  box-shadow: 0 0 0 2px #f8fafc;
+  box-shadow: 0 0 0 2px #111111;
 }
 
 .wheelPicker {
@@ -165,11 +165,11 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #cbd5e1;
+  color: #111111;
   padding: 8px 10px;
   border-radius: 10px;
-  border: 1px solid #2a3a52;
-  background: #111827;
+  border: 1px solid #E5E5E5;
+  background: #FAFAFA;
 }
 
 .wheelPicker input {
@@ -184,25 +184,25 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #94a3b8;
+  color: #71717A;
 }
 
 .previewDot {
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  border: 1px solid #f8fafc40;
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .error {
   margin: 0;
-  color: #fca5a5;
+  color: #DC2626;
   font-weight: 600;
 }
 
 .footer {
   padding: 14px 20px 18px;
-  border-top: 1px solid #1f2a3a;
+  border-top: 1px solid #E5E5E5;
   display: flex;
   justify-content: flex-end;
   gap: 10px;
@@ -219,15 +219,15 @@
 }
 
 .cancelButton {
-  border-color: #2a3a52;
-  background: #111827;
-  color: #cbd5e1;
+  border-color: #E5E5E5;
+  background: #FFFFFF;
+  color: #111111;
 }
 
 .createButton {
-  border-color: #3b82f6;
-  background: #2563eb;
-  color: #eff6ff;
+  border-color: #111111;
+  background: #111111;
+  color: #FFFFFF;
 }
 
 @media (max-width: 860px) {

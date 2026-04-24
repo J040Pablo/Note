@@ -1,230 +1,302 @@
 .grid {
-  display: grid;
-  gap: 18px;
-  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  width: 100%;
+  padding: 8px 0 40px;
 }
 
-.card {
-  background: #0f172a;
-  border: 1px solid #1f2937;
-  border-radius: 18px;
-  padding: 16px;
-  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.35);
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.cardHeader {
+.sectionHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
 }
 
-.cardHeader h2 {
+.sectionTitle {
   margin: 0;
-  color: #f8fafc;
-  font-size: 1.15rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #111111;
   letter-spacing: -0.02em;
 }
 
-.badge {
-  font-size: 12px;
-  border-radius: 999px;
-  padding: 4px 8px;
-  color: #0f172a;
-  background: #93c5fd;
-  font-weight: 700;
+.viewAll {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111111;
+  text-decoration: none;
+  opacity: 0.7;
+  transition: opacity 160ms;
 }
 
-.muted {
-  margin: 0;
-  color: #94a3b8;
+.viewAll:hover {
+  opacity: 1;
 }
 
-.pinnedGrid {
+/* Quick Access */
+.quickGrid {
   display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
 }
 
-.pinnedCard {
-  border: 1px solid #243142;
-  border-radius: 12px;
-  background: #0b1220;
+.quickCard {
+  background: #FFFFFF;
+  border: 1px solid #E5E5E5;
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
   text-align: left;
-  padding: 10px;
-  color: #e2e8f0;
   cursor: pointer;
-  transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-.pinnedCard:hover {
-  transform: translateY(-1px);
-  border-color: #3b82f6;
-  background: #0f172a;
+.quickCard:hover {
+  transform: translateY(-2px);
+  border-color: #111111;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-.pinnedTopRow {
+.quickCardTop {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.pinnedTitle {
-  margin: 10px 0 4px;
-  font-weight: 700;
+.quickIcon {
+  width: 40px;
+  height: 40px;
+  background: #F4F4F5;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  color: #111111;
 }
 
-.pinnedSubtitle {
+.pinButton {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  color: #A1A1AA;
+  cursor: pointer;
+  transition: color 160ms;
+}
+
+.pinActive {
+  color: #111111;
+}
+
+.quickCardTitle {
   margin: 0;
-  color: #94a3b8;
-  font-size: 13px;
-  line-height: 1.35;
-}
-
-.progressMeta {
-  margin-bottom: 8px;
-  color: #94a3b8;
-  font-size: 13px;
-}
-
-.progressTrack {
-  height: 8px;
-  width: 100%;
-  border-radius: 999px;
-  background: #1e293b;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111111;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quickCardSubtitle {
+  margin: 4px 0 0;
+  font-size: 0.8rem;
+  color: #71717A;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* My Folders */
+.folderGrid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.folderCard {
+  background: #FFFFFF;
+  border: 1px solid #E5E5E5;
+  border-radius: 12px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+  transition: border-color 160ms, background-color 160ms;
+}
+
+.folderCard:hover {
+  border-color: #111111;
+  background: #F4F4F5;
+}
+
+.folderIcon {
+  color: #111111;
+  opacity: 0.7;
+}
+
+.folderInfo {
+  display: flex;
+  flex-direction: column;
+}
+
+.folderName {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #111111;
+}
+
+.folderNotes {
+  font-size: 0.75rem;
+  color: #71717A;
+}
+
+/* Task Overview */
+.taskStatsGrid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+.statCard {
+  background: #FFFFFF;
+  border: 1px solid #E5E5E5;
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.statLabel {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #71717A;
+  margin-bottom: 8px;
+}
+
+.statValueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
   margin-bottom: 12px;
 }
 
-.progressFill {
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, #3b82f6, #22d3ee);
-  transition: width 180ms ease;
+.statValue {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #111111;
 }
 
-.list {
-  display: grid;
-  gap: 8px;
+.statTotal {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #A1A1AA;
 }
 
-.listItem,
-.listItemStatic {
-  border-radius: 12px;
-  padding: 10px;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 10px;
-  text-align: left;
-}
-
-.listItem {
-  border: 1px solid #243142;
-  background: #0b1220;
-  color: #e2e8f0;
-  cursor: pointer;
-  transition: border-color 160ms ease, transform 160ms ease;
-}
-
-.listItem:hover {
-  border-color: #334155;
-  transform: translateY(-1px);
-}
-
-.listItemStatic {
-  border: 1px solid #1f2a3a;
-  background: #0b1220;
-}
-
-.noteItem {
-  align-items: flex-start;
-}
-
-.noteTitle,
-.folderName {
-  margin: 0;
-  color: #f8fafc;
-  font-size: 15px;
-  font-weight: 700;
-}
-
-.notePreview,
-.folderMeta {
+.statSubtitle {
   margin: 4px 0 0;
-  color: #94a3b8;
-  font-size: 13px;
-  line-height: 1.35;
+  font-size: 0.8rem;
+  color: #A1A1AA;
+}
+
+.miniProgress {
+  height: 6px;
+  background: #F4F4F5;
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.miniProgressFill {
+  height: 100%;
+  background: #111111;
+  border-radius: inherit;
+  transition: width 200ms;
+}
+
+/* Today Tasks */
+.todayCard {
+  background: #FFFFFF;
+  border: 1px solid #E5E5E5;
+  border-radius: 16px;
+  padding: 16px;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.emptyTasks {
+  margin: auto;
+  color: #A1A1AA;
+  font-size: 0.9rem;
+}
+
+.taskList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.taskItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px;
 }
 
 .checkbox {
   width: 20px;
   height: 20px;
-  border: 1px solid #475569;
+  border: 2px solid #E5E5E5;
   border-radius: 6px;
+  background: transparent;
   display: grid;
   place-items: center;
-  font-size: 12px;
-  color: #0f172a;
-  background: #e2e8f0;
+  cursor: pointer;
+  color: #FFFFFF;
+  transition: background-color 160ms, border-color 160ms;
+}
+
+.checked {
+  background: #111111;
+  border-color: #111111;
+}
+
+.taskText {
+  font-size: 0.95rem;
+  color: #111111;
 }
 
 .taskDone {
   text-decoration: line-through;
-  color: #94a3b8;
+  color: #A1A1AA;
 }
 
-.pinAction {
-  opacity: 0.9;
-  cursor: pointer;
-  transition: transform 140ms ease;
+.emptyCard {
+  background: #FFFFFF;
+  border: 1px solid #E5E5E5;
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+  color: #A1A1AA;
 }
 
-.pinAction:hover {
-  transform: scale(1.08);
-}
-
-.quickNoteWrap {
-  display: grid;
-  gap: 10px;
-}
-
-.quickNoteInput {
-  width: 100%;
-  min-height: 110px;
-  resize: vertical;
-  border-radius: 12px;
-  border: 1px solid #243142;
-  background: #0b1220;
-  color: #e2e8f0;
-  padding: 12px;
-  font: inherit;
-  outline: none;
-}
-
-.quickNoteInput:focus {
-  border-color: #3b82f6;
-}
-
-.primaryButton {
-  height: 40px;
-  border-radius: 10px;
-  border: 1px solid #2563eb;
-  background: #1d4ed8;
-  color: #eff6ff;
-  font-weight: 700;
-  cursor: pointer;
-  transition: filter 160ms ease, transform 160ms ease;
-}
-
-.primaryButton:hover {
-  filter: brightness(1.06);
-  transform: translateY(-1px);
-}
-
-@media (max-width: 1120px) {
+@media (max-width: 768px) {
   .grid {
+    gap: 24px;
+  }
+  .taskStatsGrid {
     grid-template-columns: 1fr;
   }
 }
