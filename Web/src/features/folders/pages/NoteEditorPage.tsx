@@ -163,6 +163,11 @@ const NoteEditorPage: React.FC = () => {
   React.useEffect(() => {
     if (!isMobileSync || !note) return;
     const unsub = subscribeSyncBridge((event) => {
+      if (event.type === "NOTE_DELETE" && event.id === note.id) {
+        navigate(-1);
+        return;
+      }
+
       if (event.type !== "NOTE_UPSERT" || event.note.id !== note.id) return;
 
       const incoming = event.note;

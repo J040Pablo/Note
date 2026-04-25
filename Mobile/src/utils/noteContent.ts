@@ -197,10 +197,18 @@ export const parseCanvasNoteContent = (content: string): CanvasNoteDocument => {
         const pageHeight = (parsed as { pageHeight?: number }).pageHeight ?? base.pageHeight;
         const ensuredPages = pages.length ? pages : [createCanvasPage(pageWidth, pageHeight)];
         const firstPageId = ensuredPages[0].id;
-        const normalizedElements = rawElements.map((el) => ({
-          ...el,
-          pageId: (el as unknown as { pageId?: ID }).pageId ?? firstPageId
-        }));
+        const normalizedElements = [...rawElements]
+          .sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0))
+          .map((el, i) => ({
+            ...el,
+            zIndex: i + 1, // Safe incremental zIndex
+            pageId: (el as any).pageId ?? firstPageId,
+            rotation: Number(el.rotation) || 0,
+            x: Number(el.x) || 0,
+            y: Number(el.y) || 0,
+            width: Number(el.width) || 120,
+            height: Number(el.height) || 40
+          }));
 
         return {
           ...merged,

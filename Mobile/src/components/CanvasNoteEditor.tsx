@@ -576,7 +576,7 @@ const CanvasElementView = memo(
       >
         <Pressable
           onPress={handleElementPress}
-          onPressIn={element.type === "text" ? undefined : handlePressIn}
+          onPressIn={handlePressIn}
           pointerEvents="auto"
           style={StyleSheet.absoluteFillObject}
         >
@@ -951,8 +951,17 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     const targetHeight = Math.max(220, viewportH - 32);
     const fitScale = clamp(Math.min(targetWidth / pageW, targetHeight / pageH) * 0.98, 0.2, 2.5);
 
-    setDoc({ ...normalizedIncoming, zoom: 1, offsetX: 0, offsetY: 0 });
-    setZoom(1);
+    const isSameDoc = docRef.current?.id === normalizedIncoming.id;
+    
+    setDoc((prev) => ({
+      ...normalizedIncoming,
+      // If same doc, keep zoom and offsets
+      zoom: isSameDoc ? prev.zoom : 1,
+      offsetX: isSameDoc ? prev.offsetX : 0,
+      offsetY: isSameDoc ? prev.offsetY : 0
+    }));
+
+    if (!isSameDoc) setZoom(1);
     setCanvasPosition((prev) => {
       if (viewportW <= 0 || viewportH <= 0) return prev;
       const center = getCenteredCanvasPosition(viewportW, viewportH, pageW, pageH, fitScale);
@@ -1800,6 +1809,10 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         onMoveShouldSetPanResponderCapture: (evt, gs) => {
           if (isDraggingPageRef.current || overviewMode) return false;
           if (textInteractionMode === "editing") return false;
+          
+          // If we are touching an element, the capture should be TRUE to handle the drag
+          if (elementInteractionRef.current) return true;
+
           const touches = evt.nativeEvent.touches?.length ?? 0;
           if (touches >= 2) return true;
           if (drawingMode) return false;

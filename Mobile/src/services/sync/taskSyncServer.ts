@@ -1004,6 +1004,10 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
         return;
       }
 
+      if (incomingId) {
+        rememberProcessedMessage(incomingId);
+      }
+
       try {
         await handleIncomingMessage(socket, incoming);
         const appliedAt = Date.now();
@@ -1019,7 +1023,6 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
           status: "persisted",
         });
         if (incomingId) {
-          rememberProcessedMessage(incomingId);
           sendAck(socket, incomingId, receivedAt, appliedAt, "OK");
         }
       } catch (error) {

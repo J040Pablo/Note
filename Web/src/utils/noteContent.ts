@@ -145,7 +145,7 @@ export const createEmptyCanvasNote = (): CanvasNoteDocument => ({
   elements: []
 });
 
-export const createCanvasTextElement = (text = "New text", x = 100, y = 100, pageId: ID): CanvasTextElement => ({
+export const createCanvasTextElement = (text = "New text", x = 100, y = 100, pageId: ID, zIndex = 1): CanvasTextElement => ({
   id: makeId(),
   type: "text",
   pageId,
@@ -154,12 +154,12 @@ export const createCanvasTextElement = (text = "New text", x = 100, y = 100, pag
   width: 250,
   height: 60,
   rotation: 0,
-  zIndex: Date.now(),
+  zIndex,
   text,
   style: { fontSize: 16 }
 });
 
-export const createCanvasImageElement = (uri: string, x = 100, y = 100, pageId: ID): CanvasImageElement => ({
+export const createCanvasImageElement = (uri: string, x = 100, y = 100, pageId: ID, zIndex = 1): CanvasImageElement => ({
   id: makeId(),
   type: "image",
   pageId,
@@ -168,11 +168,11 @@ export const createCanvasImageElement = (uri: string, x = 100, y = 100, pageId: 
   width: 300,
   height: 200,
   rotation: 0,
-  zIndex: Date.now(),
+  zIndex,
   uri
 });
 
-export const createCanvasDrawingElement = (x = 100, y = 100, pageId: ID): CanvasDrawingElement => ({
+export const createCanvasDrawingElement = (x = 100, y = 100, pageId: ID, zIndex = 1): CanvasDrawingElement => ({
   id: makeId(),
   type: "drawing",
   pageId,
@@ -181,13 +181,13 @@ export const createCanvasDrawingElement = (x = 100, y = 100, pageId: ID): Canvas
   width: 300,
   height: 300,
   rotation: 0,
-  zIndex: Date.now(),
+  zIndex,
   color: "#e2e8f0",
   strokeWidth: 4,
   strokes: []
 });
 
-export const createCanvasShapeElement = (shape: CanvasShapeType, color = "#e2e8f0", x = 100, y = 100, pageId: ID): CanvasShapeElement => ({
+export const createCanvasShapeElement = (shape: CanvasShapeType, color = "#e2e8f0", x = 100, y = 100, pageId: ID, zIndex = 1): CanvasShapeElement => ({
   id: makeId(),
   type: "shape",
   pageId,
@@ -196,13 +196,13 @@ export const createCanvasShapeElement = (shape: CanvasShapeType, color = "#e2e8f
   width: 150,
   height: 150,
   rotation: 0,
-  zIndex: Date.now(),
+  zIndex,
   shape,
   color,
   strokeWidth: 4
 });
 
-export const createCanvasCodeElement = (code = "", x = 100, y = 100, pageId: ID): CanvasCodeElement => ({
+export const createCanvasCodeElement = (code = "", x = 100, y = 100, pageId: ID, zIndex = 1): CanvasCodeElement => ({
   id: makeId(),
   type: "code",
   pageId,
@@ -211,7 +211,7 @@ export const createCanvasCodeElement = (code = "", x = 100, y = 100, pageId: ID)
   width: 400,
   height: 200,
   rotation: 0,
-  zIndex: Date.now(),
+  zIndex,
   code,
   language: "javascript"
 });

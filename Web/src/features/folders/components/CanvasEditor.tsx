@@ -219,6 +219,22 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     return () => window.removeEventListener("resize", centerCanvas);
   }, [centerCanvas]);
 
+  // --- Live Sync Refresh ---
+  const lastAcknowledgedDocRef = useRef(initialDocument);
+
+  useEffect(() => {
+    // If the input prop hasn't changed since we last acknowledged it, do nothing.
+    if (initialDocument === lastAcknowledgedDocRef.current) return;
+    
+    // Safety: ignore external updates if we have unsaved local changes 
+    // or are in the middle of a gesture.
+    const isDirty = localDocRef.current !== lastAcknowledgedDocRef.current;
+    if (isDirty || isPanning || currentStrokeRef.current) return;
+
+    lastAcknowledgedDocRef.current = initialDocument;
+    setLocalDoc(initialDocument);
+  }, [initialDocument, isPanning]);
+
   // --- Pan & Zoom Engine ---
   useEffect(() => {
     const viewport = viewportRef.current;
@@ -304,12 +320,13 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     const el = localDoc.elements.find(e => e.id === id);
     if (!el) return;
     
+    const maxZ = localDoc.elements.reduce((acc, current) => Math.max(acc, current.zIndex || 0), 0);
     const newEl = {
       ...JSON.parse(JSON.stringify(el)),
       id: makeId(),
       x: el.x + 20,
       y: el.y + 20,
-      zIndex: Date.now()
+      zIndex: maxZ + 1
     };
     
     pushUndo();
@@ -325,10 +342,11 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     const pageId = currentPage.id;
     const centerX = currentPage.width / 2 - 125;
     const centerY = currentPage.height / 2 - 30;
+    const maxZ = localDoc.elements.reduce((acc, current) => Math.max(acc, current.zIndex || 0), 0);
     
     let newEl: CanvasElement;
-    if (type === "text") newEl = createCanvasTextElement("New Text", centerX, centerY, pageId);
-    else if (type === "shape") newEl = createCanvasShapeElement("rectangle", "#e2e8f0", centerX, centerY, pageId);
+    if (type === "text") newEl = createCanvasTextElement("New Text", centerX, centerY, pageId, maxZ + 1);
+    else if (type === "shape") newEl = createCanvasShapeElement("rectangle", "#e2e8f0", centerX, centerY, pageId, maxZ + 1);
     else {
       fileInputRef.current?.click();
       return;
@@ -353,7 +371,8 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
         const w = img.width > maxWidth ? maxWidth : img.width;
         const h = img.width > maxWidth ? maxWidth / ratio : img.height;
 
-        const newImg = createCanvasImageElement(base64, currentPage.width / 2 - w/2, currentPage.height / 2 - h/2, currentPage.id);
+        const maxZ = localDoc.elements.reduce((acc, current) => Math.max(acc, current.zIndex || 0), 0);
+        const newImg = createCanvasImageElement(base64, currentPage.width / 2 - w/2, currentPage.height / 2 - h/2, currentPage.id, maxZ + 1);
         newImg.width = w;
         newImg.height = h;
 
