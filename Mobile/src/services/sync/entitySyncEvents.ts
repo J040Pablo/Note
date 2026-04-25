@@ -32,7 +32,7 @@ type SyncQuickNote = {
   updatedAt: number;
 };
 
-export type EntityServerEvent =
+export type EntityServerEvent = (
   | { type: "UPSERT_FOLDER"; payload: SyncFolder }
   | { type: "DELETE_FOLDER"; payload: { id: string; updatedAt: number } }
   | { type: "UPSERT_NOTE"; payload: SyncNote }
@@ -42,7 +42,8 @@ export type EntityServerEvent =
   | { type: "UPSERT_TASK"; payload: SyncTask }
   | { type: "DELETE_TASK"; payload: { id: string; updatedAt: number } }
   | { type: "UPSERT_APP_META"; payload: { key: string; value: string; updatedAt: number } }
-  | { type: "DELETE_APP_META"; payload: { key: string; updatedAt: number } };
+  | { type: "DELETE_APP_META"; payload: { key: string; updatedAt: number } }
+) & { origin?: string };
 
 type EntityServerListener = (event: EntityServerEvent) => void;
 

@@ -1,10 +1,11 @@
 import type { SyncTask } from "@services/sync/taskSyncProtocol";
 import { log, warn, error as logError } from '@utils/logger';
 
-export type TaskServerEvent =
+export type TaskServerEvent = (
   | { type: "TASK_CREATED"; payload: SyncTask }
   | { type: "TASK_UPDATED"; payload: SyncTask }
-  | { type: "TASK_DELETED"; payload: { id: string; updatedAt: number } };
+  | { type: "TASK_DELETED"; payload: { id: string; updatedAt: number } }
+) & { origin?: string };
 
 type TaskServerListener = (event: TaskServerEvent) => void;
 

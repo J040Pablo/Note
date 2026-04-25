@@ -112,3 +112,50 @@ export const validateImagePath = async (uri: string | null): Promise<string | nu
   const exists = await imageExists(uri);
   return exists ? uri : null;
 };
+
+export const uriToBase64 = async (uri: string): Promise<string | null> => {
+  try {
+    if (!uri) return null;
+    const exists = await imageExists(uri);
+    if (!exists) return null;
+    
+    // Read file as base64
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    
+    const extension = extensionOf(uri);
+    const mimeType = extension === "png" ? "image/png" : "image/jpeg";
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    console.error("[image] base64 conversion failed", error);
+    return null;
+  }
+};
+
+export const saveBase64Image = async (base64Data: string, prefix = "sync"): Promise<string | null> => {
+  try {
+    if (!base64Data || !base64Data.startsWith("data:image/")) return null;
+    
+    await ensureMediaDir();
+    
+    const parts = base64Data.split(",");
+    if (parts.length !== 2) return null;
+    const mimeMatch = parts[0].match(/data:(image\/\w+);base64/);
+    const extension = mimeMatch?.[1] === "image/png" ? "png" : "jpg";
+    const base64 = parts[1];
+    
+    const timestamp = Date.now();
+    const random = Math.floor(Math.random() * 10000);
+    const destination = `${MEDIA_DIR}${prefix}-${timestamp}-${random}.${extension}`;
+    
+    await FileSystem.writeAsStringAsync(destination, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    
+    return destination;
+  } catch (error) {
+    console.error("[image] base64 save failed", error);
+    return null;
+  }
+};

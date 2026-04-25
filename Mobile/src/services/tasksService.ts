@@ -113,25 +113,29 @@ const syncWidgetHeatmap = async (): Promise<void> => {
   }
 };
 
-export const createTask = async (payload: {
-  id?: ID;
-  text: string;
-  priority?: TaskPriority;
-  noteId?: ID | null;
-  parentId?: ID | null;
-  scheduledDate?: string | null;
-  scheduledTime?: string | null;
-  repeatDays?: number[];
-  repeat?: TaskRecurrence;
-  tags?: string[];
-  reminders?: TaskReminderType[];
-}): Promise<Task> => {
+export const createTask = async (
+  payload: {
+    id?: ID;
+    text: string;
+    priority?: TaskPriority;
+    noteId?: ID | null;
+    parentId?: ID | null;
+    scheduledDate?: string | null;
+    scheduledTime?: string | null;
+    repeatDays?: number[];
+    repeat?: TaskRecurrence;
+    tags?: string[];
+    reminders?: TaskReminderType[];
+    updatedAt?: number;
+  },
+  origin?: string
+): Promise<Task> => {
   const taskText = (payload.text ?? "").trim();
   if (!taskText) throw new Error("Task text cannot be empty");
 
   const task = await withDbWriteTransaction("createTask", async (db) => {
     const id = payload.id ?? uuid();
-    const updatedAt = Date.now();
+    const updatedAt = Number(payload.updatedAt ?? Date.now());
     const repeatDays = payload.repeatDays ?? [];
     const repeat = payload.repeat;
     const tags = normalizeTags(payload.tags ?? []);
@@ -173,17 +177,17 @@ export const createTask = async (payload: {
   if (notificationIds.length > 0) {
     const finalTask = { ...task, notificationIds };
     await runDbWrite("UPDATE tasks SET notificationIds = ? WHERE id = ?", JSON.stringify(notificationIds), task.id);
-    emitTaskServerEvent({ type: "TASK_CREATED", payload: toSyncTask(finalTask) });
+    emitTaskServerEvent({ type: "TASK_CREATED", payload: toSyncTask(finalTask), origin });
     void syncWidgetHeatmap();
     return finalTask;
   }
 
-  emitTaskServerEvent({ type: "TASK_CREATED", payload: toSyncTask(task) });
+  emitTaskServerEvent({ type: "TASK_CREATED", payload: toSyncTask(task), origin });
   void syncWidgetHeatmap();
   return task;
 };
 
-export const toggleTask = async (task: Task): Promise<Task> => {
+export const toggleTask = async (task: Task, origin?: string): Promise<Task> => {
   const updated = { ...task, completed: !task.completed, updatedAt: Date.now() };
 
   // Always sync notifications on toggle to ensure they are removed when completed or added when recurring/restored
@@ -198,12 +202,12 @@ export const toggleTask = async (task: Task): Promise<Task> => {
     task.id
   );
 
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated) });
+  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated), origin });
   void syncWidgetHeatmap();
   return updated;
 };
 
-export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Task> => {
+export const toggleTaskForDate = async (task: Task, dateKey: string, origin?: string): Promise<Task> => {
   const isRecurring = (task.repeatDays ?? []).length > 0;
   if (!isRecurring && !task.scheduledDate) return toggleTask(task);
 
@@ -230,12 +234,12 @@ export const toggleTaskForDate = async (task: Task, dateKey: string): Promise<Ta
     task.id
   );
 
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated) });
+  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updated), origin });
   void syncWidgetHeatmap();
   return updated;
 };
 
-export const updateTask = async (task: Task): Promise<Task> => {
+export const updateTask = async (task: Task, origin?: string): Promise<Task> => {
   const normalizedReminders = normalizeReminders(task.reminders ?? []);
   const normalizedTags = normalizeTags(task.tags ?? []);
   
@@ -259,15 +263,15 @@ export const updateTask = async (task: Task): Promise<Task> => {
     updatedTask.text, updatedTask.completed ? 1 : 0, updatedTask.updatedAt, updatedTask.orderIndex, updatedTask.priority, updatedTask.noteId, updatedTask.scheduledDate, updatedTask.scheduledTime, JSON.stringify(updatedTask.repeatDays), JSON.stringify(updatedTask.completedDates), JSON.stringify(updatedTask.reminders), JSON.stringify(updatedTask.notificationIds), updatedTask.repeat ? JSON.stringify(updatedTask.repeat) : null, JSON.stringify(updatedTask.tags), updatedTask.id
   );
 
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updatedTask) });
+  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(updatedTask), origin });
   void syncWidgetHeatmap();
   return updatedTask;
 };
 
-export const deleteTask = async (taskId: ID): Promise<void> => {
+export const deleteTask = async (taskId: ID, origin?: string): Promise<void> => {
   await cancelTaskNotifications(String(taskId));
   await runDbWrite("DELETE FROM tasks WHERE id = ?", taskId);
-  emitTaskServerEvent({ type: "TASK_DELETED", payload: { id: String(taskId), updatedAt: Date.now() } });
+  emitTaskServerEvent({ type: "TASK_DELETED", payload: { id: String(taskId), updatedAt: Date.now() }, origin });
   void syncWidgetHeatmap();
 };
 
@@ -293,14 +297,14 @@ export const getTasksForDate = async (dateKey: string): Promise<Task[]> => {
   return all.filter((task) => shouldAppearOnDate(task, dateKey));
 };
 
-export const moveTask = async (taskId: ID, parentId: ID | null): Promise<Task> => {
+export const moveTask = async (taskId: ID, parentId: ID | null, origin?: string): Promise<Task> => {
   const db = await getDB();
   const row = await db.getFirstAsync<any>("SELECT * FROM tasks WHERE id = ?", taskId);
   if (!row) throw new Error(`Task not found: ${taskId}`);
 
   const movedTask: Task = { ...parseTask(row), parentId: parentId ?? null, updatedAt: Date.now() };
   await runDbWrite("UPDATE tasks SET parentId = ?, updatedAt = ? WHERE id = ?", movedTask.parentId, movedTask.updatedAt, movedTask.id);
-  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(movedTask) });
+  emitTaskServerEvent({ type: "TASK_UPDATED", payload: toSyncTask(movedTask), origin });
   return movedTask;
 };
 

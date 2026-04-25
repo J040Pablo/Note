@@ -43,16 +43,27 @@ const NoteEditorScreen: React.FC = () => {
   const skipBeforeRemoveRef = useRef(false);
   const persistNoteRef = useRef<any>(null);
 
+
+
+  const hasPendingChanges = useMemo(() => title !== lastSavedTitle || content !== lastSavedContent, [content, lastSavedContent, lastSavedTitle, title]);
+
   useEffect(() => {
     if (!existing) return;
+    
+    // Protection: If user is currently editing, do NOT reset the internal state
+    // with incoming store changes from sync events.
+    if (hasPendingChanges) return;
+
+    // Protection: If incoming is older or same as current internal, skip.
+    if (currentNote && existing.updatedAt <= currentNote.updatedAt) return;
+
     setCurrentNote(existing);
     setTitle(existing.title ?? "Untitled");
     setContent(existing.content ?? initialContentRef.current);
     setLastSavedTitle(existing.title ?? "Untitled");
     setLastSavedContent(existing.content ?? initialContentRef.current);
-  }, [existing]);
+  }, [existing, hasPendingChanges, currentNote]);
 
-  const hasPendingChanges = useMemo(() => title !== lastSavedTitle || content !== lastSavedContent, [content, lastSavedContent, lastSavedTitle, title]);
 
   const persistNote = useCallback(async (options?: { allowCreate?: boolean; showValidationError?: boolean }) => {
     if (savingRef.current) return null;
@@ -130,7 +141,7 @@ const NoteEditorScreen: React.FC = () => {
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       persistNote({ allowCreate: true });
-    }, 900);
+    }, 500);
 
     return () => {
       if (saveTimerRef.current) {

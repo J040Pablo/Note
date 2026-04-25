@@ -2,6 +2,8 @@ import { getDB, runDbWrite } from "@db/database";
 import type { Note, ID, QuickNote } from "@models/types";
 import { emitEntityServerEvent } from "@services/sync/entitySyncEvents";
 import { log, warn, error as logError } from '@utils/logger';
+import { transformNoteImages } from "@utils/noteContent";
+import { uriToBase64 } from "@services/imageService";
 
 const upsertNoteRow = async (payload: {
   id: ID;
@@ -53,14 +55,17 @@ const upsertQuickNoteRow = async (payload: {
   );
 };
 
-export const createNote = async (payload: {
-  id?: ID;
-  title: string;
-  content: string;
-  folderId: ID | null;
-  createdAt?: number;
-  updatedAt?: number;
-}): Promise<Note> => {
+export const createNote = async (
+  payload: {
+    id?: ID;
+    title: string;
+    content: string;
+    folderId: ID | null;
+    createdAt?: number;
+    updatedAt?: number;
+  },
+  origin?: string
+): Promise<Note> => {
   const now = Date.now();
   const createdAt = Number(payload.createdAt ?? now);
   const updatedAt = Number(payload.updatedAt ?? createdAt);
@@ -92,6 +97,13 @@ export const createNote = async (payload: {
     updatedAt
   };
 
+  const syncContent = await transformNoteImages(created.content, async (uri) => {
+    if (uri.startsWith("file://")) {
+      return (await uriToBase64(uri)) || uri;
+    }
+    return uri;
+  });
+
   emitEntityServerEvent({
     type: "UPSERT_NOTE",
     payload: {
@@ -99,16 +111,17 @@ export const createNote = async (payload: {
       parentId: created.folderId,
       folderId: created.folderId,
       title: created.title,
-      content: created.content,
+      content: syncContent,
       createdAt: created.createdAt,
       updatedAt: created.updatedAt,
     },
+    origin,
   });
 
   return created;
 };
 
-export const updateNote = async (note: Note): Promise<Note> => {
+export const updateNote = async (note: Note, origin?: string): Promise<Note> => {
   const updatedAt = Date.now();
   const safeTitle = (note.title ?? "").trim();
   if (!safeTitle) {
@@ -139,6 +152,13 @@ export const updateNote = async (note: Note): Promise<Note> => {
   }
 
   const updated = { ...note, title: safeTitle, content: safeContent, folderId: safeFolderId, updatedAt };
+  const syncContent = await transformNoteImages(updated.content, async (uri) => {
+    if (uri.startsWith("file://")) {
+      return (await uriToBase64(uri)) || uri;
+    }
+    return uri;
+  });
+
   emitEntityServerEvent({
     type: "UPSERT_NOTE",
     payload: {
@@ -146,10 +166,11 @@ export const updateNote = async (note: Note): Promise<Note> => {
       parentId: updated.folderId,
       folderId: updated.folderId,
       title: updated.title,
-      content: updated.content,
+      content: syncContent,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     },
+    origin,
   });
   return updated;
 };
@@ -198,24 +219,28 @@ export const getAllNotes = async (): Promise<Note[]> => {
   return db.getAllAsync<Note>("SELECT * FROM notes ORDER BY updatedAt DESC");
 };
 
-export const deleteNote = async (noteId: ID): Promise<void> => {
+export const deleteNote = async (noteId: ID, origin?: string): Promise<void> => {
   await runDbWrite("DELETE FROM notes WHERE id = ?", noteId);
   emitEntityServerEvent({
     type: "DELETE_NOTE",
     payload: { id: String(noteId), updatedAt: Date.now() },
+    origin,
   });
 };
 
 // ==================== Quick Notes ====================
 
-export const createQuickNote = async (payload: {
-  id?: ID;
-  title: string;
-  content: string;
-  folderId: ID | null;
-  createdAt?: number;
-  updatedAt?: number;
-}): Promise<QuickNote> => {
+export const createQuickNote = async (
+  payload: {
+    id?: ID;
+    title: string;
+    content: string;
+    folderId: ID | null;
+    createdAt?: number;
+    updatedAt?: number;
+  },
+  origin?: string
+): Promise<QuickNote> => {
   const now = Date.now();
   const createdAt = Number(payload.createdAt ?? now);
   const updatedAt = Number(payload.updatedAt ?? createdAt);
@@ -242,22 +267,34 @@ export const createQuickNote = async (payload: {
     updatedAt
   };
 
+  const syncContent = await transformNoteImages(created.content, async (uri) => {
+    if (uri.startsWith("file://")) {
+      return (await uriToBase64(uri)) || uri;
+    }
+    return uri;
+  });
+
   emitEntityServerEvent({
     type: "UPSERT_QUICK_NOTE",
     payload: {
       id: created.id,
       title: created.title,
-      content: created.content,
+      content: syncContent,
       folderId: created.folderId,
       createdAt: created.createdAt,
       updatedAt: created.updatedAt,
     },
+    origin,
   });
 
   return created;
 };
 
-export const updateQuickNote = async (id: ID, payload: { title: string; content: string; folderId?: ID | null }): Promise<void> => {
+export const updateQuickNote = async (
+  id: ID,
+  payload: { title: string; content: string; folderId?: ID | null },
+  origin?: string
+): Promise<void> => {
   const updatedAt = Date.now();
   const safeTitle = (payload.title ?? "").trim() || "Quick Note";
   const safeContent = typeof payload.content === "string" ? payload.content : "";
@@ -272,17 +309,25 @@ export const updateQuickNote = async (id: ID, payload: { title: string; content:
     id
   );
 
+  const syncContent = await transformNoteImages(safeContent, async (uri) => {
+    if (uri.startsWith("file://")) {
+      return (await uriToBase64(uri)) || uri;
+    }
+    return uri;
+  });
+
   // Always emit, regardless of folderId state
   emitEntityServerEvent({
     type: "UPSERT_QUICK_NOTE",
     payload: {
       id: String(id),
       title: safeTitle,
-      content: safeContent,
+      content: syncContent,
       folderId: safeFolderId,
       createdAt: updatedAt,
       updatedAt,
     },
+    origin,
   });
 };
 
@@ -341,11 +386,12 @@ export const getQuickNoteById = async (id: ID): Promise<QuickNote | null> => {
   return row ?? null;
 };
 
-export const deleteQuickNote = async (id: ID): Promise<void> => {
+export const deleteQuickNote = async (id: ID, origin?: string): Promise<void> => {
   await runDbWrite("DELETE FROM quick_notes WHERE id = ?", id);
   emitEntityServerEvent({
     type: "DELETE_QUICK_NOTE",
     payload: { id: String(id), updatedAt: Date.now() },
+    origin,
   });
 };
 

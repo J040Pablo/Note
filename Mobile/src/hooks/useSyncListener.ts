@@ -84,13 +84,22 @@ export const useSyncListener = () => {
     const unsubscribeEntityEvents = subscribeEntityServerEvents((event: EntityServerEvent) => {
 
       if (event.type === "UPSERT_NOTE") {
+        const { payload } = event;
+        const prev = useNotesStore.getState().notes[payload.id];
+        const incomingUpdatedAt = Number(payload.updatedAt ?? 0);
+        const currentUpdatedAt = Number(prev?.updatedAt ?? 0);
+
+        if (currentUpdatedAt > 0 && incomingUpdatedAt > 0 && currentUpdatedAt > incomingUpdatedAt) {
+          return;
+        }
+
         const note: Note = {
-          id: event.payload.id,
-          title: event.payload.title || "Untitled note",
-          content: event.payload.content ?? "",
-          folderId: event.payload.folderId ?? event.payload.parentId ?? null,
-          createdAt: event.payload.createdAt,
-          updatedAt: event.payload.updatedAt,
+          id: payload.id,
+          title: payload.title || "Untitled note",
+          content: payload.content ?? "",
+          folderId: payload.folderId ?? payload.parentId ?? null,
+          createdAt: payload.createdAt,
+          updatedAt: payload.updatedAt,
         };
         useNotesStore.getState().upsertNote(note);
       }
@@ -100,13 +109,22 @@ export const useSyncListener = () => {
       }
 
       if (event.type === "UPSERT_QUICK_NOTE") {
+        const { payload } = event;
+        const prev = useQuickNotesStore.getState().quickNotes[payload.id];
+        const incomingUpdatedAt = Number(payload.updatedAt ?? 0);
+        const currentUpdatedAt = Number(prev?.updatedAt ?? 0);
+
+        if (currentUpdatedAt > 0 && incomingUpdatedAt > 0 && currentUpdatedAt > incomingUpdatedAt) {
+          return;
+        }
+
         const quickNote: QuickNote = {
-          id: event.payload.id,
-          title: event.payload.title || "Quick Note",
-          content: event.payload.content ?? "",
-          folderId: event.payload.folderId ?? null,
-          createdAt: event.payload.createdAt,
-          updatedAt: event.payload.updatedAt,
+          id: payload.id,
+          title: payload.title || "Quick Note",
+          content: payload.content ?? "",
+          folderId: payload.folderId ?? null,
+          createdAt: payload.createdAt,
+          updatedAt: payload.updatedAt,
         };
         useQuickNotesStore.getState().upsertQuickNote(quickNote);
       }

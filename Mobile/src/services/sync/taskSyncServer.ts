@@ -16,9 +16,11 @@ import { deleteMetaKey, upsertMetaKey } from "@services/appMetaService";
 import { subscribeTaskServerEvents, type TaskServerEvent } from "@services/sync/taskSyncEvents";
 import { subscribeEntityServerEvents, type EntityServerEvent } from "@services/sync/entitySyncEvents";
 import { fromSyncPriority, toSyncTask, type SyncPriority, type SyncTask } from "@services/sync/taskSyncProtocol";
-import type { Task } from "@models/types";
+import type { Task, TaskReminderType } from "@models/types";
 import { isExpoGo, shouldLogDev } from "@utils/runtimeEnv";
 import { log, warn, error as logError } from '@utils/logger';
+import { transformNoteImages } from "@utils/noteContent";
+import { saveBase64Image } from "@services/imageService";
 
 type SocketClient = {
   id: string | number;
@@ -493,7 +495,7 @@ const mapIncomingPayloadToTask = (existing: Task, payload: SyncTaskPayload): Tas
     scheduledTime: nextTime,
     repeatDays: Array.isArray(payload?.repeatDays) ? payload.repeatDays : existing.repeatDays,
     completedDates: Array.isArray(payload?.completedDates) ? payload.completedDates : existing.completedDates,
-    reminders: nextReminders,
+    reminders: nextReminders as TaskReminderType[],
     notificationIds: nextNotificationIds,
     orderIndex: typeof payload?.order === "number" ? payload.order : existing.orderIndex,
     parentId: nextParentId,
@@ -570,7 +572,7 @@ const sendInitialData = async (socket: SocketClient) => {
   }
 };
 
-const handleTaskCreate = async (payload: Extract<SyncIncomingMessage, { type: "TASK_CREATE" }>["payload"]) => {
+const handleTaskCreate = async (payload: Extract<SyncIncomingMessage, { type: "TASK_CREATE" }>["payload"], origin?: string) => {
   const title = (payload?.title ?? payload?.text ?? "").trim();
   if (!title) return;
 
@@ -585,10 +587,10 @@ const handleTaskCreate = async (payload: Extract<SyncIncomingMessage, { type: "T
     parentId: typeof payload?.parentId === "string" ? payload.parentId : null,
     noteId: typeof payload?.noteId === "string" ? payload.noteId : null,
     updatedAt: Number(payload?.updatedAt ?? Date.now()),
-  });
+  }, origin);
 };
 
-const handleTaskUpdate = async (payload: Extract<SyncIncomingMessage, { type: "TASK_UPDATE" }>["payload"]) => {
+const handleTaskUpdate = async (payload: Extract<SyncIncomingMessage, { type: "TASK_UPDATE" }>["payload"], origin?: string) => {
   const id = payload?.id;
   if (!id) return;
 
@@ -602,17 +604,17 @@ const handleTaskUpdate = async (payload: Extract<SyncIncomingMessage, { type: "T
     return;
   }
 
-  await updateTask(mapIncomingPayloadToTask(existing, payload));
+  await updateTask(mapIncomingPayloadToTask(existing, payload), origin);
 };
 
-const handleTaskDelete = async (payload: Extract<SyncIncomingMessage, { type: "TASK_DELETE" }>["payload"]) => {
+const handleTaskDelete = async (payload: Extract<SyncIncomingMessage, { type: "TASK_DELETE" }>["payload"], origin?: string) => {
   const id = payload?.id;
   if (!id) return;
 
-  await deleteTask(id);
+  await deleteTask(id, origin);
 };
 
-const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "TASK_TOGGLE" }>["payload"]) => {
+const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "TASK_TOGGLE" }>["payload"], origin?: string) => {
   const id = payload?.id;
   if (!id) return;
 
@@ -626,10 +628,10 @@ const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "T
       : toDateKey(new Date());
 
   log("[MOBILE][TOGGLE_APPLY]", { taskId: id, date: dateKey });
-  await toggleTaskForDate(existing, dateKey);
+  await toggleTaskForDate(existing, dateKey, origin);
 };
 
-const handleNoteUpsert = async (payload: SyncNotePayload) => {
+const handleNoteUpsert = async (payload: SyncNotePayload, origin?: string) => {
   const id = String(payload?.id ?? "").trim();
   const title = String(payload?.title ?? "").trim();
   if (!id || !title) return;
@@ -646,7 +648,16 @@ const handleNoteUpsert = async (payload: SyncNotePayload) => {
   }
 
   const folderId = (payload?.folderId ?? payload?.parentId ?? null) as string | null;
-  const content = typeof payload?.content === "string" ? payload.content : "";
+  const rawContent = typeof payload?.content === "string" ? payload.content : "";
+  
+  // Convert incoming base64 images to local files
+  const content = await transformNoteImages(rawContent, async (uri) => {
+    if (uri.startsWith("data:image/")) {
+      return (await saveBase64Image(uri)) || uri;
+    }
+    return uri;
+  });
+
   const createdAt = Number(payload?.createdAt ?? current?.createdAt ?? Date.now());
   const updatedAt = Number(payload?.updatedAt ?? Date.now());
 
@@ -657,31 +668,33 @@ const handleNoteUpsert = async (payload: SyncNotePayload) => {
     folderId,
     createdAt,
     updatedAt,
-  });
+  }, origin);
 };
 
 const handleTaskUpsert = async (
   payload:
     | Extract<SyncIncomingMessage, { type: "TASK_CREATE" }>["payload"]
-    | Extract<SyncIncomingMessage, { type: "UPSERT_TASK" }>["payload"]
+    | Extract<SyncIncomingMessage, { type: "UPSERT_TASK" }>["payload"],
+  origin?: string
 ) => {
   const id = String(payload?.id ?? "").trim();
   if (!id) {
-    await handleTaskCreate(payload);
+    await handleTaskCreate(payload, origin);
     return;
   }
 
   const all = await getAllTasks();
   const existing = all.find((task) => String(task.id) === id);
   if (!existing) {
-    await handleTaskCreate(payload);
+    await handleTaskCreate(payload, origin);
     return;
   }
 
-  await handleTaskUpdate(payload);
+  await handleTaskUpdate(payload, origin);
 };
 
 const handleIncomingMessage = async (socket: SocketClient, message: SyncIncomingMessage) => {
+  const origin = getSocketId(socket);
   if (message.type === "INIT_SYNC" || message.type === "REQUEST_SYNC") {
     await sendInitialData(socket);
     return;
@@ -697,39 +710,39 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
   }
 
   if (message.type === "TASK_CREATE" || message.type === "UPSERT_TASK") {
-    await handleTaskUpsert(message.payload);
+    await handleTaskUpsert(message.payload, origin);
     return;
   }
 
   if (message.type === "TASK_UPDATE") {
-    await handleTaskUpdate(message.payload);
+    await handleTaskUpdate(message.payload, origin);
     return;
   }
 
   if (message.type === "TASK_DELETE") {
-    await handleTaskDelete(message.payload);
+    await handleTaskDelete(message.payload, origin);
     return;
   }
 
   if (message.type === "DELETE_TASK") {
-    await handleTaskDelete(message.payload);
+    await handleTaskDelete(message.payload, origin);
     return;
   }
 
   if (message.type === "TASK_TOGGLE") {
-    await handleTaskToggle(message.payload);
+    await handleTaskToggle(message.payload, origin);
     return;
   }
 
   if (message.type === "UPSERT_NOTE") {
-    await handleNoteUpsert(message.payload ?? {});
+    await handleNoteUpsert(message.payload ?? {}, origin);
     return;
   }
 
   if (message.type === "DELETE_NOTE") {
     const id = String(message.payload?.id ?? "").trim();
     if (!id) return;
-    await deleteNote(id);
+    await deleteNote(id, origin);
     return;
   }
 
@@ -737,12 +750,21 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
     const id = String(message.payload?.id ?? "").trim();
     if (!id) return;
     const title = String(message.payload?.title ?? "Quick Note").trim() || "Quick Note";
-    const content =
+    const rawContent =
       typeof message.payload?.content === "string"
         ? message.payload.content
         : typeof message.payload?.text === "string"
         ? message.payload.text
         : "";
+        
+    // Convert incoming base64 images to local files
+    const content = await transformNoteImages(rawContent, async (uri) => {
+      if (uri.startsWith("data:image/")) {
+        return (await saveBase64Image(uri)) || uri;
+      }
+      return uri;
+    });
+
     const folderId = (message.payload?.folderId ?? null) as string | null;
     const current = await getQuickNoteById(id);
 
@@ -763,9 +785,9 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
         folderId,
         createdAt: Number(message.payload?.createdAt ?? Date.now()),
         updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
-      });
+      }, origin);
     } else {
-      await updateQuickNote(id, { title, content, folderId });
+      await updateQuickNote(id, { title, content, folderId }, origin);
     }
 
     return;
@@ -774,7 +796,7 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
   if (message.type === "DELETE_QUICK_NOTE") {
     const id = String(message.payload?.id ?? "").trim();
     if (!id) return;
-    await deleteQuickNote(id);
+    await deleteQuickNote(id, origin);
     return;
   }
 
@@ -809,6 +831,7 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
           id,
           createdAt: Number(message.payload?.createdAt ?? Date.now()),
           updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
+          origin,
         }
       );
     } else {
@@ -823,7 +846,7 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
         bannerPath: message.payload?.bannerUrl ?? current.bannerPath ?? null,
         createdAt: Number(message.payload?.createdAt ?? current.createdAt ?? Date.now()),
         updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
-      } as typeof current & { updatedAt: number });
+      } as typeof current & { updatedAt: number }, origin);
     }
 
     return;
@@ -832,7 +855,7 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
   if (message.type === "DELETE_FOLDER") {
     const id = String(message.payload?.id ?? "").trim();
     if (!id) return;
-    await deleteFolder(id);
+    await deleteFolder(id, origin);
     return;
   }
 
@@ -852,15 +875,15 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
 };
 
 const onTaskEvent = (event: TaskServerEvent) => {
-  const suppressionKey = keyFromTaskEvent(event);
-  const suppression = suppressionKey ? takeBroadcastSuppression(suppressionKey) : null;
+  const socketId = event.origin;
+  const clientId = socketClientIds.get(socketId ?? "");
 
   if (event.type === "TASK_CREATED" || event.type === "TASK_UPDATED") {
     broadcast(
       { type: "UPSERT_TASK", payload: event.payload },
       {
-        excludeSocketId: suppression?.socketId,
-        excludeClientId: suppression?.clientId,
+        excludeSocketId: socketId,
+        excludeClientId: clientId,
       }
     );
     return;
@@ -869,18 +892,19 @@ const onTaskEvent = (event: TaskServerEvent) => {
   broadcast(
     { type: "DELETE_TASK", payload: event.payload },
     {
-      excludeSocketId: suppression?.socketId,
-      excludeClientId: suppression?.clientId,
+      excludeSocketId: socketId,
+      excludeClientId: clientId,
     }
   );
 };
 
 const onEntityEvent = (event: EntityServerEvent) => {
-  const suppressionKey = keyFromEntityEvent(event);
-  const suppression = suppressionKey ? takeBroadcastSuppression(suppressionKey) : null;
+  const socketId = event.origin;
+  const clientId = socketClientIds.get(socketId ?? "");
+  
   broadcast(event, {
-    excludeSocketId: suppression?.socketId,
-    excludeClientId: suppression?.clientId,
+    excludeSocketId: socketId,
+    excludeClientId: clientId,
   });
 };
 

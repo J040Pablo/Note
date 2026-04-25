@@ -22,7 +22,7 @@ export const createFolder = async (
   description: string | null = null,
   photoPath: string | null = null,
   bannerPath: string | null = null,
-  options?: { id?: ID; createdAt?: number; updatedAt?: number }
+  options?: { id?: ID; createdAt?: number; updatedAt?: number; origin?: string }
 ): Promise<Folder> => {
   return withDbWriteTransaction("createFolder", async (db) => {
     const now = Date.now();
@@ -72,6 +72,7 @@ export const createFolder = async (
         imageUrl: created.photoPath ?? undefined,
         bannerUrl: created.bannerPath ?? undefined,
       },
+      origin: options?.origin,
     });
 
     return created;
@@ -101,7 +102,7 @@ export const getAllFolders = async (): Promise<Folder[]> => {
   return db.getAllAsync<Folder>("SELECT * FROM folders ORDER BY orderIndex ASC, createdAt DESC");
 };
 
-export const updateFolder = async (folder: Folder): Promise<Folder> => {
+export const updateFolder = async (folder: Folder, origin?: string): Promise<Folder> => {
   return withDbWriteTransaction("updateFolder", async (db) => {
     const current = await db.getFirstAsync<{ parentId: ID | null }>("SELECT parentId FROM folders WHERE id = ?", folder.id);
     const parentChanged = (current?.parentId ?? null) !== (folder.parentId ?? null);
@@ -134,6 +135,7 @@ export const updateFolder = async (folder: Folder): Promise<Folder> => {
         imageUrl: updatedFolder.photoPath ?? undefined,
         bannerUrl: updatedFolder.bannerPath ?? undefined,
       },
+      origin,
     });
 
     return updatedFolder;
@@ -159,11 +161,12 @@ export const reorderFolders = async (parentId: ID | null, orderedIds: ID[]): Pro
   });
 };
 
-export const deleteFolder = async (folderId: ID): Promise<void> => {
+export const deleteFolder = async (folderId: ID, origin?: string): Promise<void> => {
   await runDbWrite("DELETE FROM folders WHERE id = ?", folderId);
   emitEntityServerEvent({
     type: "DELETE_FOLDER",
     payload: { id: String(folderId), updatedAt: Date.now() },
+    origin,
   });
 };
 

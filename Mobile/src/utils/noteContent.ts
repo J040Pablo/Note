@@ -273,7 +273,7 @@ export const parseCanvasNoteContent = (content: string): CanvasNoteDocument => {
             zIndex: idx + 1
           });
           y += 220;
-        } else {
+        } else if (block.type === "drawing") {
           const pageIndex = Math.max(0, Math.floor(y / pageHeight));
           while (pages.length <= pageIndex) pages.push(createCanvasPage(pageWidth, pageHeight));
           const pageId = pages[pageIndex].id;
@@ -350,4 +350,46 @@ export const getRichNotePreviewLine = (content: string, maxLength = 110): string
   const plain = getPlainTextFromRichNoteContent(content);
   const line = plain.split(/\r?\n/).find((x) => x.trim().length > 0) ?? "";
   return line.length > maxLength ? `${line.slice(0, maxLength - 1).trimEnd()}…` : line;
+};
+
+export const transformNoteImages = async (
+  content: string,
+  mapper: (uri: string) => Promise<string>
+): Promise<string> => {
+  if (!content || !content.startsWith("{")) return content;
+
+  try {
+    const doc = JSON.parse(content);
+    let changed = false;
+
+    // Handle Rich Note
+    if (isRichDoc(doc)) {
+      for (const block of doc.blocks) {
+        if (block.type === "image" && block.uri) {
+          const next = await mapper(block.uri);
+          if (next !== block.uri) {
+            block.uri = next;
+            changed = true;
+          }
+        }
+      }
+    }
+    // Handle Canvas Note
+    else if (isCanvasDoc(doc)) {
+      for (const el of doc.elements) {
+        if (el.type === "image" && el.uri) {
+          const next = await mapper(el.uri);
+          if (next !== el.uri) {
+            el.uri = next;
+            changed = true;
+          }
+        }
+      }
+    }
+
+    return changed ? JSON.stringify(doc) : content;
+  } catch (error) {
+    console.error("[noteContent] transformNoteImages failed", error);
+    return content;
+  }
 };
