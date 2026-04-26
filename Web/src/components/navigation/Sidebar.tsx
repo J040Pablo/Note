@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import styles from "./Sidebar.module.css";
 import SidebarItem from "./SidebarItem";
 import { useTheme } from "../../app/theme";
+import { AppLogo } from "../ui";
 
 type NavItem = {
   labelKey: string;
@@ -85,9 +86,11 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       </button>
 
       <div className={styles.brand}>
-        <div className={styles.brandMark} aria-hidden="true">
-          S
-        </div>
+        <AppLogo 
+          size={collapsed ? 32 : 36} 
+          variant="sidebar" 
+          className={styles.brandLogo} 
+        />
 
         {!collapsed ? (
           <div>

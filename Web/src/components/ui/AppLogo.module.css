@@ -1,0 +1,44 @@
+.logoContainer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  overflow: hidden;
+  border-radius: 8px; /* Smooth rounded corners */
+}
+
+.logoImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Variants */
+.sidebar {
+  padding: 4px;
+}
+
+.entry {
+  padding: 0;
+  border-radius: 16px;
+}
+
+.header {
+  padding: 2px;
+}
+
+/* Dark Mode Glow - Only in dark mode */
+:global(.dark) .logoContainer {
+  filter: drop-shadow(0 0 8px rgba(96, 165, 250, 0.2));
+}
+
+/* If the logo is prominent (entry variant), more glow */
+:global(.dark) .entry {
+  filter: drop-shadow(0 0 15px rgba(96, 165, 250, 0.3));
+}
+
+/* Light Mode - Clean */
+.logoContainer {
+  filter: none;
+}

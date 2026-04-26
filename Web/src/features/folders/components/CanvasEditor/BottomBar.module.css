@@ -1,0 +1,93 @@
+.bottomBar {
+  height: 48px;
+  background-color: #1e293b; /* Slate 800 */
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  z-index: 150;
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.2);
+  flex-shrink: 0;
+}
+
+.leftSection, .centerSection, .rightSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.centerSection {
+  flex: 1;
+  justify-content: center;
+}
+
+.iconBtn {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.iconBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.notesBtn {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 12px;
+  border-radius: 4px;
+}
+
+.notesBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.zoomText {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 500;
+  min-width: 36px;
+}
+
+.zoomSlider {
+  width: 100px;
+  accent-color: #f8fafc;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background-color: rgba(255, 255, 255, 0.1);
+  margin: 0 4px;
+}
+
+.pageCountBtn {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 4px;
+}
+
+.pageCountBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}

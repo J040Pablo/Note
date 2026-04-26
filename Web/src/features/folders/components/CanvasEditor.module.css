@@ -1,11 +1,20 @@
 .editorContainer {
   display: flex;
+  flex-direction: column;       /* TopBar on top, bodyRow below */
   height: 100vh;
   width: 100vw;
-  background-color: var(--bg);
+  background-color: #0b1220;
   color: var(--text-primary);
   overflow: hidden;
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* ── Body row: Sidebar + Canvas ─────────────────────────── */
+.bodyRow {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;                /* important: lets children shrink */
 }
 
 /* --- SIDEBAR --- */
@@ -50,76 +59,12 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  height: 100%;
+  height: 100%;               /* fills .bodyRow */
+  min-height: 0;
   position: relative;
   overflow: hidden;
 }
 
-/* --- TOP BAR --- */
-.topBar {
-  height: 56px;
-  background-color: var(--surface);
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 16px;
-  z-index: 150;
-}
-
-.topBarLeft, .topBarRight {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.topBarBtn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 13px;
-  padding: 6px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.topBarBtn:hover {
-  background: var(--hover);
-  color: var(--text-primary);
-}
-
-.primaryBtn {
-  background: var(--text-primary);
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-}
-
-.primaryBtn:hover {
-  filter: brightness(1.2);
-}
-
-.shareBtn {
-  background: var(--surface);
-  color: var(--text-primary);
-  border: 1px solid var(--border);
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.shareBtn:hover {
-  background: var(--hover);
-}
 
 /* --- VIEWPORT --- */
 .viewport {
@@ -150,15 +95,52 @@
   cursor: grabbing;
 }
 
-.pageSheet {
-  position: absolute;
-  top: 2500px;
-  left: 2500px;
-  transform: translate(-50%, -50%);
-  background-color: var(--surface);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.08);
-  pointer-events: auto;
+.pageSheetWrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
 }
+
+.pageLabel {
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+}
+
+.pageSheet {
+  background-color: #ffffff; /* Brighter paper */
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15), 0 1px 3px rgba(0, 0, 0, 0.1);
+  pointer-events: auto;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.addPageInlineBtn {
+  margin-top: 24px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  border: 1px dashed rgba(255, 255, 255, 0.2);
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  max-width: 400px;
+  transition: all 0.2s;
+}
+
+.addPageInlineBtn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
 
 .pageBackground {
   position: absolute;
@@ -176,87 +158,7 @@
   height: 100%;
 }
 
-/* --- BOTTOM BAR --- */
-.bottomBar {
-  height: 48px;
-  background-color: var(--surface);
-  border-top: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 20px;
-  z-index: 150;
-}
 
-.bottomLeft, .bottomRight {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.bottomBtn {
-  background: transparent;
-  border: none;
-  color: var(--text-secondary);
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-}
-
-.bottomBtn:hover {
-  color: var(--text-primary);
-}
-
-.bottomCenter {
-  flex: 1;
-  display: flex;
-  justify-content: center;
-}
-
-.filmstrip {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.pageThumb {
-  width: 32px;
-  height: 32px;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.pageThumbActive {
-  border-color: var(--text-primary);
-  box-shadow: 0 0 0 1px var(--text-primary);
-}
-
-.addPageThumb {
-  width: 32px;
-  height: 32px;
-  background: transparent;
-  border: 1px dashed var(--border);
-  border-radius: 4px;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-
-.addPageThumb:hover {
-    border-color: var(--text-primary);
-    color: var(--text-primary);
-}
 
 .zoomText {
   color: var(--text-secondary);
@@ -383,7 +285,64 @@
   display: flex;
 }
 
-.toolbarBtn:hover {
-  background: var(--hover);
-  color: var(--text-primary);
+.sidebarItemActive {
+  color: var(--text-primary) !important;
+  background: var(--hover) !important;
+  box-shadow: inset 3px 0 0 var(--text-primary);
+}
+
+.brushSettings {
+  margin-top: auto;
+  margin-bottom: 24px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid var(--border);
+}
+
+.brushColors {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.colorCircle {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.1s;
+}
+
+.colorCircle:hover {
+  transform: scale(1.15);
+}
+
+.colorCircleActive {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-primary);
+}
+
+.brushSlider {
+  width: 48px;
+  height: 4px;
+  appearance: none;
+  background: var(--border);
+  border-radius: 2px;
+  outline: none;
+  transform: rotate(-90deg);
+  margin: 20px 0;
+}
+
+.brushSlider::-webkit-slider-thumb {
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  cursor: pointer;
 }

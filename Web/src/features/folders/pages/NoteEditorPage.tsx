@@ -41,6 +41,8 @@ const NoteEditorPage: React.FC = () => {
     return createEmptyCanvasNote();
   });
   const [saving, setSaving] = React.useState(false);
+  const [isInteracting, setIsInteracting] = React.useState(false);
+  
   const [lastSavedTitle, setLastSavedTitle] = React.useState(note?.title ?? "");
   const [lastSavedContent, setLastSavedContent] = React.useState(
     note?.content ?? ""
@@ -87,13 +89,8 @@ const NoteEditorPage: React.FC = () => {
       if (!note && creatingRef.current) return;
       const allowCreate = options?.allowCreate ?? false;
 
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current);
-        saveTimerRef.current = null;
-      }
-
       const normalizedTitle = title.trim() || t("untitled");
-      const serialized = serializeCanvasNoteContent(document);
+      const serialized = currentContent;
 
       if (!note && !title.trim() && document.elements.length === 0) {
         return;
@@ -101,6 +98,11 @@ const NoteEditorPage: React.FC = () => {
 
       if (!hasPendingChanges && note) return;
       if (!note && !allowCreate) return;
+
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
 
       savingRef.current = true;
       setSaving(true);
@@ -115,7 +117,6 @@ const NoteEditorPage: React.FC = () => {
           setNote(saved);
           setLastSavedTitle(saved.title);
           setLastSavedContent(saved.content);
-
         } else {
           creatingRef.current = true;
           const saved = createNote({
@@ -138,18 +139,18 @@ const NoteEditorPage: React.FC = () => {
         setSaving(false);
       }
     },
-    [document, folderId, hasPendingChanges, isMobileSync, note, title, t]
+    [document, folderId, hasPendingChanges, note, title, t, currentContent]
   );
 
   // Autosave with debounce
   React.useEffect(() => {
-    if (!hasPendingChanges) return;
+    if (!hasPendingChanges || isInteracting) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     saveTimerRef.current = setTimeout(() => {
       saveTimerRef.current = null;
       persistNote({ allowCreate: true });
-    }, 220);
+    }, 1000); // 1s debounce for stability
 
     return () => {
       if (saveTimerRef.current) {
@@ -157,7 +158,7 @@ const NoteEditorPage: React.FC = () => {
         saveTimerRef.current = null;
       }
     };
-  }, [hasPendingChanges, persistNote]);
+  }, [hasPendingChanges, isInteracting, persistNote]);
 
   // Sync incoming updates
   React.useEffect(() => {
@@ -169,11 +170,17 @@ const NoteEditorPage: React.FC = () => {
       }
 
       if (event.type !== "NOTE_UPSERT" || event.note.id !== note.id) return;
+      
+      // Safety: Ignore remote updates if user is actively editing
+      if (isInteracting) return;
 
       const incoming = event.note;
       setNote((prev) => {
         if (!prev) return prev;
         if ((incoming.updatedAt ?? 0) <= (prev.updatedAt ?? 0)) return prev;
+
+        // One final check: if incoming content matches our local current content, skip
+        if (incoming.content === currentContent && incoming.title === title) return prev;
 
         const updated = {
           ...prev,
@@ -190,7 +197,7 @@ const NoteEditorPage: React.FC = () => {
       });
     });
     return unsub;
-  }, [isMobileSync, note]);
+  }, [isMobileSync, note, isInteracting, title, currentContent]);
 
   // ─── Handlers ─────────────────────────────────────────────────────────────
 
@@ -217,51 +224,19 @@ const NoteEditorPage: React.FC = () => {
 
   return (
     <div className={styles.editorPage} style={{ maxWidth: "none", paddingBottom: 0, display: "flex", flexDirection: "column", height: "100vh" }}>
-      <div className={styles.header} style={{ padding: "12px 24px" }}>
-        <button
-          type="button"
-          className={styles.backBtn}
-          onClick={handleBack}
-          title={t("goBack")}
-        >
-          <ArrowLeft size={18} />
-        </button>
-
-        <input
-          className={styles.titleInput}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => persistNote({ allowCreate: true })}
-          placeholder={t("noteTitlePlaceholder")}
+      <div className={styles.editorBody} style={{ flex: 1, margin: 0, minHeight: 0, height: "100vh" }}>
+        <CanvasEditor 
+          document={document} 
+          onChange={setDocument} 
+          onInteractionChange={setIsInteracting}
+          title={title}
+          onTitleChange={setTitle}
+          onTitleBlur={() => persistNote({ allowCreate: true })}
+          onBack={handleBack}
+          saving={saving}
+          folderName={folderName}
+          noteId={note?.id}
         />
-
-        {folderName && (
-          <div className={styles.folderBadge} style={{ marginBottom: 0, marginRight: "12px" }}>
-            <Folder size={12} /> {folderName}
-          </div>
-        )}
-
-        <div className={styles.headerActions}>
-          {saving && <span className={styles.savingIndicator}>{t("saving")}</span>}
-          <button
-            type="button"
-            className={styles.saveBtn}
-            onClick={() => persistNote({ allowCreate: true })}
-          >
-            <Check size={14} /> {t("save")}
-          </button>
-          <button
-            type="button"
-            className={styles.deleteBtn}
-            onClick={handleDelete}
-          >
-            <Trash2 size={14} />
-          </button>
-        </div>
-      </div>
-
-      <div className={styles.editorBody} style={{ flex: 1, margin: 0, minHeight: 0 }}>
-        <CanvasEditor document={document} onChange={setDocument} />
       </div>
     </div>
   );

@@ -361,18 +361,28 @@
 }
 
 .emptyState {
-  min-height: 140px;
+  min-height: 160px;
   border-radius: 12px;
   border: 1px dashed var(--border);
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   color: var(--text-secondary);
   text-align: center;
   margin-top: 8px;
+  padding: 24px;
+}
+
+.emptyLogo {
+  margin-bottom: 12px;
+  opacity: 0.2;
+  filter: grayscale(1);
 }
 
 .emptyState p {
   margin: 0;
+  font-size: 0.95rem;
 }
 
 @media (max-width: 1080px) {

@@ -131,14 +131,14 @@ export const createCanvasShapeElement = (shape: CanvasShapeType, x = 180, y = 18
   strokeWidth: 3
 });
 
-export const createCanvasDrawingElement = (x = 160, y = 160, pageId: ID): CanvasDrawingElement => ({
+export const createCanvasDrawingElement = (x = 0, y = 0, width = DEFAULT_PAGE_W, height = DEFAULT_PAGE_H, pageId: ID): CanvasDrawingElement => ({
   id: makeId(),
   type: "drawing",
   pageId,
   x,
   y,
-  width: 260,
-  height: 180,
+  width,
+  height,
   rotation: 0,
   zIndex: 1,
   color: "#ef4444",
@@ -177,6 +177,43 @@ export const parseRichNoteContent = (content: string): RichNoteDocument => {
   };
 };
 
+/**
+ * Migrates legacy Web format (pages[].drawings) to the standard elements[] format.
+ */
+export const normalizeCanvasDrawings = (doc: CanvasNoteDocument): CanvasNoteDocument => {
+  const elements = [...(doc.elements || [])];
+  let hasChanges = false;
+
+  doc.pages.forEach((page) => {
+    const legacyDrawings = (page as any).drawings as any[];
+    if (legacyDrawings && legacyDrawings.length > 0) {
+      const existingIdx = elements.findIndex(
+        (el) => el.type === "drawing" && el.pageId === page.id && el.x === 0 && el.y === 0
+      );
+
+      if (existingIdx >= 0) {
+        const el = elements[existingIdx] as CanvasDrawingElement;
+        const existingStrokeIds = new Set(el.strokes.map((s) => s.id));
+        const newStrokes = legacyDrawings.filter((s) => !existingStrokeIds.has(s.id));
+        if (newStrokes.length > 0) {
+          elements[existingIdx] = {
+            ...el,
+            strokes: [...el.strokes, ...newStrokes]
+          };
+          hasChanges = true;
+        }
+      } else {
+        const newEl = createCanvasDrawingElement(0, 0, page.width, page.height, page.id);
+        newEl.strokes = [...legacyDrawings];
+        elements.push(newEl);
+        hasChanges = true;
+      }
+    }
+  });
+
+  return hasChanges ? { ...doc, elements } : doc;
+};
+
 export const parseCanvasNoteContent = (content: string): CanvasNoteDocument => {
   if (!content?.trim()) {
     return createEmptyCanvasNote();
@@ -210,13 +247,15 @@ export const parseCanvasNoteContent = (content: string): CanvasNoteDocument => {
             height: Number(el.height) || 40
           }));
 
-        return {
+        const result = {
           ...merged,
           pageWidth,
           pageHeight,
           pages: ensuredPages,
           elements: normalizedElements
         };
+
+        return normalizeCanvasDrawings(result);
       }
 
       // Legacy (infinite) -> pages: split by absolute y into multiple pages.
@@ -287,7 +326,7 @@ export const parseCanvasNoteContent = (content: string): CanvasNoteDocument => {
           const pageId = pages[pageIndex].id;
           const localY = y - pageIndex * pageHeight;
           elements.push({
-            ...createCanvasDrawingElement(120, localY, pageId),
+            ...createCanvasDrawingElement(120, localY, 300, 300, pageId),
             strokes: block.strokes,
             zIndex: idx + 1
           });

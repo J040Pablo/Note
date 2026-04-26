@@ -11,7 +11,7 @@ import {
   X,
   Upload,
 } from "lucide-react";
-import PageContainer from "../../../components/ui/PageContainer";
+import { PageContainer, AppLogo } from "../../../components/ui";
 import Breadcrumb from "../components/Breadcrumb";
 import type { ContextActionId } from "../components/ContextMenu";
 import ContextMenu from "../components/ContextMenu";
@@ -734,6 +734,7 @@ const FoldersPage: React.FC = () => {
 
         {filteredEntries.length === 0 ? (
           <div className={styles.emptyState}>
+            <AppLogo size={64} className={styles.emptyLogo} />
             <p>{t("noItemsFolder")}</p>
             <span>{t("usePlusToAdd")}</span>
           </div>

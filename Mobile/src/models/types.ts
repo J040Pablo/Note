@@ -116,6 +116,7 @@ export interface CanvasPage {
   title?: string;
   /** Optional page background color (defaults handled by UI) */
   backgroundColor?: string | null;
+  drawings?: DrawingStroke[];
 }
 
 export interface CanvasElementBase {

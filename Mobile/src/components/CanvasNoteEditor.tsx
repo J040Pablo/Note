@@ -951,7 +951,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
     const targetHeight = Math.max(220, viewportH - 32);
     const fitScale = clamp(Math.min(targetWidth / pageW, targetHeight / pageH) * 0.98, 0.2, 2.5);
 
-    const isSameDoc = docRef.current?.id === normalizedIncoming.id;
+    const isSameDoc = docRef.current?.pages?.[0]?.id === normalizedIncoming.pages?.[0]?.id;
     
     setDoc((prev) => ({
       ...normalizedIncoming,
@@ -1693,7 +1693,7 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
         const page = prev.pages.find((p) => p.id === draft.pageId);
         const pageW = page?.width ?? prev.pageWidth;
         const pageH = page?.height ?? prev.pageHeight;
-        const drawingEl = createCanvasDrawingElement(0, 0, draft.pageId);
+        const drawingEl = createCanvasDrawingElement(0, 0, pageW, pageH, draft.pageId);
         const maxZ = getMaxZ(prev.elements);
         return {
           ...prev,
@@ -1701,8 +1701,6 @@ export const CanvasNoteEditor: React.FC<CanvasNoteEditorProps> = ({
             ...prev.elements,
             {
               ...drawingEl,
-              width: pageW,
-              height: pageH,
               zIndex: maxZ + 1,
               color: drawingColor,
               strokeWidth: drawingSize,

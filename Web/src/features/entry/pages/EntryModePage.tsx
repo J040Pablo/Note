@@ -11,6 +11,7 @@ import {
 import styles from "./EntryModePage.module.css";
 
 import { useTranslation } from "react-i18next";
+import { AppLogo } from "../../../components/ui";
 
 const EntryModePage: React.FC = () => {
   const { t } = useTranslation();
@@ -59,6 +60,7 @@ const EntryModePage: React.FC = () => {
     <main className={styles.page}>
       <section className={styles.shell}>
         <header className={styles.header}>
+          <AppLogo size={80} variant="entry" className={styles.mainLogo} />
           <h1>{t("entryTitle")}</h1>
           <p>{t("entrySubtitle")}</p>
         </header>

@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "react-i18next";
-import PageContainer from "../../../components/ui/PageContainer";
+import { PageContainer, AppLogo } from "../../../components/ui";
 import TaskContextMenu, { type TaskContextAction } from "../components/TaskContextMenu";
 import TaskFiltersPanel from "../components/TaskFilters";
 import TaskModal from "../components/TaskModal";
@@ -569,7 +569,7 @@ const TasksPage: React.FC = () => {
 
           {filteredTasks.length === 0 ? (
             <div className={styles.emptyState}>
-              <CalendarDays size={18} />
+              <AppLogo size={48} className={styles.emptyLogo} />
               <p>{t("noTasksFoundFilters")}</p>
             </div>
           ) : null}

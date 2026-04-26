@@ -20,6 +20,35 @@ interface FolderPackageManifest {
 
 const PACKAGE_SCHEMA_VERSION = "1.0.0";
 
+const collectDataUris = (content: string): string[] => {
+  const uris: string[] = [];
+  try {
+    const parsed = JSON.parse(content);
+    if (Array.isArray(parsed.elements)) {
+      parsed.elements.forEach((el: any) => {
+        if (el.type === "image" && typeof el.uri === "string" && el.uri.startsWith("data:")) {
+          uris.push(el.uri);
+        }
+      });
+    }
+    // Background images for pages if any
+    if (Array.isArray(parsed.pages)) {
+      parsed.pages.forEach((p: any) => {
+        if (typeof p.backgroundUri === "string" && p.backgroundUri.startsWith("data:")) {
+          uris.push(p.backgroundUri);
+        }
+      });
+    }
+  } catch {
+    const regex = /"data:image\/[^"]+"/g;
+    const matches = content.match(regex);
+    if (matches) {
+      matches.forEach((m) => uris.push(m.slice(1, -1)));
+    }
+  }
+  return [...new Set(uris)];
+};
+
 /**
  * Collects all descendants and related items for a given folder ID.
  */
@@ -86,6 +115,79 @@ export const exportFolderPackage = async (folderId: string): Promise<void> => {
     URL.revokeObjectURL(url);
   } catch (error) {
     console.error("[folder-package] export failed", error);
+    throw error;
+  }
+};
+
+export const exportNotePackage = async (noteId: string): Promise<void> => {
+  try {
+    const store = loadData();
+    const note = store.notes.find((n) => n.id === noteId);
+    if (!note) throw new Error("Note not found");
+
+    const zip = new JSZip();
+
+    // 1. Standard manifest (data.json) for 100% compatibility with existing import system
+    const manifest: FolderPackageManifest = {
+      schemaVersion: PACKAGE_SCHEMA_VERSION,
+      exportedAt: Date.now(),
+      type: "folder-package",
+      origin: "web",
+      rootFolder: {
+        id: `root-${note.id}`,
+        parentId: null,
+        name: note.title || "Exported Note",
+        createdAt: note.createdAt,
+        updatedAt: note.updatedAt,
+      },
+      folders: [],
+      notes: [note],
+      quickNotes: [],
+      tasks: [],
+    };
+    zip.file("data.json", JSON.stringify(manifest, null, 2));
+
+    // 2. Human-readable note.json (metadata only)
+    const meta: Partial<DataNote> = { ...note };
+    delete meta.content;
+    zip.file("note.json", JSON.stringify(meta, null, 2));
+
+    // 3. Human-readable canvas.scene.json (content only)
+    zip.file("canvas.scene.json", note.content || "{}");
+
+    // 4. assets/ folder with extracted images
+    const assetsFolder = zip.folder("assets");
+    const dataUris = collectDataUris(note.content || "");
+    dataUris.forEach((uri, idx) => {
+      const match = uri.match(/^data:image\/(\w+);base64,/);
+      const ext = match ? match[1] : "bin";
+      const base64Data = uri.split(",")[1];
+      if (base64Data) {
+        assetsFolder?.file(`asset-${idx}.${ext}`, base64Data, { base64: true });
+      }
+    });
+
+    // 5. attachments/ folder (empty or placeholder)
+    zip.folder("attachments");
+
+    const content = await zip.generateAsync({
+      type: "blob",
+      compression: "DEFLATE",
+      compressionOptions: { level: 6 },
+    });
+
+    const url = URL.createObjectURL(content);
+    const link = document.createElement("a");
+    const safeTitle = (note.title || "note").replace(/[^a-z0-9]/gi, "_").toLowerCase();
+    
+    link.href = url;
+    link.download = `${safeTitle}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("[note-package] export failed", error);
     throw error;
   }
 };

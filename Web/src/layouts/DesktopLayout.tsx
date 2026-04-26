@@ -1,21 +1,27 @@
 import React from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "../components/navigation/Sidebar";
 import "../styles/layout.css";
 
 const DesktopLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const location = useLocation();
+
+  const isCanvasEditorRoute = location.pathname.startsWith("/notes/");
 
   return (
     <div className="desktop-layout">
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggle={() => setSidebarCollapsed((current) => !current)}
-      />
+      {!isCanvasEditorRoute && (
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed((current) => !current)}
+        />
+      )}
       <main
         className={`main-content ${
-          sidebarCollapsed ? "main-content--collapsed" : ""
+          (sidebarCollapsed && !isCanvasEditorRoute) ? "main-content--collapsed" : ""
         }`}
+        style={isCanvasEditorRoute ? { marginLeft: 0, padding: 0 } : {}}
       >
         <Outlet />
       </main>

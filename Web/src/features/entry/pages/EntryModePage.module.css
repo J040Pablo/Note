@@ -15,14 +15,30 @@
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.05);
 }
 
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.mainLogo {
+  margin-bottom: 20px;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.05));
+}
+
 .header h1 {
   margin: 0;
-  font-size: clamp(1.35rem, 1.8vw, 2rem);
+  font-size: clamp(1.5rem, 2.5vw, 2.25rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
 .header p {
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   color: var(--text-secondary);
+  font-size: 1.1rem;
 }
 
 .grid {

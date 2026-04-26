@@ -22,8 +22,17 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 8px;
+  gap: 12px;
+  padding: 6px 12px;
+}
+
+.brandLogo {
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.brandLogo:hover {
+  transform: scale(1.05);
 }
 
 .edgeToggleButton {
@@ -61,19 +70,6 @@
 
 .edgeToggleIconExpanded {
   transform: rotate(180deg);
-}
-
-.brandMark {
-  width: 34px;
-  height: 34px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: var(--active);
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
 }
 
 .brandTitle {

@@ -1,12 +1,15 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
-import { Trash2, Copy, ImageOff } from "lucide-react";
-import type {
-  CanvasElement,
-  CanvasTextElement,
-  CanvasImageElement,
-  CanvasCodeElement,
-  CanvasShapeElement,
+import { ImageOff } from "lucide-react";
+import {
+  type CanvasElement,
+  type CanvasTextElement,
+  type CanvasImageElement,
+  type CanvasCodeElement,
+  type CanvasShapeElement,
+  type CanvasDrawingElement,
+  buildSmoothSvgPath
 } from "../../../utils/noteContent";
+import ElementToolbar from "./CanvasEditor/ElementToolbar";
 import styles from "./CanvasEditor.module.css";
 
 type Props = {
@@ -17,6 +20,7 @@ type Props = {
   onDelete: (id: string) => void;
   onDuplicate?: (id: string) => void;
   zoom: number;
+  activeTool: string;
 };
 
 type ResizeHandleStyle = "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w";
@@ -39,7 +43,8 @@ const CanvasElementNode: React.FC<Props> = ({
   onUpdate, 
   onDelete, 
   onDuplicate,
-  zoom 
+  zoom,
+  activeTool
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<ResizeHandleStyle | null>(null);
@@ -79,10 +84,14 @@ const CanvasElementNode: React.FC<Props> = ({
   // --- Handlers ---
   const handlePointerDown = (e: React.PointerEvent) => {
     if (isEditing) return;
+    if (activeTool !== "select") return;
+    
     e.stopPropagation();
     onSelect(element.id, e);
-    setIsDragging(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    if (!element.locked) {
+      setIsDragging(true);
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
@@ -98,6 +107,7 @@ const CanvasElementNode: React.FC<Props> = ({
   };
 
   const handleResizeDown = (handle: ResizeHandleStyle, e: React.PointerEvent) => {
+    if (activeTool !== "select" || element.locked) return;
     e.stopPropagation();
     setIsResizing(handle);
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -129,6 +139,7 @@ const CanvasElementNode: React.FC<Props> = ({
 
   const handleDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (element.locked) return;
     if (element.type === "text") {
       setIsEditing(true);
     }
@@ -216,6 +227,35 @@ const CanvasElementNode: React.FC<Props> = ({
       );
     }
 
+    if (element.type === "drawing") {
+      return (
+        <svg
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            width: "100%",
+            height: "100%",
+            pointerEvents: "none",
+            overflow: "visible"
+          }}
+        >
+          {element.strokes.map((stroke) => (
+            <path
+              key={stroke.id}
+              d={buildSmoothSvgPath(stroke.points)}
+              fill="none"
+              stroke={stroke.color}
+              strokeWidth={stroke.size}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ opacity: stroke.opacity ?? 1 }}
+            />
+          ))}
+        </svg>
+      );
+    }
+
     return null;
   };
 
@@ -256,31 +296,18 @@ const CanvasElementNode: React.FC<Props> = ({
             />
           ))}
           
-          {/* Action Toolbar */}
-          <div style={{
-            position: "absolute",
-            top: -45,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "#1e2230",
-            border: "1px solid #3f4458",
-            borderRadius: "8px",
-            padding: "4px 8px",
-            display: "flex",
-            gap: "8px",
-            zIndex: 1000,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.5)"
-          }}>
-            <button onClick={() => onDuplicate?.(element.id)} style={{ background: "transparent", border: "none", color: "#8b92a5", cursor: "pointer" }}><Copy size={16} /></button>
-            <button onClick={() => onDelete(element.id)} style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer" }}><Trash size={16} /></button>
-          </div>
+          <ElementToolbar 
+            isLocked={!!element.locked}
+            onDuplicate={() => onDuplicate?.(element.id)}
+            onDelete={() => onDelete(element.id)}
+            onLockToggle={() => onUpdate(element.id, { locked: !element.locked })}
+            onBringForward={() => onUpdate(element.id, { zIndex: (element.zIndex || 0) + 1 })}
+            onSendBackward={() => onUpdate(element.id, { zIndex: (element.zIndex || 0) - 1 })}
+          />
         </>
       )}
     </div>
   );
 };
-
-// Internal replacement for Lucide Trash if needed, but assuming import Trash from lucide-react works as Trash2 usually.
-const Trash = Trash2;
 
 export default CanvasElementNode;

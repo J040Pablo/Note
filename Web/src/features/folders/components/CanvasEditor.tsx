@@ -10,7 +10,8 @@ import {
   Shapes,
   CloudUpload,
   Type as TypeIcon,
-  LayoutTemplate
+  LayoutTemplate,
+  Hand
 } from "lucide-react";
 import { 
   CanvasNoteDocument, 
@@ -19,6 +20,8 @@ import {
   ID,
   DrawingPoint,
   DrawingStroke,
+  CanvasDrawingElement,
+  createCanvasDrawingElement,
   createCanvasTextElement,
   createCanvasImageElement,
   createCanvasShapeElement,
@@ -29,16 +32,34 @@ import {
 } from "../../../utils/noteContent";
 import CanvasElementNode from "./CanvasElementNode";
 import PagesModal from "./PagesModal";
+import EditorTopBar from "./CanvasEditor/EditorTopBar";
+import UnifiedSidebar, { SidebarTab } from "./CanvasEditor/UnifiedSidebar";
+import DrawMenu from "./CanvasEditor/DrawMenu/DrawMenu";
+import CanvasWorkspace from "./CanvasEditor/CanvasWorkspace";
+import BottomBar from "./CanvasEditor/BottomBar";
+import { exportNotePackage } from "../../../services/folderPackageService";
 import styles from "./CanvasEditor.module.css";
+
+export type CanvasTool = "select" | "text" | "image" | "draw" | "pan";
 
 type Props = {
   document: CanvasNoteDocument;
   onChange: (doc: CanvasNoteDocument) => void;
+  onInteractionChange?: (isInteracting: boolean) => void;
+  // TopBar Hooks
+  title?: string;
+  onTitleChange?: (t: string) => void;
+  onTitleBlur?: () => void;
+  onBack?: () => void;
+  saving?: boolean;
+  folderName?: string | null;
+  noteId?: string; // Real note ID for global export
 };
 
 const HISTORY_LIMIT = 80;
-const ZOOM_MIN = 0.1;
-const ZOOM_MAX = 5;
+const ZOOM_MIN = 0.25;   // 25% minimum
+const ZOOM_MAX = 3.0;    // 300% maximum
+const ZOOM_STEP = 0.05;  // 5% per wheel tick
 const MAX_STROKE_STEP = 2.5;
 
 const buildSmoothSvgPath = (points: DrawingPoint[]): string => {
@@ -49,29 +70,80 @@ const buildSmoothSvgPath = (points: DrawingPoint[]): string => {
   }
   let d = `M ${points[0].x} ${points[0].y}`;
   for (let i = 0; i < points.length - 1; i += 1) {
-    const p0 = points[i - 1] ?? points[i];
     const p1 = points[i];
     const p2 = points[i + 1];
-    const p3 = points[i + 2] ?? p2;
-    const c1x = p1.x + (p2.x - p0.x) / 6;
-    const c1y = p1.y + (p2.y - p0.y) / 6;
-    const c2x = p2.x - (p3.x - p1.x) / 6;
-    const c2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
+    
+    const midX = (p1.x + p2.x) / 2;
+    const midY = (p1.y + p2.y) / 2;
+    
+    if (i === 0) {
+      d += ` L ${midX} ${midY}`;
+    } else {
+      const p0 = points[i - 1];
+      d += ` Q ${p1.x} ${p1.y}, ${midX} ${midY}`;
+    }
+    
+    if (i === points.length - 2) {
+      d += ` L ${p2.x} ${p2.y}`;
+    }
   }
   return d;
 };
 
-const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) => {
+const CanvasEditor: React.FC<Props> = ({ 
+  document: initialDocument, 
+  onChange, 
+  onInteractionChange,
+  title,
+  onTitleChange,
+  onTitleBlur,
+  onBack,
+  saving,
+  folderName,
+  noteId
+}) => {
   // --- States ---
   const [localDoc, setLocalDoc] = useState<CanvasNoteDocument>(initialDocument);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [zoom, setZoom] = useState(0.85);
+  const zoomRef = useRef(zoom);
+  useEffect(() => { zoomRef.current = zoom; }, [zoom]);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [isDrawMode, setIsDrawMode] = useState(false);
+  
+  // Unified tool state
+  const [activeTool, setActiveTool] = useState<CanvasTool>("select");
+  const [activeTab, setActiveTab] = useState<SidebarTab>("select");
   const [isPanning, setIsPanning] = useState(false);
+  const [isDrawing, setIsDrawing] = useState(false);
+  
+  // Brush settings
+  const [strokeSettings, setStrokeSettings] = useState({
+    color: "#1d4ed8",
+    size: 4,
+    opacity: 1
+  });
+
   const [pagesModalOpen, setPagesModalOpen] = useState(false);
   const [liveStrokePath, setLiveStrokePath] = useState<string | null>(null);
+
+  // --- Interaction Tracking ---
+  const [interactionCount, setInteractionCount] = useState(0);
+
+  const startInteraction = useCallback(() => {
+    setInteractionCount(prev => {
+      if (prev === 0) onInteractionChange?.(true);
+      return prev + 1;
+    });
+  }, [onInteractionChange]);
+
+  const endInteraction = useCallback(() => {
+    setInteractionCount(prev => {
+      const next = Math.max(0, prev - 1);
+      if (next === 0) onInteractionChange?.(false);
+      return next;
+    });
+  }, [onInteractionChange]);
 
   // --- History ---
   const undoStackRef = useRef<CanvasNoteDocument[]>([]);
@@ -86,6 +158,7 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
   const pendingDrawPointsRef = useRef<DrawingPoint[]>([]);
   const drawRafRef = useRef<number | null>(null);
   const drawPointerIdRef = useRef<number | null>(null);
+  const drawPageIdRef = useRef<string | null>(null);
   localDocRef.current = localDoc;
 
   const flushDrawFrame = useCallback(() => {
@@ -186,23 +259,59 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     }
   };
 
-  // --- Centering Logic ---
+  const clampPan = useCallback((p: {x: number, y: number}, currentZoom: number) => {
+    if (!viewportRef.current) return p;
+    const { width, height } = viewportRef.current.getBoundingClientRect();
+    const canvasBoundW = 5000 * currentZoom;
+    const canvasBoundH = 5000 * currentZoom;
+    
+    // We want to keep at least 100px of the canvas visible at all times
+    const minX = -canvasBoundW + 100;
+    const maxX = width - 100;
+    const minY = -canvasBoundH + 100;
+    const maxY = height - 100;
+
+    return {
+      x: Math.max(minX, Math.min(maxX, p.x)),
+      y: Math.max(minY, Math.min(maxY, p.y))
+    };
+  }, []);
+
+  // --- Centering Logic --- (dynamic, bounding-box based)
   const centerCanvas = useCallback(() => {
     if (!viewportRef.current) return;
     const { width, height } = viewportRef.current.getBoundingClientRect();
-    const pageW = localDoc.pageWidth || DEFAULT_PAGE_W;
-    const pageH = localDoc.pageHeight || DEFAULT_PAGE_H;
-    
-    // Zoom to fit slightly
-    const fitZoom = Math.min((width - 100) / pageW, (height - 100) / pageH, 0.85);
-    setZoom(fitZoom);
-    
-    // Center the 5000x5000 canvas in the viewport, then offset so the page (fixed at 2500x2500 in CSS) is centered.
-    setPan({
-      x: width / 2 - 2500 * fitZoom,
-      y: height / 2 - 2500 * fitZoom
+
+    const pages = localDoc.pages;
+    if (!pages.length) return;
+
+    // Compute total document height + width across all stacked pages
+    const PAGE_GAP = 60;
+    const INIT_TOP = 100;
+    const pageW = pages[0].width;
+    let totalH = INIT_TOP;
+    pages.forEach((p, i) => {
+      totalH += p.height + (i < pages.length - 1 ? PAGE_GAP : 0);
     });
-  }, [localDoc.pageWidth, localDoc.pageHeight]);
+
+    // Pick a zoom that fits the widest page with comfortable margin
+    const fitZoom = Math.min(
+      Math.max(ZOOM_MIN, (width - 120) / pageW),
+      ZOOM_MAX,
+      0.9
+    );
+
+    // Pan so the center of the document lands in the center of the viewport.
+    // Pages are placed inside the 5000×5000 canvas starting at left=2500-pageW/2.
+    const docCenterX = 2500; // pages are centered horizontally in canvas
+    const docCenterY = INIT_TOP + totalH / 2;
+
+    const targetPanX = width  / 2 - docCenterX * fitZoom;
+    const targetPanY = height / 2 - docCenterY * fitZoom;
+
+    setZoom(fitZoom);
+    setPan({ x: targetPanX, y: targetPanY });
+  }, [localDoc.pages]);
 
   useEffect(() => {
     if (localDoc.pages.length > 0) return;
@@ -226,14 +335,21 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     // If the input prop hasn't changed since we last acknowledged it, do nothing.
     if (initialDocument === lastAcknowledgedDocRef.current) return;
     
+    // If the incoming doc matches our current local doc, it means our local
+    // change was acknowledged/saved. Update the ref and do nothing else.
+    if (initialDocument === localDocRef.current) {
+      lastAcknowledgedDocRef.current = initialDocument;
+      return;
+    }
+
     // Safety: ignore external updates if we have unsaved local changes 
     // or are in the middle of a gesture.
     const isDirty = localDocRef.current !== lastAcknowledgedDocRef.current;
-    if (isDirty || isPanning || currentStrokeRef.current) return;
+    if (isDirty || isPanning || isDrawing || interactionCount > 0) return;
 
     lastAcknowledgedDocRef.current = initialDocument;
     setLocalDoc(initialDocument);
-  }, [initialDocument, isPanning]);
+  }, [initialDocument, isPanning, isDrawing, interactionCount]);
 
   // --- Pan & Zoom Engine ---
   useEffect(() => {
@@ -241,31 +357,34 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     if (!viewport) return;
 
     const onWheel = (e: WheelEvent) => {
-      e.preventDefault(); // LOCK Browser Scroll
+      e.preventDefault();
+
+      const currentZoom = zoomRef.current; // always fresh, no stale closure
 
       if (e.ctrlKey || e.metaKey) {
-        // PRO ZOOM (centered on mouse)
+        // Multiplicative zoom centred on cursor — smooth 5% steps
         const rect = viewport.getBoundingClientRect();
         const mouseX = e.clientX - rect.left;
         const mouseY = e.clientY - rect.top;
 
-        const zoomDelta = -e.deltaY * 0.003;
-        const nextZoom = Math.min(Math.max(ZOOM_MIN, zoom + zoomDelta), ZOOM_MAX);
-        
-        if (nextZoom !== zoom) {
-          const ratio = nextZoom / zoom;
-          setPan(prev => ({
+        const factor = e.deltaY < 0 ? 1.05 : 1 / 1.05;
+        const nextZoom = Math.min(Math.max(ZOOM_MIN, currentZoom * factor), ZOOM_MAX);
+
+        if (nextZoom !== currentZoom) {
+          const ratio = nextZoom / currentZoom;
+          zoomRef.current = nextZoom;           // update ref immediately
+          setZoom(nextZoom);
+          setPan(prev => clampPan({
             x: mouseX - (mouseX - prev.x) * ratio,
             y: mouseY - (mouseY - prev.y) * ratio
-          }));
-          setZoom(nextZoom);
+          }, nextZoom));
         }
       } else {
-        // Simple manual pan via wheel
-        setPan(prev => ({
+        // Plain scroll → pan
+        setPan(prev => clampPan({
           x: prev.x - e.deltaX,
           y: prev.y - e.deltaY
-        }));
+        }, currentZoom));
       }
     };
 
@@ -274,10 +393,17 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
   }, [zoom]);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    if (e.target === viewportRef.current || e.target === workspaceRef.current) {
+    // Always deselect when clicking on the background (viewport, workspace, or page background)
+    const isBackground = e.target === viewportRef.current || 
+                        e.target === workspaceRef.current || 
+                        (e.target as HTMLElement).classList.contains(styles.pageBackground);
+    
+    if (isBackground) {
       setSelectedId(null);
-      if (!isDrawMode) {
+      
+      if (activeTool === "pan" || activeTool === "select") {
         setIsPanning(true);
+        startInteraction();
         viewportRef.current?.setPointerCapture(e.pointerId);
       }
     }
@@ -285,16 +411,17 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
 
   const handlePointerMove = (e: React.PointerEvent) => {
     if (isPanning) {
-      setPan(prev => ({
+      setPan(prev => clampPan({
         x: prev.x + e.movementX,
         y: prev.y + e.movementY
-      }));
+      }, zoom));
     }
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
     if (isPanning) {
       setIsPanning(false);
+      endInteraction();
       viewportRef.current?.releasePointerCapture(e.pointerId);
     }
   };
@@ -337,7 +464,7 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     setSelectedId(newEl.id);
   }, [localDoc, notifyChange, pushUndo]);
 
-  const handleAddElement = (type: "text" | "image" | "shape") => {
+  const handleAddElement = (type: "text" | "image" | "shape", shapeType?: import("../../../utils/noteContent").CanvasShapeType) => {
     pushUndo();
     const pageId = currentPage.id;
     const centerX = currentPage.width / 2 - 125;
@@ -346,7 +473,7 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     
     let newEl: CanvasElement;
     if (type === "text") newEl = createCanvasTextElement("New Text", centerX, centerY, pageId, maxZ + 1);
-    else if (type === "shape") newEl = createCanvasShapeElement("rectangle", "#e2e8f0", centerX, centerY, pageId, maxZ + 1);
+    else if (type === "shape") newEl = createCanvasShapeElement(shapeType || "rectangle", "#6366f1", centerX, centerY, pageId, maxZ + 1);
     else {
       fileInputRef.current?.click();
       return;
@@ -355,6 +482,8 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     const nextDoc = { ...localDoc, elements: [...localDoc.elements, newEl] };
     notifyChange(nextDoc);
     setSelectedId(newEl.id);
+    setActiveTool("select"); // Switch to select after adding
+    setActiveTab("select");
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -379,6 +508,7 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
         pushUndo();
         notifyChange({ ...localDoc, elements: [...localDoc.elements, newImg] });
         setSelectedId(newImg.id);
+        setActiveTool("select");
       };
       img.src = base64;
     };
@@ -386,21 +516,25 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     e.target.value = "";
   };
 
-  // --- Drawing System ---
-  const handleDrawStart = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDrawMode) return;
+  const handleDrawStart = (e: React.PointerEvent<HTMLDivElement>, pageId?: string) => {
+    if (activeTool !== "draw") return;
     const rect = e.currentTarget.getBoundingClientRect();
     const x = (e.clientX - rect.left) / zoom;
     const y = (e.clientY - rect.top) / zoom;
+    
     drawPointerIdRef.current = e.pointerId;
+    drawPageIdRef.current = pageId || localDoc.pages[localDoc.currentPageIndex]?.id || null;
     currentStrokeRef.current = [{ x, y }];
     pendingDrawPointsRef.current = [];
     setLiveStrokePath(buildSmoothSvgPath([{ x, y }]));
+    
+    setIsDrawing(true);
+    startInteraction();
     e.currentTarget.setPointerCapture(e.pointerId);
   };
 
   const handleDrawMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDrawMode || drawPointerIdRef.current !== e.pointerId || !currentStrokeRef.current) return;
+    if (activeTool !== "draw" || drawPointerIdRef.current !== e.pointerId || !currentStrokeRef.current) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const nativeEvt = e.nativeEvent as PointerEvent;
     const coalesced = typeof nativeEvt.getCoalescedEvents === "function" ? nativeEvt.getCoalescedEvents() : [nativeEvt];
@@ -414,37 +548,60 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
   };
 
   const handleDrawEnd = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!isDrawMode || drawPointerIdRef.current !== e.pointerId || !currentStrokeRef.current) return;
+    if (activeTool !== "draw" || drawPointerIdRef.current !== e.pointerId || !currentStrokeRef.current) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
     drawPointerIdRef.current = null;
+    
     if (drawRafRef.current != null) {
       cancelAnimationFrame(drawRafRef.current);
       drawRafRef.current = null;
     }
     flushDrawFrame();
-    const strokePoints = currentStrokeRef.current;
     
+    const strokePoints = currentStrokeRef.current;
     if (strokePoints && strokePoints.length >= 2) {
       const newStroke: DrawingStroke = {
         id: makeId(),
-        color: "#1d4ed8",
-        size: 3,
+        color: strokeSettings.color,
+        size: strokeSettings.size,
+        opacity: strokeSettings.opacity,
         points: strokePoints
       };
 
-      const nextPages = [...localDoc.pages];
-      const pageIdx = localDoc.currentPageIndex;
-      const pageDrawings = Array.isArray(nextPages[pageIdx]?.drawings) ? nextPages[pageIdx].drawings : [];
-      nextPages[pageIdx] = {
-        ...nextPages[pageIdx],
-        drawings: [...pageDrawings, newStroke]
-      };
+      const nextElements = [...localDoc.elements];
+      const pageId = drawPageIdRef.current || localDoc.pages[localDoc.currentPageIndex]?.id;
       
-      notifyChange({ ...localDoc, pages: nextPages });
+      const existingIdx = nextElements.findIndex(el => 
+        el.type === "drawing" && el.pageId === pageId && el.x === 0 && el.y === 0
+      );
+
+      if (existingIdx >= 0) {
+        const el = nextElements[existingIdx] as CanvasDrawingElement;
+        nextElements[existingIdx] = {
+          ...el,
+          strokes: [...el.strokes, newStroke]
+        };
+      } else {
+        const page = localDoc.pages.find(p => p.id === pageId);
+        const newEl = createCanvasDrawingElement(
+          0, 0, 
+          page?.width || localDoc.pageWidth, 
+          page?.height || localDoc.pageHeight, 
+          pageId as string, 
+          0
+        );
+        newEl.strokes = [newStroke];
+        nextElements.push(newEl);
+      }
+      
+      notifyChange({ ...localDoc, elements: nextElements });
     }
+    
     currentStrokeRef.current = null;
     pendingDrawPointsRef.current = [];
     setLiveStrokePath(null);
+    setIsDrawing(false);
+    endInteraction();
   };
 
   useEffect(() => {
@@ -456,7 +613,7 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
   }, []);
 
   useEffect(() => {
-    if (!isDrawMode) {
+    if (activeTool !== "draw") {
       if (drawRafRef.current != null) {
         cancelAnimationFrame(drawRafRef.current);
         drawRafRef.current = null;
@@ -465,8 +622,12 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
       currentStrokeRef.current = null;
       pendingDrawPointsRef.current = [];
       setLiveStrokePath(null);
+      if (isDrawing) {
+        setIsDrawing(false);
+        endInteraction();
+      }
     }
-  }, [isDrawMode]);
+  }, [activeTool, isDrawing, endInteraction]);
 
   const onDeletePage = useCallback((index: number) => {
     const nextPages = localDoc.pages.filter((_, i) => i !== index);
@@ -504,122 +665,116 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
     });
   }, [localDoc, notifyChange, pushUndo]);
 
+  const handleDownload = useCallback(async () => {
+    if (!noteId) {
+      alert("Note not ready for export. Wait for it to be saved.");
+      return;
+    }
+    
+    setIsDownloading(true);
+    try {
+      await exportNotePackage(noteId);
+    } catch (err) {
+      console.error("[canvas-export] failed", err);
+      alert("Falha ao gerar o arquivo de backup. Tente novamente.");
+    } finally {
+      setIsDownloading(false);
+    }
+  }, [noteId]);
+
   return (
     <div className={styles.editorContainer}>
-      <aside className={styles.sidebar}>
-        <button className={styles.sidebarItem}><LayoutTemplate size={20} /><span>Modelos</span></button>
-        <button className={styles.sidebarItem}><Shapes size={20} /><span>Elementos</span></button>
-        <button className={styles.sidebarItem} onClick={() => handleAddElement("text")}><TypeIcon size={20} /><span>Texto</span></button>
-        <button className={styles.sidebarItem} onClick={() => fileInputRef.current?.click()}><CloudUpload size={20} /><span>Uploads</span></button>
-        <button className={`${styles.sidebarItem} ${isDrawMode ? styles.sidebarItemActive : ""}`} onClick={() => setIsDrawMode(!isDrawMode)}>
-          <PenTool size={20} /><span>Desenho</span>
-        </button>
-        <button className={styles.sidebarItem}><Hammer size={20} /><span>Apps</span></button>
-      </aside>
 
-      <div className={styles.mainContent}>
-        <header className={styles.topBar}>
-          <div className={styles.topBarLeft}>
-            <button className={styles.topBarBtn}>Arquivo</button>
-            <div className={styles.toolbarDivider} />
-            <button className={styles.toolbarBtn} onClick={handleUndo} disabled={undoStackRef.current.length === 0}><Undo size={18} /></button>
-            <button className={styles.toolbarBtn} onClick={handleRedo} disabled={redoStackRef.current.length === 0}><Redo size={18} /></button>
-          </div>
-          <div className={styles.topBarRight}>
-             <button className={styles.primaryBtn}><Maximize2 size={16} /> Preview</button>
-             <button className={styles.shareBtn}>Share</button>
-          </div>
-        </header>
+      {/* ── Full-width TopBar ─────────────────────────────────────── */}
+      <EditorTopBar 
+        title={title || ""}
+        onTitleChange={onTitleChange || (() => {})}
+        onTitleBlur={onTitleBlur || (() => {})}
+        onBack={onBack || (() => {})}
+        folderName={folderName}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        canUndo={undoStackRef.current.length > 0}
+        canRedo={redoStackRef.current.length > 0}
+        isSaving={saving || (debounceTimerRef.current !== null)}
+        isDownloading={isDownloading}
+        onDownload={handleDownload}
+      />
 
-        <div 
-          ref={viewportRef}
-          className={styles.viewport}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          style={{ cursor: isPanning ? 'grabbing' : 'default' }}
-        >
-          <div 
-            ref={workspaceRef}
-            className={styles.canvas}
-            style={{ 
-                transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                cursor: isPanning ? 'grabbing' : 'grab'
+      {/* ── Body row: Sidebar | Canvas ────────────────────────────── */}
+      <div className={styles.bodyRow}>
+        <UnifiedSidebar
+          activeTab={activeTab}
+          onTabChange={(tab: SidebarTab) => {
+            setActiveTab(tab);
+            if (tab === "draw") {
+              // Entering tools menu doesn't auto-activate draw tool unless explicit
+              // If we want it to stay on current tool, just do nothing.
+              // We reset to select to avoid confusion if previous tool is unknown
+              if (activeTool === "draw" || activeTool === "pan") {
+                 setActiveTool("select");
+              }
+            } else if (["select", "pan"].includes(tab)) {
+               setActiveTool(tab as CanvasTool);
+            } else {
+               setActiveTool("select");
+            }
+          }}
+          onImageUploadClick={() => fileInputRef.current?.click()}
+          onAddElement={handleAddElement}
+          strokeSettings={strokeSettings}
+          setStrokeSettings={setStrokeSettings}
+        />
+        
+        <div className={styles.mainContent}>
+          {activeTab === "draw" && (
+            <DrawMenu 
+              activeTool={activeTool}
+              setActiveTool={setActiveTool}
+              strokeSettings={strokeSettings}
+              setStrokeSettings={setStrokeSettings}
+              onAddElement={handleAddElement}
+              onOpenPages={() => setPagesModalOpen(true)}
+              setActiveTab={setActiveTab}
+            />
+          )}
+          <CanvasWorkspace 
+            viewportRef={viewportRef}
+            workspaceRef={workspaceRef}
+            localDoc={localDoc}
+            zoom={zoom}
+            pan={pan}
+            activeTool={activeTool}
+            isPanning={isPanning}
+            selectedId={selectedId}
+            liveStrokePath={liveStrokePath}
+            strokeSettings={strokeSettings}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onSelectElement={(id, e) => { 
+              if (activeTool === "draw") return;
+              e.stopPropagation(); 
+              setSelectedId(id); 
+              setActiveTool("select");
+              setActiveTab("select");
             }}
-          >
-            <div
-              className={styles.pageSheet}
-              style={{ width: currentPage.width, height: currentPage.height }}
-              onPointerDown={handleDrawStart}
-              onPointerMove={handleDrawMove}
-              onPointerUp={handleDrawEnd}
-            >
-              <div className={styles.pageBackground} style={{ width: currentPage.width, height: currentPage.height }} />
-              
-              {/* Drawing Layer */}
-              <svg className={styles.drawingSvg} style={{ pointerEvents: isDrawMode ? "auto" : "none", zIndex: 110 }}>
-                {currentPage.drawings.map(stroke => (
-                  <path
-                    key={stroke.id}
-                    d={buildSmoothSvgPath(stroke.points)}
-                    fill="none" stroke={stroke.color} strokeWidth={stroke.size}
-                    strokeLinecap="round" strokeLinejoin="round"
-                  />
-                ))}
-                {liveStrokePath && (
-                  <path
-                    d={liveStrokePath}
-                    fill="none" stroke="#1d4ed8" strokeWidth={3}
-                    strokeLinecap="round" strokeLinejoin="round"
-                  />
-                )}
-              </svg>
+            onUpdateElement={handleElementUpdate}
+            onDeleteElement={handleElementDelete}
+            onDuplicateElement={handleElementDuplicate}
+            onDrawStart={handleDrawStart}
+            onDrawMove={handleDrawMove}
+            onDrawEnd={handleDrawEnd}
+          />
 
-              {localDoc.elements
-                .filter(el => el.pageId === currentPage.id)
-                .map(el => (
-                <CanvasElementNode
-                  key={el.id}
-                  element={el}
-                  isSelected={selectedId === el.id}
-                  onSelect={(id, e) => { e.stopPropagation(); setSelectedId(id); }}
-                  onUpdate={handleElementUpdate}
-                  onDelete={handleElementDelete}
-                  onDuplicate={handleElementDuplicate}
-                  zoom={zoom}
-                />
-              ))}
-            </div>
-          </div>
+          <BottomBar 
+            zoom={zoom}
+            setZoom={setZoom}
+            pageCount={localDoc.pages.length}
+            onGridClick={() => setPagesModalOpen(true)}
+            onCenterCanvas={centerCanvas}
+          />
         </div>
-
-        <footer className={styles.bottomBar}>
-          <div className={styles.bottomLeft}>
-            <button className={styles.bottomBtn}><Monitor size={16} /> Notes</button>
-          </div>
-          <div className={styles.bottomCenter}>
-            <div className={styles.filmstrip}>
-              {localDoc.pages.map((p, idx) => (
-                <div 
-                  key={p.id} 
-                  className={`${styles.pageThumb} ${idx === localDoc.currentPageIndex ? styles.pageThumbActive : ""}`}
-                  onClick={() => notifyChange({ ...localDoc, currentPageIndex: idx })}
-                >
-                  {idx + 1}
-                </div>
-              ))}
-              <button className={styles.addPageThumb} onClick={() => {
-                const newP = createCanvasPage();
-                notifyChange({ ...localDoc, pages: [...localDoc.pages, newP], currentPageIndex: localDoc.pages.length });
-              }}>+</button>
-            </div>
-          </div>
-          <div className={styles.bottomRight}>
-            <span className={styles.zoomText}>{Math.round(zoom * 100)}%</span>
-            <input type="range" min="0.1" max="5" step="0.1" value={zoom} onChange={(e) => setZoom(parseFloat(e.target.value))} className={styles.zoomSlider} />
-            <button className={styles.gridBtn} onClick={() => setPagesModalOpen(true)}><LayoutGrid size={16} /></button>
-          </div>
-        </footer>
       </div>
 
       <PagesModal
@@ -628,7 +783,7 @@ const CanvasEditor: React.FC<Props> = ({ document: initialDocument, onChange }) 
         elements={localDoc.elements}
         currentPageIndex={localDoc.currentPageIndex}
         onClose={() => setPagesModalOpen(false)}
-        onSelectPage={(i) => { notifyChange({ ...localDoc, currentPageIndex: i }); setPagesModalOpen(false); }}
+        onSelectPage={(i: number) => { notifyChange({ ...localDoc, currentPageIndex: i }); setPagesModalOpen(false); }}
         onAddPage={() => { 
           const newP = createCanvasPage();
           notifyChange({ ...localDoc, pages: [...localDoc.pages, newP], currentPageIndex: localDoc.pages.length });

@@ -1,0 +1,234 @@
+.floatingContainer {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  z-index: 1000;
+  pointer-events: none; /* children will have auto */
+}
+
+/* Base Panel Style */
+.panel {
+  background: rgba(17, 24, 39, 0.8); /* Dark Slate / Gray 950 alpha */
+  backdrop-filter: blur(12px) saturate(180%);
+  -webkit-backdrop-filter: blur(12px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  padding: 8px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: auto;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Animations for Panel Opening */
+.panelEntry {
+  animation: panelIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes panelIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+/* Tool Buttons */
+.toolBtn {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: none;
+  background: transparent;
+  color: #94a3b8; /* Slate 400 */
+  cursor: pointer;
+  transition: all 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  position: relative;
+}
+
+.toolBtn:hover {
+  background: rgba(34, 211, 238, 0.12); /* Cyan 400 12% alpha */
+  color: #f8fafc;
+  transform: scale(1.05);
+}
+
+.toolBtnActive {
+  background: rgba(34, 211, 238, 0.15);
+  color: #22d3ee; /* Cyan 400 */
+}
+
+/* Active Indicator Dot */
+.activeDot {
+  position: absolute;
+  left: 2px;
+  width: 3px;
+  height: 12px;
+  background: #22d3ee;
+  border-radius: 10px;
+}
+
+/* --- SUBMENU --- */
+.submenu {
+  min-width: 140px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.submenuEntry {
+  animation: submenuIn 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes submenuIn {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Section labels inside submenu */
+.sectionTitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 8px;
+  letter-spacing: 0.05em;
+}
+
+/* Colors Grid */
+.colorGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.colorCircle {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  padding: 0;
+}
+
+.colorCircle:hover {
+  transform: scale(1.2);
+}
+
+.colorCircleActive {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px rgba(34, 211, 238, 0.5);
+}
+
+/* Brush Size Visuals */
+.sizeList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sizeOption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  width: 100%;
+}
+
+.sizeOption:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #fff;
+}
+
+.sizeOptionActive {
+  background: rgba(34, 211, 238, 0.1);
+  color: #22d3ee;
+}
+
+.sizePreview {
+  height: 2px;
+  background: currentColor;
+  border-radius: 2px;
+  flex: 1;
+}
+
+.closeCircleBtn {
+  width: 32px;
+  height: 32px;
+  background: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.closeCircleBtn:hover {
+  background: #EF4444;
+  border-color: #EF4444;
+  transform: rotate(90deg) scale(1.1);
+}
+
+.emptySubmenuContent {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 200px;
+  text-align: center;
+  padding: 20px;
+}
+
+.emptyText {
+  color: #64748b;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Tooltips or Labels if needed */
+.toolLabel {
+  position: absolute;
+  left: 60px;
+  background: #0f172a;
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+
+.toolBtn:hover .toolLabel {
+  opacity: 1;
+}

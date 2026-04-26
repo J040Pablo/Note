@@ -1,0 +1,254 @@
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  min-height: 56px;
+  /* Gradient goes slightly lighter on the left (where home/logo sits) */
+  background: linear-gradient(90deg, #162032 0%, #0f172a 40%, #0f172a 100%);
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.04), 0 2px 8px rgba(0,0,0,0.35);
+  color: #fff;
+  user-select: none;
+  flex-shrink: 0;
+  /* Sits above sidebar & canvas */
+  z-index: 500;
+  width: 100%;
+}
+
+.leftSection, .centerSection, .rightSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.centerSection {
+  flex: 1;
+  justify-content: center;
+}
+
+.homeBtn {
+  background: linear-gradient(135deg, #22d3ee 0%, #06b6d4 100%);
+  color: white;
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.3);
+}
+
+.homeBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(34, 211, 238, 0.5);
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background-color: rgba(255, 255, 255, 0.1);
+  margin: 0 8px;
+}
+
+.menuBtn {
+  background: transparent;
+  color: #e2e8f0;
+  border: none;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.menuBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.iconBtn {
+  background: transparent;
+  color: #94a3b8;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.iconBtn:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.iconBtn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.statusSection {
+  margin-left: 8px;
+}
+
+.statusText {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #94a3b8;
+}
+
+.titleInput {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  padding: 4px 12px;
+  border-radius: 4px;
+  width: 200px;
+  transition: all 0.2s;
+}
+
+.titleInput:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.titleInput:focus {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: #22d3ee;
+  outline: none;
+}
+
+.collaborators {
+  display: flex;
+  margin-right: 8px;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #10b981;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: bold;
+  border: 2px solid #0f172a;
+}
+
+.metricsBtn, .viewBtn {
+  background: transparent;
+  color: #cbd5e1;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.metricsBtn:hover, .viewBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.exportBtn {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border: none;
+  padding: 0 12px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.exportBtn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.primaryBtn {
+  background: #fff;
+  color: #0f172a;
+  border: none;
+  padding: 0 16px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.primaryBtn:hover {
+  background: #f8fafc;
+  transform: translateY(-1px);
+}
+
+.folderBadge {
+  background: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 8px;
+}
+
+.popover {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 8px 16px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-size: 13px;
+  color: #e2e8f0;
+  z-index: 1000;
+  white-space: nowrap;
+}
+
+.relativeParent {
+  position: relative;
+}
+
+.exportBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

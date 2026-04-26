@@ -80,15 +80,23 @@
 }
 
 .emptyState {
-  min-height: 220px;
+  min-height: 240px;
   border-radius: 14px;
   border: 1px dashed var(--border);
   background: var(--bg);
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
   color: var(--text-secondary);
   text-align: center;
-  padding: 20px;
+  padding: 32px;
+}
+
+.emptyLogo {
+  margin-bottom: 20px;
+  opacity: 0.25;
+  filter: grayscale(1) brightness(1.2);
 }
 
 .emptyState p {
