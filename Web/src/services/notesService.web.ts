@@ -122,7 +122,7 @@ export const createQuickNote = (payload: {
 
 export const updateQuickNote = (
   id: ID,
-  payload: { title?: string; content?: string; text?: string; folderId?: ID | null }
+  payload: { title?: string; content?: string; text?: string; folderId?: ID | null; color?: string }
 ): DataQuickNote | null => {
   const store = loadData();
   const now = Date.now();
@@ -136,6 +136,7 @@ export const updateQuickNote = (
       text: payload.text !== undefined ? payload.text : (payload.content !== undefined ? payload.content : q.text),
       content: payload.content !== undefined ? payload.content : (payload.text !== undefined ? payload.text : q.content),
       folderId: payload.folderId !== undefined ? payload.folderId : q.folderId,
+      color: payload.color !== undefined ? payload.color : q.color,
       updatedAt: now,
     };
     result = updated;

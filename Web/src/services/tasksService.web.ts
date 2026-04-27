@@ -41,6 +41,7 @@ const mapDataToItem = (task: DataTask, fallbackOrder: number): TaskItem => ({
   updatedAt: task.updatedAt,
   parentId: task.parentId ?? null,
   noteId: task.noteId ?? null,
+  color: task.color,
   completedDates: Array.isArray(task.completedDates) ? task.completedDates : [],
 });
 
@@ -58,6 +59,7 @@ const mapItemToData = (task: TaskItem): DataTask => ({
   updatedAt: task.updatedAt,
   parentId: task.parentId ?? null,
   noteId: task.noteId ?? null,
+  color: task.color,
   completedDates: Array.isArray(task.completedDates) ? task.completedDates : [],
 });
 

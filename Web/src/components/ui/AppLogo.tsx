@@ -8,10 +8,10 @@ type AppLogoProps = {
   variant?: "sidebar" | "entry" | "header" | "default";
 };
 
-const AppLogo: React.FC<AppLogoProps> = ({ 
-  size, 
-  className = "", 
-  variant = "default" 
+const AppLogo: React.FC<AppLogoProps> = ({
+  size,
+  className = "",
+  variant = "default"
 }) => {
   const containerStyle: React.CSSProperties = {
     width: size,
@@ -19,13 +19,13 @@ const AppLogo: React.FC<AppLogoProps> = ({
   };
 
   return (
-    <div 
-      className={`${styles.logoContainer} ${styles[variant]} ${className}`} 
+    <div
+      className={`${styles.logoContainer} ${styles[variant]} ${className}`}
       style={containerStyle}
     >
-      <img 
-        src={logo} 
-        alt="Spectru Logo" 
+      <img
+        src={logo}
+        alt="Spectru Logo"
         className={styles.logoImage}
       />
     </div>

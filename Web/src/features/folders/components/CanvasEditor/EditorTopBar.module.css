@@ -23,6 +23,26 @@
   gap: 8px;
 }
 
+.backBtn {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-right: 4px;
+}
+
+.backBtn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  transform: translateX(-2px);
+}
+
 .centerSection {
   flex: 1;
   justify-content: center;

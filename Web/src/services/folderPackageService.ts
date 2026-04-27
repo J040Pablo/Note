@@ -192,6 +192,54 @@ export const exportNotePackage = async (noteId: string): Promise<void> => {
   }
 };
 
+export const exportQuickNotePackage = async (noteId: string): Promise<void> => {
+  try {
+    const store = loadData();
+    const note = store.quickNotes.find((q) => q.id === noteId);
+    if (!note) throw new Error("Quick note not found");
+
+    const zip = new JSZip();
+
+    const manifest: FolderPackageManifest = {
+      schemaVersion: PACKAGE_SCHEMA_VERSION,
+      exportedAt: Date.now(),
+      type: "folder-package",
+      origin: "web",
+      rootFolder: {
+        id: `root-${note.id}`,
+        parentId: null,
+        name: note.title || "Exported Quick Note",
+        createdAt: note.createdAt,
+        updatedAt: note.updatedAt,
+      },
+      folders: [],
+      notes: [],
+      quickNotes: [note],
+      tasks: [],
+    };
+    zip.file("data.json", JSON.stringify(manifest, null, 2));
+
+    const content = await zip.generateAsync({
+      type: "blob",
+      compression: "DEFLATE",
+    });
+
+    const url = URL.createObjectURL(content);
+    const link = document.createElement("a");
+    const safeTitle = (note.title || "quick_note").replace(/[^a-z0-9]/gi, "_").toLowerCase();
+    
+    link.href = url;
+    link.download = `${safeTitle}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error("[quick-note-package] export failed", error);
+    throw error;
+  }
+};
+
 export const importFolderPackage = async (file: File): Promise<void> => {
   try {
     const zip = await JSZip.loadAsync(file);

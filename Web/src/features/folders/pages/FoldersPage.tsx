@@ -13,14 +13,13 @@ import {
 } from "lucide-react";
 import { PageContainer, AppLogo } from "../../../components/ui";
 import Breadcrumb from "../components/Breadcrumb";
-import type { ContextActionId } from "../components/ContextMenu";
-import ContextMenu from "../components/ContextMenu";
 import FAB from "../components/FAB";
 import FilterDropdown from "../components/FilterDropdown";
 import FolderCard from "../components/FolderCard";
 import FolderListItem from "../components/FolderListItem";
 import FolderModal from "../components/FolderModal";
 import ViewToggle from "../components/ViewToggle";
+import ItemActionsMenu, { type ItemActionId } from "../components/ItemActionsMenu";
 import type {
   FolderDraft,
   FolderEntry,
@@ -28,12 +27,13 @@ import type {
   FolderViewMode,
 } from "../types";
 import { useAppMode } from "../../../app/mode";
-import { getFolders, getNotes, getQuickNotes } from "../../../services/webData";
 import { createFolder, deleteFolder, updateFolder } from "../../../services/foldersService.web";
 import { createNote, deleteNote, updateNote, deleteQuickNote, updateQuickNote } from "../../../services/notesService.web";
+import { deleteTask, updateTask, getAllTasks } from "../../../services/tasksService.web";
 import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQuickNote } from "../../tasks/sync";
 import { subscribeSyncBridge } from "../../../services/syncBridge";
-import { exportFolderPackage, importFolderPackage } from "../../../services/folderPackageService";
+import { exportFolderPackage, importFolderPackage, exportNotePackage, exportQuickNotePackage } from "../../../services/folderPackageService";
+import { getFolders, getNotes, getQuickNotes } from "../../../services/webData";
 import { useTranslation } from "react-i18next";
 import styles from "./FoldersPage.module.css";
 
@@ -57,32 +57,81 @@ const loadFolderEntries = (): FolderEntry[] => {
 
   const notes: FolderEntry[] = getNotes()
     .filter((note) => typeof note.id === "string")
-    .map((note) => ({
-      id: note.id as string,
-      parentId: typeof note.parentId === "string" ? note.parentId : null,
-      type: "note",
-      // load real notes
-      name: typeof note.title === "string" ? note.title : "Untitled note",
-      description: typeof note.content === "string" ? note.content.slice(0, 120) : "",
-      color: "#71717A",
-      content: typeof note.content === "string" ? note.content : "",
-      createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
-    }));
+    .map((note) => {
+      const isCanvas = typeof note.content === "string" && note.content.includes('"type":"canvas"');
+      let description = "";
+      if (typeof note.content === "string") {
+        if (isCanvas) {
+          try {
+            const parsed = JSON.parse(note.content);
+            description = parsed.name || parsed.description || "Canvas Note";
+          } catch {
+            description = "Canvas Note";
+          }
+        } else {
+          description = note.content.slice(0, 120);
+        }
+      }
+
+      return {
+        id: note.id as string,
+        parentId: typeof note.parentId === "string" ? note.parentId : null,
+        type: (isCanvas ? "canvas" : "note") as any,
+        name: typeof note.title === "string" ? note.title : "Untitled note",
+        description,
+        color: note.color || "#71717A",
+        content: typeof note.content === "string" ? note.content : "",
+        createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
+        imageUrl: note.imageUrl,
+        bannerUrl: note.bannerUrl,
+      };
+    });
 
   const quickNotes: FolderEntry[] = (getQuickNotes?.() || [])
     .filter((note: any) => typeof note.id === "string")
-    .map((note: any) => ({
-      id: note.id as string,
-      parentId: typeof note.folderId === "string" ? note.folderId : null,
-      type: "quick-note" as any,
-      name: typeof note.title === "string" ? note.title : "Untitled quick note",
-      description: typeof note.text === "string" ? note.text.slice(0, 120) : "",
-      color: "#71717A",
-      content: typeof note.content === "string" ? note.content : "",
-      createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
+    .map((note: any) => {
+      let description = "";
+      if (typeof note.content === "string" && note.content.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(note.content);
+          description = (parsed.blocks?.[0]?.html || "")
+            .replace(/<[^>]*>?/gm, "")
+            .slice(0, 120);
+        } catch {
+          description = typeof note.text === "string" ? note.text.slice(0, 120) : "";
+        }
+      } else {
+        description = typeof note.text === "string" ? note.text.slice(0, 120) : "";
+      }
+
+      return {
+        id: note.id as string,
+        parentId: typeof note.folderId === "string" ? note.folderId : null,
+        type: "quickNote" as any,
+        name: typeof note.title === "string" ? note.title : "Untitled quick note",
+        description,
+        color: note.color || "#71717A",
+        content: typeof note.content === "string" ? note.content : "",
+        createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
+        imageUrl: note.imageUrl,
+        bannerUrl: note.bannerUrl,
+      };
+    });
+
+  const tasks: FolderEntry[] = (getAllTasks() || [])
+    .map((task: any) => ({
+      id: task.id as string,
+      parentId: typeof task.parentId === "string" ? task.parentId : null,
+      type: "task" as any,
+      name: typeof task.title === "string" ? task.title : "Untitled task",
+      description: task.priority ? `Priority: ${task.priority}` : "",
+      color: task.color || "#f59e0b", // Task color
+      createdAt: typeof task.createdAt === "number" ? task.createdAt : Date.now(),
+      imageUrl: task.imageUrl,
+      bannerUrl: task.bannerUrl,
     }));
 
-  return [...folders, ...notes, ...quickNotes];
+  return [...folders, ...notes, ...quickNotes, ...tasks];
 };
 
 const defaultFilters: FolderFilters = {
@@ -139,8 +188,21 @@ const mapEntryToNote = (entry: FolderEntry) => ({
   parentId: toParentId(entry.parentId),
   title: entry.name.trim() || "Untitled note",
   content: entry.content ?? "",
+  color: entry.color,
   createdAt: entry.createdAt,
   updatedAt: entry.createdAt,
+  imageUrl: entry.imageUrl,
+  bannerUrl: entry.bannerUrl,
+});
+
+const mapEntryToTask = (entry: FolderEntry) => ({
+  id: String(entry.id),
+  title: entry.name.trim() || "Untitled task",
+  parentId: toParentId(entry.parentId),
+  color: entry.color,
+  updatedAt: Date.now(),
+  imageUrl: entry.imageUrl,
+  bannerUrl: entry.bannerUrl,
 });
 
 const mapSyncFolderToEntry = (folder: SyncFolder): FolderEntry => ({
@@ -161,7 +223,7 @@ const mapSyncNoteToEntry = (note: SyncNote): FolderEntry => ({
   type: "note",
   name: note.title || "Untitled note",
   description: note.content.slice(0, 120),
-  color: "#71717A",
+  color: note.color || "#71717A",
   content: note.content,
   createdAt: note.createdAt,
 });
@@ -204,13 +266,29 @@ const persistFolderEntry = (entry: FolderEntry): void => {
     return;
   }
 
-  if (entry.type === "quick-note") {
+  if (entry.type === "quickNote") {
     updateQuickNote(entry.id, {
       title: entry.name,
       content: entry.content ?? "",
       text: entry.content ?? "",
       folderId: entry.parentId,
+      color: entry.color,
     });
+    return;
+  }
+
+  if (entry.type === "task") {
+    const allTasks = getAllTasks();
+    const existing = allTasks.find((t) => t.id === entry.id);
+    if (existing) {
+      updateTask({
+        ...existing,
+        title: entry.name,
+        parentId: toParentId(entry.parentId),
+        color: entry.color,
+        updatedAt: Date.now(),
+      });
+    }
   }
 };
 
@@ -220,13 +298,18 @@ const deleteFolderEntry = (entry: FolderEntry): void => {
     return;
   }
 
-  if (entry.type === "note") {
+  if (entry.type === "note" || entry.type === "canvas") {
     deleteNote(entry.id);
     return;
   }
 
-  if (entry.type === "quick-note") {
+  if (entry.type === "quickNote") {
     deleteQuickNote(entry.id);
+    return;
+  }
+
+  if (entry.type === "task") {
+    deleteTask(entry.id);
   }
 };
 
@@ -407,24 +490,29 @@ const FoldersPage: React.FC = () => {
       const item = entries.find((entry) => entry.id === itemId);
       if (!item) return;
 
-      if (item.type === "folder") {
-        navigateWithTransition([...path, item.id], "forward");
-        return;
+      switch (item.type as string) {
+        case "folder":
+          navigateWithTransition([...path, item.id], "forward");
+          break;
+        case "note":
+        case "canvas":
+          navigate(`/notes/${item.id}`);
+          break;
+        case "quickNote":
+        case "quick-note": // Legacy fallback
+          navigate(`/quicknotes/${item.id}`);
+          break;
+        case "task":
+        case "file": // Legacy fallback
+          navigate(`/tasks`);
+          break;
+        default:
+          // For any other type, show the metadata edit modal
+          setModalState({ mode: "edit", itemId: item.id });
+          setEditorTitle(item.name);
+          setEditorBody(item.content ?? "");
+          break;
       }
-
-      if (item.type === "note") {
-        navigate(`/notes/${item.id}`);
-        return;
-      }
-
-      if (item.type === "quick-note" as any) {
-        navigate(`/quicknotes/${item.id}`);
-        return;
-      }
-
-      setModalState({ mode: "edit", itemId: item.id });
-      setEditorTitle(item.name);
-      setEditorBody(item.content ?? "");
     },
     [entries, navigateWithTransition, path, navigate]
   );
@@ -458,10 +546,10 @@ const FoldersPage: React.FC = () => {
 
       if (actionId === "add-file") {
         const file: FolderEntry = {
-          id: makeId("file"),
+          id: makeId("task"),
           parentId: currentFolderId,
-          type: "file",
-          name: `New File ${visibleEntries.filter((item) => item.type === "file").length + 1}.txt`,
+          type: "task",
+          name: `New Task ${visibleEntries.filter((item) => item.type === "task").length + 1}`,
           description: "Created from quick action",
           content: "",
           color: "#22c55e",
@@ -509,12 +597,20 @@ const FoldersPage: React.FC = () => {
   );
 
   const handleContextAction = React.useCallback(
-    (action: ContextActionId) => {
+    (action: ItemActionId) => {
       if (!selectedContextItem) return;
 
       closeContextMenu();
 
       if (action === "delete") {
+        const confirmMsg = 
+          selectedContextItem.type === "folder" ? t("deleteFolderConfirm") :
+          selectedContextItem.type === "note" ? t("deleteNoteConfirm") :
+          selectedContextItem.type === "quickNote" ? t("deleteQuickNoteConfirm") :
+          t("deleteConfirm");
+
+        if (!window.confirm(confirmMsg)) return;
+
         setEntries((prev) => {
           const descendants =
             selectedContextItem.type === "folder"
@@ -547,10 +643,25 @@ const FoldersPage: React.FC = () => {
       }
 
       if (action === "edit") {
-        setEditorTitle(selectedContextItem.name);
-        setEditorBody(selectedContextItem.content ?? selectedContextItem.description ?? "");
-        setModalState({ mode: "edit", itemId: selectedContextItem.id });
-        return;
+        switch (selectedContextItem.type as string) {
+          case "note":
+          case "canvas":
+            navigate(`/notes/${selectedContextItem.id}`);
+            return;
+          case "quickNote":
+          case "quick-note":
+            navigate(`/quicknotes/${selectedContextItem.id}`);
+            return;
+          case "task":
+          case "file":
+            navigate(`/tasks`);
+            return;
+          default:
+            setEditorTitle(selectedContextItem.name);
+            setEditorBody(selectedContextItem.content ?? selectedContextItem.description ?? "");
+            setModalState({ mode: "edit", itemId: selectedContextItem.id });
+            return;
+        }
       }
 
       if (action === "change-color") {
@@ -560,7 +671,13 @@ const FoldersPage: React.FC = () => {
       }
 
       if (action === "export") {
-        exportFolderPackage(selectedContextItem.id);
+        if (selectedContextItem.type === "quickNote") {
+          exportQuickNotePackage(selectedContextItem.id);
+        } else if (selectedContextItem.type === "note" || selectedContextItem.type === "canvas") {
+          exportNotePackage(selectedContextItem.id);
+        } else {
+          exportFolderPackage(selectedContextItem.id);
+        }
         return;
       }
 
@@ -568,7 +685,7 @@ const FoldersPage: React.FC = () => {
       setUploadedBanner(selectedContextItem.bannerUrl);
       setModalState({ mode: "media", itemId: selectedContextItem.id });
     },
-    [closeContextMenu, currentFolderId, selectedContextItem]
+    [closeContextMenu, currentFolderId, selectedContextItem, t, navigate]
   );
 
   const closeModalState = React.useCallback(() => {
@@ -754,7 +871,8 @@ const FoldersPage: React.FC = () => {
         onAction={handleFabAction}
       />
 
-      <ContextMenu
+      <ItemActionsMenu
+        item={selectedContextItem}
         open={contextMenuState.open}
         x={contextMenuState.x}
         y={contextMenuState.y}

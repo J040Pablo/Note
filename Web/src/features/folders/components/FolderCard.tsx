@@ -18,7 +18,7 @@ const FolderCard: React.FC<FolderCardProps> = ({ item, onActivate, onOpenMenu })
   const typeIcon =
     item.type === "folder" ? (
       <FolderIcon size={18} color={item.color} />
-    ) : item.type === "note" ? (
+    ) : (item.type === "note" || item.type === "canvas") ? (
       <StickyNote size={18} color={item.color} />
     ) : (
       <FileText size={18} color={item.color} />
@@ -26,7 +26,17 @@ const FolderCard: React.FC<FolderCardProps> = ({ item, onActivate, onOpenMenu })
 
   return (
     <article className={styles.card}>
-      <button type="button" className={styles.openButton} onClick={() => onActivate(item.id)}>
+      <div 
+        className={styles.openButton} 
+        onClick={() => onActivate(item.id)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            onActivate(item.id);
+          }
+        }}
+      >
         <div className={styles.banner}>
           {item.bannerUrl ? <img src={item.bannerUrl} alt="" /> : <div className={styles.bannerFallback} />}
         </div>
@@ -58,7 +68,7 @@ const FolderCard: React.FC<FolderCardProps> = ({ item, onActivate, onOpenMenu })
             <MoreHorizontal size={17} />
           </button>
         </div>
-      </button>
+      </div>
     </article>
   );
 };

@@ -22,7 +22,7 @@ const FolderListItem: React.FC<FolderListItemProps> = ({
   const typeIcon =
     item.type === "folder" ? (
       <FolderIcon size={18} color={item.color} />
-    ) : item.type === "note" ? (
+    ) : (item.type === "note" || item.type === "canvas") ? (
       <StickyNote size={18} color={item.color} />
     ) : (
       <FileText size={18} color={item.color} />

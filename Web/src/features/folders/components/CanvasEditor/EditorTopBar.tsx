@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Undo, Redo, Cloud, ChevronDown, Check, Share, Download, Grid } from "lucide-react";
+import { Undo, Redo, Cloud, ChevronDown, Check, Share, Download, Grid, ArrowLeft } from "lucide-react";
 import styles from "./EditorTopBar.module.css";
 import AnimatedHomeMenu from "./AnimatedHomeMenu";
 
@@ -58,6 +58,15 @@ const EditorTopBar: React.FC<EditorTopBarProps> = ({
   return (
     <header className={styles.topBar}>
       <div className={styles.leftSection}>
+        <button 
+          className={styles.backBtn} 
+          onClick={onBack} 
+          aria-label="Voltar"
+          title="Voltar"
+        >
+          <ArrowLeft size={20} />
+        </button>
+        
         <AnimatedHomeMenu onBack={onBack} />
         
         <div className={styles.divider} />

@@ -20,6 +20,9 @@ export type SyncNote = {
   title: string;
   content: string;
   folderId?: string | null;
+  color?: string;
+  imageUrl?: string;
+  bannerUrl?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -30,6 +33,9 @@ export type SyncQuickNote = {
   content: string;
   text?: string;
   folderId?: string | null;
+  color?: string;
+  imageUrl?: string;
+  bannerUrl?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -52,6 +58,9 @@ export type SyncTask = {
   updatedAt: number;
   parentId?: string | null;
   noteId?: string | null;
+  color?: string;
+  imageUrl?: string;
+  bannerUrl?: string;
 };
 
 export type SyncIncomingMessage =

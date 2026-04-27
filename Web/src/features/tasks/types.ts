@@ -15,6 +15,7 @@ export type TaskItem = {
   updatedAt: number;
   parentId?: string | null;
   noteId?: string | null;
+  color?: string;
 };
 
 export type TaskDraft = {

@@ -22,6 +22,9 @@ export type DataNote = {
   title: string;
   content: string;
   folderId?: string | null;
+  color?: string;
+  imageUrl?: string;
+  bannerUrl?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -32,6 +35,9 @@ export type DataQuickNote = {
   text: string;
   content: string;
   folderId?: string | null;
+  color?: string;
+  imageUrl?: string;
+  bannerUrl?: string;
   createdAt: number;
   updatedAt: number;
 };
@@ -51,6 +57,9 @@ export type DataTask = {
   order?: number;
   parentId?: string | null;
   noteId?: string | null;
+  color?: string;
+  imageUrl?: string;
+  bannerUrl?: string;
 };
 
 export type DataStore = {
@@ -116,6 +125,9 @@ const normalizeNote = (input: unknown, index: number): DataNote => {
     title: asString(item.title, asString(item.name, "Untitled note")),
     content: typeof item.content === "string" ? item.content : "",
     folderId,
+    color: typeof item.color === "string" ? item.color : undefined,
+    imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : undefined,
+    bannerUrl: typeof item.bannerUrl === "string" ? item.bannerUrl : undefined,
     createdAt: asNumber(item.createdAt, now),
     updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, now)),
   };
@@ -132,6 +144,9 @@ const normalizeQuickNote = (input: unknown, index: number): DataQuickNote => {
     text: text || content,
     content: content || text,
     folderId: asNullableString(item.folderId),
+    color: typeof item.color === "string" ? item.color : undefined,
+    imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : undefined,
+    bannerUrl: typeof item.bannerUrl === "string" ? item.bannerUrl : undefined,
     createdAt: asNumber(item.createdAt, now),
     updatedAt: asNumber(item.updatedAt, asNumber(item.createdAt, now)),
   };
@@ -158,6 +173,9 @@ const normalizeTask = (input: unknown, index: number): DataTask => {
     order: asNumber(item.order, index),
     parentId: asNullableString(item.parentId),
     noteId: asNullableString(item.noteId),
+    color: typeof item.color === "string" ? item.color : undefined,
+    imageUrl: typeof item.imageUrl === "string" ? item.imageUrl : undefined,
+    bannerUrl: typeof item.bannerUrl === "string" ? item.bannerUrl : undefined,
   };
 };
 
