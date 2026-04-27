@@ -83,18 +83,28 @@ const SettingsScreen: React.FC = () => {
   }, [currentEditingColor]);
 
   const normalizePickerHex = useCallback((value: string, fallback: string) => {
-    const normalized = value.startsWith("#") ? value.toUpperCase() : `#${value.toUpperCase()}`;
+    if (!value) return fallback;
+    let normalized = value.trim().toUpperCase();
+    if (!normalized.startsWith("#")) normalized = `#${normalized}`;
+    
+    if (/^#([0-9A-F]{3})$/.test(normalized)) {
+      normalized = `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`;
+    } else if (/^#([0-9A-F]{8})$/.test(normalized)) {
+      normalized = normalized.substring(0, 7);
+    }
+    
     return /^#([0-9A-F]{6})$/.test(normalized) ? normalized : fallback;
   }, []);
 
   const applyHexColor = useCallback((value: string, setter: (color: string) => void) => {
-    const normalized = value.startsWith("#") ? value.toUpperCase() : `#${value.toUpperCase()}`;
-    if (!/^#([0-9A-F]{6})$/.test(normalized)) {
+    const normalized = normalizePickerHex(value, "");
+    if (!normalized) {
       Alert.alert("Invalid color", "Use HEX format like #22C55E");
       return;
     }
     setter(normalized);
-  }, []);
+    setCustomHex(normalized);
+  }, [normalizePickerHex]);
 
   const setEditingColor = useCallback(
     (value: string) => {
@@ -142,7 +152,7 @@ const SettingsScreen: React.FC = () => {
         <Text variant="subtitle" style={[styles.headerTitle, { color: theme.colors.textPrimary }]}>Settings</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={[styles.section, { borderColor: theme.colors.border, backgroundColor: theme.colors.card }]}> 
           <View style={styles.sectionHeader}>
             <Ionicons name="color-palette-outline" size={16} color={theme.colors.textSecondary} />
@@ -261,8 +271,12 @@ const SettingsScreen: React.FC = () => {
                   sliderSize={22}
                   thumbSize={28}
                   gapSize={10}
-                  onColorChange={(value) => setEditingColor(normalizePickerHex(value, currentEditingColor))}
-                  onColorChangeComplete={(value) => setEditingColor(normalizePickerHex(value, currentEditingColor))}
+                  onColorChange={(value) => setCustomHex(normalizePickerHex(value, currentEditingColor))}
+                  onColorChangeComplete={(value) => {
+                    const normalized = normalizePickerHex(value, currentEditingColor);
+                    setCustomHex(normalized);
+                    setEditingColor(normalized);
+                  }}
                 />
               </View>
 
