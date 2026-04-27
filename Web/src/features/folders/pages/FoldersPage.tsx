@@ -33,106 +33,12 @@ import { deleteTask, updateTask, getAllTasks } from "../../../services/tasksServ
 import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQuickNote } from "../../tasks/sync";
 import { subscribeSyncBridge } from "../../../services/syncBridge";
 import { exportFolderPackage, importFolderPackage, exportNotePackage, exportQuickNotePackage } from "../../../services/folderPackageService";
-import { getFolders, getNotes, getQuickNotes } from "../../../services/webData";
 import { useTranslation } from "react-i18next";
 import styles from "./FoldersPage.module.css";
+import { loadFolderEntries } from "../selectors";
 
 const VIEW_MODE_STORAGE_KEY = "folders:view-mode";
 const NAVIGATION_ANIMATION_MS = 190;
-
-const loadFolderEntries = (): FolderEntry[] => {
-  const folders: FolderEntry[] = getFolders()
-    .filter((folder) => typeof folder.id === "string")
-    .map((folder) => ({
-      id: folder.id as string,
-      parentId: typeof folder.parentId === "string" ? folder.parentId : null,
-      type: "folder",
-      name: typeof folder.name === "string" ? folder.name : "Untitled folder",
-      description: typeof folder.description === "string" ? folder.description : "",
-      color: typeof folder.color === "string" ? folder.color : "#111111",
-      createdAt: typeof folder.createdAt === "number" ? folder.createdAt : Date.now(),
-      imageUrl: typeof folder.imageUrl === "string" ? folder.imageUrl : undefined,
-      bannerUrl: typeof folder.bannerUrl === "string" ? folder.bannerUrl : undefined,
-    }));
-
-  const notes: FolderEntry[] = getNotes()
-    .filter((note) => typeof note.id === "string")
-    .map((note) => {
-      const isCanvas = typeof note.content === "string" && note.content.includes('"type":"canvas"');
-      let description = "";
-      if (typeof note.content === "string") {
-        if (isCanvas) {
-          try {
-            const parsed = JSON.parse(note.content);
-            description = parsed.name || parsed.description || "Canvas Note";
-          } catch {
-            description = "Canvas Note";
-          }
-        } else {
-          description = note.content.slice(0, 120);
-        }
-      }
-
-      return {
-        id: note.id as string,
-        parentId: typeof note.parentId === "string" ? note.parentId : null,
-        type: (isCanvas ? "canvas" : "note") as any,
-        name: typeof note.title === "string" ? note.title : "Untitled note",
-        description,
-        color: note.color || "#71717A",
-        content: typeof note.content === "string" ? note.content : "",
-        createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
-        imageUrl: note.imageUrl,
-        bannerUrl: note.bannerUrl,
-      };
-    });
-
-  const quickNotes: FolderEntry[] = (getQuickNotes?.() || [])
-    .filter((note: any) => typeof note.id === "string")
-    .map((note: any) => {
-      let description = "";
-      if (typeof note.content === "string" && note.content.startsWith("{")) {
-        try {
-          const parsed = JSON.parse(note.content);
-          description = (parsed.blocks?.[0]?.html || "")
-            .replace(/<[^>]*>?/gm, "")
-            .slice(0, 120);
-        } catch {
-          description = typeof note.text === "string" ? note.text.slice(0, 120) : "";
-        }
-      } else {
-        description = typeof note.text === "string" ? note.text.slice(0, 120) : "";
-      }
-
-      return {
-        id: note.id as string,
-        parentId: typeof note.folderId === "string" ? note.folderId : null,
-        type: "quickNote" as any,
-        name: typeof note.title === "string" ? note.title : "Untitled quick note",
-        description,
-        color: note.color || "#71717A",
-        content: typeof note.content === "string" ? note.content : "",
-        createdAt: typeof note.createdAt === "number" ? note.createdAt : Date.now(),
-        imageUrl: note.imageUrl,
-        bannerUrl: note.bannerUrl,
-      };
-    });
-
-  const tasks: FolderEntry[] = (getAllTasks() || [])
-    .map((task: any) => ({
-      id: task.id as string,
-      parentId: typeof task.parentId === "string" ? task.parentId : null,
-      type: "task" as any,
-      name: typeof task.title === "string" ? task.title : "Untitled task",
-      description: task.priority ? `Priority: ${task.priority}` : "",
-      color: task.color || "#f59e0b", // Task color
-      createdAt: typeof task.createdAt === "number" ? task.createdAt : Date.now(),
-      imageUrl: task.imageUrl,
-      bannerUrl: task.bannerUrl,
-    }));
-
-  return [...folders, ...notes, ...quickNotes, ...tasks];
-};
 
 const defaultFilters: FolderFilters = {
   nameQuery: "",
