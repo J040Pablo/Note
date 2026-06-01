@@ -11,14 +11,15 @@ import PageContainer from "../../../components/ui/PageContainer";
 import {
   getFolders,
   getNotes,
+  getQuickNotes,
   getTasks,
 } from "../../../services/webData";
 import { useAppMode } from "../../../app/mode";
-import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncTask } from "../../tasks/sync";
+import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQuickNote, type SyncTask } from "../../tasks/sync";
 import { subscribeSyncBridge } from "../../../services/syncBridge";
 import styles from "./SearchPage.module.css";
 
-type SearchType = "folder" | "note" | "task";
+type SearchType = "folder" | "note" | "quickNote" | "task";
 type SearchScope = "all" | SearchType;
 
 type SearchItem = {
@@ -56,6 +57,15 @@ const SearchPage: React.FC = () => {
       updatedAt: t("recently"),
     }));
 
+    const quickNotes: SearchItem[] = getQuickNotes().map((quickNote) => ({
+      id: `quick-note-${String(quickNote.id ?? Date.now())}`,
+      title: String(quickNote.title ?? t("quickNote")),
+      description: String(quickNote.content ?? quickNote.text ?? ""),
+      type: "quickNote",
+      path: t("home"),
+      updatedAt: t("recently"),
+    }));
+
     const tasks: SearchItem[] = getTasks().map((task) => ({
       id: `task-${String(task.id ?? Date.now())}`,
       title: String(task.title ?? t("untitledTask")),
@@ -65,12 +75,13 @@ const SearchPage: React.FC = () => {
       updatedAt: t("recently"),
     }));
 
-    return [...folders, ...notes, ...tasks];
+    return [...folders, ...notes, ...quickNotes, ...tasks];
   }, [t]);
 
   const buildSearchIndexFromSyncPayload = React.useCallback((payload: {
     folders?: SyncFolder[];
     notes?: SyncNote[];
+    quickNotes?: SyncQuickNote[];
     tasks?: SyncTask[];
   }): SearchItem[] => {
     const folders = (payload.folders ?? []).map((folder) => ({
@@ -89,6 +100,14 @@ const SearchPage: React.FC = () => {
       path: t("home"),
       updatedAt: t("recently"),
     }));
+    const quickNotes = (payload.quickNotes ?? []).map((quickNote) => ({
+      id: `quick-note-${quickNote.id}`,
+      title: quickNote.title || t("quickNote"),
+      description: quickNote.content ?? quickNote.text ?? "",
+      type: "quickNote" as const,
+      path: t("home"),
+      updatedAt: t("recently"),
+    }));
     const tasks = (payload.tasks ?? []).map((task) => ({
       id: `task-${task.id}`,
       title: task.title || t("untitledTask"),
@@ -97,7 +116,7 @@ const SearchPage: React.FC = () => {
       path: t("tasks"),
       updatedAt: t("recently"),
     }));
-    return [...folders, ...notes, ...tasks];
+    return [...folders, ...notes, ...quickNotes, ...tasks];
   }, [t]);
 
   // search now uses real persisted data

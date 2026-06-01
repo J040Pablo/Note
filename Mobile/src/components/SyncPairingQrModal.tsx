@@ -5,14 +5,14 @@ import { Text } from "@components/Text";
 import { useTheme } from "@hooks/useTheme";
 import { getTaskSyncServerUrl, startTaskSyncServer } from "@services/sync/taskSyncServer";
 import { isExpoGo } from "@utils/runtimeEnv";
+import { WEB_APP_URL } from "../config/constants";
 
 type SyncPairingQrModalProps = {
   visible: boolean;
   onClose: () => void;
 };
 
-const WEBSITE_URL = "https://spectru-web.vercel.app";
-const QR_API_URL = `https://quickchart.io/qr?size=300&text=${encodeURIComponent(WEBSITE_URL)}&margin=2`;
+const QR_API_URL = `https://quickchart.io/qr?size=300&text=${encodeURIComponent(WEB_APP_URL)}&margin=2`;
 
 const SyncPairingQrModal: React.FC<SyncPairingQrModalProps> = ({ visible, onClose }) => {
   const { theme } = useTheme();
@@ -121,27 +121,6 @@ const SyncPairingQrModal: React.FC<SyncPairingQrModalProps> = ({ visible, onClos
           </View>
 
           <View style={styles.content}>
-            <View style={styles.webSiteCard}>
-               <View style={styles.webSiteHeader}>
-                  <Ionicons name="globe-outline" size={20} color={theme.colors.secondary} />
-                  <View style={{ flex: 1 }}>
-                     <Text style={[styles.urlLabel, { color: theme.colors.secondary, marginBottom: 0 }]}>SITE WEB</Text>
-                     <Text variant="caption" muted>Abra no computador para conectar</Text>
-                  </View>
-               </View>
-               
-               <View style={[styles.urlBox, { backgroundColor: theme.colors.surfaceElevated, borderColor: theme.colors.secondary + '33', marginTop: 12 }]}>
-                  <Text selectable style={[styles.urlText, { color: theme.colors.textPrimary }]}>{WEBSITE_URL}</Text>
-                  <Pressable 
-                    onPress={() => Clipboard.setString(WEBSITE_URL)}
-                    style={({ pressed }) => [styles.copyBtn, { backgroundColor: pressed ? theme.colors.border : 'transparent' }]}
-                  >
-                    <Ionicons name="copy-outline" size={16} color={theme.colors.textSecondary} />
-                  </Pressable>
-               </View>
-            </View>
-
-            <View style={styles.divider} />
 
             <View style={styles.qrSection}>
                <View style={styles.qrHeader}>
@@ -158,6 +137,32 @@ const SyncPairingQrModal: React.FC<SyncPairingQrModalProps> = ({ visible, onClos
                     <Animated.View style={[styles.shimmerOverlay, { backgroundColor: theme.colors.primaryAlpha20, opacity: shimmerOpacity }]} />
                   </View>
                </View>
+
+               <View style={{ marginTop: 24, paddingHorizontal: 4, width: '100%', alignItems: 'center' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                    <Ionicons name="globe-outline" size={16} color={theme.colors.textSecondary} />
+                    <Text style={{ fontSize: 13, color: theme.colors.textSecondary, fontWeight: "600" }}>Access on Web:</Text>
+                  </View>
+                  <Pressable 
+                    onPress={() => Clipboard.setString(WEB_APP_URL)}
+                    style={({ pressed }) => [
+                      styles.urlBox, 
+                      { 
+                        backgroundColor: pressed ? theme.colors.border : theme.colors.surfaceElevated, 
+                        borderColor: theme.colors.border,
+                        flexDirection: 'row',
+                        paddingVertical: 10
+                      }
+                    ]}
+                  >
+                    <Text selectable style={[styles.urlText, { color: theme.colors.textPrimary, fontSize: 14, flex: 1, textAlign: 'center' }]}>
+                      {WEB_APP_URL}
+                    </Text>
+                    <Ionicons name="copy-outline" size={16} color={theme.colors.textSecondary} />
+                  </Pressable>
+               </View>
+
+               <View style={[styles.divider, { width: '100%', marginTop: 24, marginBottom: 0 }]} />
 
                <View style={[styles.urlHero, { marginTop: 24, width: '100%' }]}>
                   <Text style={[styles.urlLabel, { color: theme.colors.primary, textAlign: 'center' }]}>URL DE CONEXÃO</Text>

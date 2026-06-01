@@ -20,6 +20,7 @@ import { usePomodoroStore } from "@store/usePomodoroStore";
 import { useTasksStore } from "@store/useTasksStore";
 import type { RootStackParamList } from "@navigation/RootNavigator";
 import { shouldLogDev } from "@utils/runtimeEnv";
+import { debug, warn, error as logError } from "@utils/logger";
 
 const navRef = createNavigationContainerRef<RootStackParamList>();
 
@@ -76,19 +77,19 @@ const ThemedNavigation: React.FC = () => {
         const dedupeKey = `${identifier}-${taskId || "no-task"}-${triggerDate}`;
 
         if (shouldLogDev) {
-          console.info(`[NOTIF][TAP] Received response id=${identifier} taskId=${taskId || "none"} trigger=${triggerDate}`);
+          debug(`[NOTIF][TAP] Received response id=${identifier} taskId=${taskId || "none"} trigger=${triggerDate}`);
         }
 
         if (handledKeys.has(dedupeKey)) {
           if (shouldLogDev) {
-            console.info(`[NOTIF][TAP] Duplicate response ignored key=${dedupeKey}`);
+            debug(`[NOTIF][TAP] Duplicate response ignored key=${dedupeKey}`);
           }
           return;
         }
 
         if (!taskId) {
           if (shouldLogDev) {
-            console.info('[NOTIF][TAP] Ignored response without taskId');
+            debug('[NOTIF][TAP] Ignored response without taskId');
           }
           return;
         }
@@ -96,7 +97,7 @@ const ThemedNavigation: React.FC = () => {
         const navigateToTask = (attempt = 0) => {
           if (!navRef.isReady()) {
             if (attempt >= 15) {
-              console.warn('[NOTIF][NAVIGATION] Navigation not ready after retries; notification tap dropped.');
+              warn('[NOTIF][NAVIGATION] Navigation not ready after retries; notification tap dropped.');
               return;
             }
             const retryTimer = setTimeout(() => {
@@ -105,7 +106,7 @@ const ThemedNavigation: React.FC = () => {
             }, 200);
             pendingTimers.add(retryTimer);
             if (shouldLogDev) {
-              console.info(`[NOTIF][NAVIGATION] Waiting nav ready attempt=${attempt + 1}`);
+              debug(`[NOTIF][NAVIGATION] Waiting nav ready attempt=${attempt + 1}`);
             }
             return;
           }
@@ -115,13 +116,13 @@ const ThemedNavigation: React.FC = () => {
           const tasks = useTasksStore.getState().tasks;
           if (tasks && tasks[taskId]) {
             if (shouldLogDev) {
-              console.info(`[NOTIF][NAVIGATION] Navigating to task ${taskId}`);
+              debug(`[NOTIF][NAVIGATION] Navigating to task ${taskId}`);
             }
             navRef.navigate("Tabs", { screen: "Tasks", params: { focusTaskId: taskId } });
           } else {
-            console.warn('[NOTIF] Task not found in store:', taskId);
+            warn('[NOTIF] Task not found in store:', taskId);
             if (shouldLogDev) {
-              console.info('[NOTIF][NAVIGATION] Navigating to Tasks fallback');
+              debug('[NOTIF][NAVIGATION] Navigating to Tasks fallback');
             }
             navRef.navigate("Tabs", { screen: "Tasks" });
           }
@@ -129,7 +130,7 @@ const ThemedNavigation: React.FC = () => {
 
         navigateToTask();
       } catch (error) {
-        console.error('[NOTIF] Error handling notification response:', error);
+        logError('[NOTIF] Error handling notification response:', error);
         if (navRef.isReady()) {
           navRef.navigate("Tabs", { screen: "Tasks" });
         }
@@ -152,7 +153,7 @@ const ThemedNavigation: React.FC = () => {
         handleNotificationTap(response);
       })
       .catch((error) => {
-        console.error('[NOTIF] Error reading last notification response:', error);
+        logError('[NOTIF] Error reading last notification response:', error);
       });
 
     const sub = RNLinking.addEventListener("url", ({ url }) => handleUrl(url));

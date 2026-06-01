@@ -443,6 +443,29 @@ const CanvasEditor: React.FC<Props> = ({
     setSelectedId(null);
   };
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!selectedId) return;
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+
+      const target = event.target as HTMLElement | null;
+      if (target) {
+        const tagName = target.tagName.toLowerCase();
+        const isEditableTarget =
+          tagName === "input" ||
+          tagName === "textarea" ||
+          target.isContentEditable;
+        if (isEditableTarget) return;
+      }
+
+      event.preventDefault();
+      handleElementDelete(selectedId);
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [handleElementDelete, selectedId]);
+
   const handleElementDuplicate = useCallback((id: string) => {
     const el = localDoc.elements.find(e => e.id === id);
     if (!el) return;

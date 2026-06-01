@@ -1,8 +1,9 @@
-import { getFolders, getNotes } from "../../services/webData";
+import { getFolders, getNotes, getQuickNotes } from "../../services/webData";
 import { type FolderItemType, type FolderEntry } from "./types";
+import { quickRichNoteDocToText } from "../../utils/quickRichNote";
 
 // Whitelisted types that are allowed to be displayed in the Folders view
-const ALLOWED_FOLDER_ITEM_TYPES = new Set<FolderItemType>(["folder", "note", "canvas"]);
+const ALLOWED_FOLDER_ITEM_TYPES = new Set<FolderItemType>(["folder", "note", "canvas", "quickNote"]);
 
 /**
  * Centrally selects and filters folder data from the web store
@@ -55,7 +56,24 @@ export const loadFolderEntries = (): FolderEntry[] => {
       };
     });
 
+  const quickNotes: FolderEntry[] = getQuickNotes()
+    .filter((quickNote) => typeof quickNote.id === "string")
+    .map((quickNote) => ({
+      id: quickNote.id as string,
+      parentId: typeof quickNote.folderId === "string" ? quickNote.folderId : null,
+      type: "quickNote" as const,
+      name: typeof quickNote.title === "string" ? quickNote.title : "Quick Note",
+      description: quickRichNoteDocToText(
+        typeof quickNote.content === "string" ? quickNote.content : quickNote.text ?? ""
+      ).slice(0, 120),
+      color: quickNote.color || "#71717A",
+      content: typeof quickNote.content === "string" ? quickNote.content : quickNote.text ?? "",
+      createdAt: typeof quickNote.createdAt === "number" ? quickNote.createdAt : Date.now(),
+      imageUrl: quickNote.imageUrl,
+      bannerUrl: quickNote.bannerUrl,
+    }));
+
   // Safe-guard to prevent any invalid types creeping into the view
-  const entries = [...folders, ...notes];
+  const entries = [...folders, ...notes, ...quickNotes];
   return entries.filter(entry => ALLOWED_FOLDER_ITEM_TYPES.has(entry.type));
 };

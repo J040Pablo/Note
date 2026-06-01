@@ -204,7 +204,6 @@ export const quickRichNoteDocToHtml = (raw: string): string => {
   return doc.blocks
     .map((block) => sanitizeQuickRichHtml(block.html))
     .filter(Boolean)
-    .map((html) => `<div class="quick-rich-block">${html}</div>`)
     .join("");
 };
 

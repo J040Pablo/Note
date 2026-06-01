@@ -20,7 +20,7 @@ import type { Task, TaskReminderType } from "@models/types";
 import { isExpoGo, shouldLogDev } from "@utils/runtimeEnv";
 import { log, warn, error as logError } from '@utils/logger';
 import { transformNoteImages } from "@utils/noteContent";
-import { saveBase64Image } from "@services/imageService";
+import { saveBase64Image, uriToBase64 } from "@services/imageService";
 
 type SocketClient = {
   id: string | number;
@@ -142,6 +142,7 @@ const DEFAULT_SYNC_PORT = 8787;
 
 let server: ServerInstance | null = null;
 let serverUrl: string | null = null;
+let startPromise: Promise<{ url: string } | null> | null = null;
 let unsubscribeTaskBroadcast: (() => void) | null = null;
 let unsubscribeEntityBroadcast: (() => void) | null = null;
 const clients = new Map<string, SocketClient>();
@@ -539,16 +540,75 @@ const sendInitialData = async (socket: SocketClient) => {
     folders: folders.length,
   });
 
+  // Ensure notes/quickNotes do not contain local-only file:// URIs when sent over the wire.
+  const safeNotes = await Promise.all(
+    notes.map(async (n: any) => {
+      try {
+        const content = typeof n.content === "string" ? n.content : "";
+        const transformed = await transformNoteImages(content, async (uri) => {
+          if (typeof uri === "string" && uri.startsWith("file://")) {
+            return (await uriToBase64(uri)) || uri;
+          }
+          return uri;
+        });
+        return { ...n, content: transformed };
+      } catch (e) {
+        return n;
+      }
+    })
+  );
+
+  const safeQuickNotes = await Promise.all(
+    quickNotes.map(async (q: any) => {
+      try {
+        const content = typeof q.content === "string" ? q.content : "";
+        const transformed = await transformNoteImages(content, async (uri) => {
+          if (typeof uri === "string" && uri.startsWith("file://")) {
+            return (await uriToBase64(uri)) || uri;
+          }
+          return uri;
+        });
+        return { ...q, content: transformed };
+      } catch (e) {
+        return q;
+      }
+    })
+  );
+
+  const safeFolders = await Promise.all(
+    folders.map(async (f: any) => {
+      try {
+        const makeSyncUri = async (p: any) => {
+          if (!p || typeof p !== "string") return p;
+          try {
+            if (p.startsWith("file://") || p.startsWith("content://")) {
+              return (await uriToBase64(p)) || p;
+            }
+          } catch {
+            // ignore
+          }
+          return p;
+        };
+        const imageUrl = await makeSyncUri(f.photoPath ?? f.imageUrl ?? null);
+        const bannerUrl = await makeSyncUri(f.bannerPath ?? f.bannerUrl ?? null);
+        return { ...f, photoPath: f.photoPath ?? undefined, bannerPath: f.bannerPath ?? undefined, imageUrl, bannerUrl };
+      } catch (e) {
+        return f;
+      }
+    })
+  );
+
   const message: SyncFullDataMessage = {
     id: createMessageId(),
     sentAt: Date.now(),
     ackRequired: true,
     type: "FULL_SYNC",
     payload: {
-      notes,
-      quickNotes,
+      notes: safeNotes,
+      quickNotes: safeQuickNotes,
+      folders: safeFolders,
       tasks: tasks.map(toSyncTask),
-      folders,
+      // folders included above as safeFolders
     },
   };
 
@@ -819,14 +879,37 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
 
     const parentId = (message.payload?.parentId ?? null) as string | null;
 
+    // Persist incoming folder images if they are base64 or local URIs
+    const transformIncoming = async (incoming: unknown) => {
+      if (!incoming || typeof incoming !== "string") return null;
+      const uri = incoming as string;
+      try {
+        if (uri.startsWith("data:image/")) {
+          return (await saveBase64Image(uri)) || uri;
+        }
+        if (uri.startsWith("file://") || uri.startsWith("content://")) {
+          const data = await uriToBase64(uri);
+          if (data) return (await saveBase64Image(data)) || uri;
+        }
+      } catch (e) {
+        // ignore
+      }
+      return uri;
+    };
+
+    const incomingImage = message.payload?.imageUrl ?? null;
+    const incomingBanner = message.payload?.bannerUrl ?? null;
+    const photoPathArg = await transformIncoming(incomingImage);
+    const bannerPathArg = await transformIncoming(incomingBanner);
+
     if (!current) {
       await createFolder(
         name,
         parentId,
         message.payload?.color ?? null,
         message.payload?.description ?? null,
-        message.payload?.imageUrl ?? null,
-        message.payload?.bannerUrl ?? null,
+        photoPathArg,
+        bannerPathArg,
         {
           id,
           createdAt: Number(message.payload?.createdAt ?? Date.now()),
@@ -842,8 +925,8 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
         parentId,
         color: message.payload?.color ?? current.color ?? null,
         description: message.payload?.description ?? current.description ?? null,
-        photoPath: message.payload?.imageUrl ?? current.photoPath ?? null,
-        bannerPath: message.payload?.bannerUrl ?? current.bannerPath ?? null,
+        photoPath: photoPathArg ?? current.photoPath ?? null,
+        bannerPath: bannerPathArg ?? current.bannerPath ?? null,
         createdAt: Number(message.payload?.createdAt ?? current.createdAt ?? Date.now()),
         updatedAt: Number(message.payload?.updatedAt ?? Date.now()),
       } as typeof current & { updatedAt: number }, origin);
@@ -926,148 +1009,130 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
     return { url: serverUrl };
   }
 
-  if (isExpoGo) {
-    if (!hasLoggedExpoGoWsUnsupported && shouldLogDev) {
-      hasLoggedExpoGoWsUnsupported = true;
-      log("[sync] Disabled in Expo Go. Local WebSocket server requires a development build.");
+  if (startPromise) {
+    return startPromise;
+  }
+
+  startPromise = (async () => {
+    if (isExpoGo) {
+      if (!hasLoggedExpoGoWsUnsupported && shouldLogDev) {
+        hasLoggedExpoGoWsUnsupported = true;
+        log("[sync] Disabled in Expo Go. Local WebSocket server requires a development build.");
+      }
+      return null;
     }
-    return null;
-  }
 
-  const WebsocketServerCtor = getWebsocketServerCtor();
-  if (!WebsocketServerCtor) {
-    warn("[sync] react-native-websocket-server is unavailable.");
-    return null;
-  }
+    const WebsocketServerCtor = getWebsocketServerCtor();
+    if (!WebsocketServerCtor) {
+      warn("[sync] react-native-websocket-server is unavailable.");
+      return null;
+    }
 
-  const ipAddress = await Network.getIpAddressAsync();
-  if (!ipAddress || ipAddress === "0.0.0.0") {
-    warn("[sync] Could not resolve a valid local IP address.");
-    return null;
-  }
+    const ipAddress = await Network.getIpAddressAsync();
+    if (!ipAddress || ipAddress === "0.0.0.0") {
+      warn("[sync] Could not resolve a valid local IP address.");
+      return null;
+    }
 
-  const instance = new WebsocketServerCtor(ipAddress, port);
-  instance.on("connection", (socket: SocketClient) => {
-    const socketId = getSocketId(socket);
-    clients.set(socketId, socket);
-    logSyncDebug(`[sync] client connected: ${socketId}`);
-    logSyncDebug("[SYNC] CLIENT CONNECTED");
-    logSyncDebug("[SYNC][CONNECT] Mobile connected");
-    logSyncDebug("[SYNC] CALLING sendInitialData");
-    sendInitialData(socket)
-      .then(() => {
-        logSyncDebug("[SYNC] FULL_SYNC SENT");
-      })
-      .catch((error) => {
-        warn("[sync] failed to send full sync", error);
+    const instance = new WebsocketServerCtor(ipAddress, port);
+    instance.on("connection", (socket: SocketClient) => {
+      const socketId = getSocketId(socket);
+      clients.set(socketId, socket);
+      logSyncDebug(`[sync] client connected: ${socketId}`);
+      sendInitialData(socket)
+        .then(() => {
+          logSyncDebug("[SYNC] FULL_SYNC SENT");
+        })
+        .catch((error) => {
+          warn("[sync] failed to send full sync", error);
+        });
+
+      socket.on("message", async (raw) => {
+        const incoming = parseIncoming(raw);
+        if (!incoming) {
+          const rawType = typeof raw;
+          const rawKeys = raw && typeof raw === "object" ? Object.keys(raw as Record<string, unknown>) : [];
+          warn("[SYNC][SERVER][PARSE_IGNORED]", { rawType, rawKeys });
+          return;
+        }
+
+        const incomingClientId = normalizeOptionalString(
+          (incoming as SyncIncomingMessage & { clientId?: unknown }).clientId
+        );
+        if (incomingClientId) {
+          socketClientIds.set(socketId, incomingClientId);
+        }
+
+        const suppressionKey = keyFromIncomingMessage(incoming);
+        if (suppressionKey) {
+          rememberBroadcastSuppression(suppressionKey, socketId, incomingClientId ?? undefined);
+        }
+
+        const incomingId = getIncomingMessageId(incoming);
+        const receivedAt = Date.now();
+        logSyncDebug("[SYNC][RECEIVE]", incomingId ?? "-", incoming.type);
+
+        if (incomingId && processedMessageIds.has(incomingId)) {
+          logSyncDebug("[SYNC][DEDUP]", incomingId, "ignored");
+          logSyncDebug("[SYNC][APPLY]", incomingId, "duplicate-ignored");
+          sendAck(socket, incomingId, receivedAt, Date.now(), "OK");
+          return;
+        }
+
+        if (incomingId) {
+          rememberProcessedMessage(incomingId);
+        }
+
+        try {
+          await handleIncomingMessage(socket, incoming);
+          const appliedAt = Date.now();
+          if (incomingId) {
+            sendAck(socket, incomingId, receivedAt, appliedAt, "OK");
+          }
+        } catch (error) {
+          logError("[SYNC][ERROR]", incomingId ?? "-", error);
+          if (incomingId) {
+            sendAck(socket, incomingId, receivedAt, Date.now(), "ERROR");
+          }
+          warn("[sync] failed handling message", error);
+        }
       });
 
-    logSyncDebug("[SYNC][SERVER][HANDLER_REGISTER]", { socketId, event: "message" });
-    socket.on("message", async (raw) => {
-      const incoming = parseIncoming(raw);
-      if (!incoming) {
-        const rawType = typeof raw;
-        const rawKeys = raw && typeof raw === "object" ? Object.keys(raw as Record<string, unknown>) : [];
-        warn("[SYNC][SERVER][PARSE_IGNORED]", { rawType, rawKeys });
-        return;
-      }
-
-      const incomingClientId = normalizeOptionalString(
-        (incoming as SyncIncomingMessage & { clientId?: unknown }).clientId
-      );
-      if (incomingClientId) {
-        socketClientIds.set(socketId, incomingClientId);
-      }
-
-      const suppressionKey = keyFromIncomingMessage(incoming);
-      if (suppressionKey) {
-        rememberBroadcastSuppression(suppressionKey, socketId, incomingClientId ?? undefined);
-      }
-
-      const incomingId = getIncomingMessageId(incoming);
-      const receivedAt = Date.now();
-      logSyncDebug("[SYNC][RECEIVE]", incomingId ?? "-", incoming.type);
-      logSyncDebug("[SYNC][SERVER][RECEIVED]", {
-        messageId: incomingId ?? "-",
-        type: incoming.type,
+      socket.on("disconnected", () => {
+        clients.delete(socketId);
+        socketClientIds.delete(socketId);
+        logSyncDebug(`[sync] client disconnected: ${socketId}`);
       });
-
-      if (incomingId && processedMessageIds.has(incomingId)) {
-        logSyncDebug("[SYNC][DEDUP]", incomingId, "ignorado");
-        logSyncDebug("[SYNC][APPLY]", incomingId, "duplicate-ignored");
-        logSyncDebug("[SYNC][SERVER][APPLIED]", {
-          messageId: incomingId,
-          type: incoming.type,
-          status: "duplicate-ignored",
-        });
-        sendAck(socket, incomingId, receivedAt, Date.now(), "OK");
-        return;
-      }
-
-      if (incomingId) {
-        rememberProcessedMessage(incomingId);
-      }
-
-      try {
-        await handleIncomingMessage(socket, incoming);
-        const appliedAt = Date.now();
-        logSyncDebug("[SYNC][APPLY]", incomingId ?? "-", incoming.type);
-        logSyncDebug("[SYNC][SYNC_APPLIED]", {
-          messageId: incomingId ?? "-",
-          type: incoming.type,
-          status: "success",
-        });
-        logSyncDebug("[SYNC][SERVER][APPLIED]", {
-          messageId: incomingId ?? "-",
-          type: incoming.type,
-          status: "persisted",
-        });
-        if (incomingId) {
-          sendAck(socket, incomingId, receivedAt, appliedAt, "OK");
-        }
-      } catch (error) {
-        logError("[SYNC][ERROR]", incomingId ?? "-", error);
-        logSyncDebug("[SYNC][SERVER][APPLIED]", {
-          messageId: incomingId ?? "-",
-          type: incoming.type,
-          status: "failed",
-        });
-        if (incomingId) {
-          sendAck(socket, incomingId, receivedAt, Date.now(), "ERROR");
-        }
-        warn("[sync] failed handling message", error);
-      }
     });
 
-    logSyncDebug("[SYNC][SERVER][HANDLER_REGISTER]", { socketId, event: "disconnected" });
-    socket.on("disconnected", () => {
-      clients.delete(socketId);
-      socketClientIds.delete(socketId);
-      logSyncDebug(`[sync] client disconnected: ${socketId}`);
-    });
-  });
+    instance.start();
+    server = instance;
+    serverUrl = `ws://${ipAddress}:${port}`;
 
-  instance.start();
-  server = instance;
-  serverUrl = `ws://${ipAddress}:${port}`;
+    try {
+      if (!unsubscribeTaskBroadcast) {
+        unsubscribeTaskBroadcast = subscribeTaskServerEvents(onTaskEvent);
+        logSyncDebug("[SYNC][SERVER][EVENT_REGISTER]", { channel: "task" });
+      }
+
+      if (!unsubscribeEntityBroadcast) {
+        unsubscribeEntityBroadcast = subscribeEntityServerEvents(onEntityEvent);
+        logSyncDebug("[SYNC][SERVER][EVENT_REGISTER]", { channel: "entity" });
+      }
+    } catch (error) {
+      logError("[SYNC][SERVER][EVENT_REGISTER_ERROR]", error);
+      throw error;
+    }
+
+    logSyncDebug(`[sync] server started at ${serverUrl}`);
+    return { url: serverUrl };
+  })();
 
   try {
-    if (!unsubscribeTaskBroadcast) {
-      unsubscribeTaskBroadcast = subscribeTaskServerEvents(onTaskEvent);
-      logSyncDebug("[SYNC][SERVER][EVENT_REGISTER]", { channel: "task" });
-    }
-
-    if (!unsubscribeEntityBroadcast) {
-      unsubscribeEntityBroadcast = subscribeEntityServerEvents(onEntityEvent);
-      logSyncDebug("[SYNC][SERVER][EVENT_REGISTER]", { channel: "entity" });
-    }
-  } catch (error) {
-    logError("[SYNC][SERVER][EVENT_REGISTER_ERROR]", error);
-    throw error;
+    return await startPromise;
+  } finally {
+    startPromise = null;
   }
-
-  logSyncDebug(`[sync] server started at ${serverUrl}`);
-  return { url: serverUrl };
 };
 
 export const stopTaskSyncServer = () => {
@@ -1089,6 +1154,8 @@ export const stopTaskSyncServer = () => {
     unsubscribeEntityBroadcast();
     unsubscribeEntityBroadcast = null;
   }
+
+  startPromise = null;
 };
 
 export const getTaskSyncServerUrl = (): string | null => serverUrl;

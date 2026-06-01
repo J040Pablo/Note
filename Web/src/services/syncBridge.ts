@@ -11,6 +11,7 @@ import {
   type SyncTask,
 } from "../features/tasks/sync";
 import { loadData, markSynced, saveData, type DataNote, type DataQuickNote, type DataFolder } from "./webData";
+import { migrateSingleImage } from "./imageMigration";
 import { getMetaRecord, setMetaRecord } from "./appMetaService.web";
 import type { TaskItem } from "../features/tasks/types";
 import { setSyncDataFromStoreData } from "../store/syncDataStore";
@@ -127,13 +128,25 @@ const syncQuickNoteToData = (q: SyncQuickNote): DataQuickNote => {
 
 // ─── Message handlers ────────────────────────────────────────────────────────
 
-const handleFullSync = (message: SyncIncomingMessage) => {
+const handleFullSync = async (message: SyncIncomingMessage) => {
   if (message.type !== "INIT") return;
 
   const payload = message.payload;
-  const now = Date.now();
 
   const folders = (payload.folders ?? []).map(syncFolderToDataFolder);
+  // Migrate any large base64 folder images into IndexedDB and replace with file refs
+  await Promise.all(
+    folders.map(async (f) => {
+      try {
+        const migratedImage = await migrateSingleImage(f.imageUrl ?? undefined);
+        const migratedBanner = await migrateSingleImage(f.bannerUrl ?? undefined);
+        if (migratedImage) f.imageUrl = migratedImage;
+        if (migratedBanner) f.bannerUrl = migratedBanner;
+      } catch {
+        // ignore
+      }
+    })
+  );
   const notes = (payload.notes ?? []).map(syncNoteToDataNote);
   const quickNotes = (payload.quickNotes ?? []).map(syncQuickNoteToData);
   const tasks = payload.tasks.map((t, i) => {
@@ -164,12 +177,22 @@ const handleFullSync = (message: SyncIncomingMessage) => {
   emit({ type: "FULL_SYNC" });
 };
 
-const handleEntityMessage = (message: SyncIncomingMessage) => {
+const handleEntityMessage = async (message: SyncIncomingMessage) => {
   const store = loadData();
 
   switch (message.type) {
     case "UPSERT_FOLDER": {
       const folder = syncFolderToDataFolder(message.payload);
+      // Migrate large base64 folder images into IndexedDB and replace with file refs
+      try {
+        const migratedImage = await migrateSingleImage(folder.imageUrl ?? undefined);
+        const migratedBanner = await migrateSingleImage(folder.bannerUrl ?? undefined);
+        if (migratedImage) folder.imageUrl = migratedImage;
+        if (migratedBanner) folder.bannerUrl = migratedBanner;
+      } catch {
+        // ignore migration errors
+      }
+
       const exists = store.folders.some((f) => f.id === folder.id);
       store.folders = exists
         ? store.folders.map((f) => (f.id === folder.id ? folder : f))

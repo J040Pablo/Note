@@ -1,6 +1,7 @@
 import { getDB, runDbWrite, withDbWriteTransaction } from "@db/database";
 import type { Folder, ID } from "@models/types";
 import { emitEntityServerEvent } from "@services/sync/entitySyncEvents";
+import { uriToBase64 } from "@services/imageService";
 
 const getNextFolderOrderIndex = async (db: Awaited<ReturnType<typeof getDB>>, parentId: ID | null): Promise<number> => {
   const row =
@@ -59,6 +60,22 @@ export const createFolder = async (
       updatedAt,
     };
 
+    // Convert local file URIs to base64 data URLs for sync payloads
+    const makeSyncUri = async (p: string | null | undefined) => {
+      if (!p) return undefined;
+      try {
+        if (typeof p === "string" && (p.startsWith("file://") || p.startsWith("content://"))) {
+          return (await uriToBase64(p)) || p;
+        }
+      } catch {
+        // ignore
+      }
+      return p;
+    };
+
+    const imageUrl = await makeSyncUri(created.photoPath);
+    const bannerUrl = await makeSyncUri(created.bannerPath);
+
     emitEntityServerEvent({
       type: "UPSERT_FOLDER",
       payload: {
@@ -69,8 +86,8 @@ export const createFolder = async (
         color: created.color ?? undefined,
         createdAt: created.createdAt,
         updatedAt: created.updatedAt,
-        imageUrl: created.photoPath ?? undefined,
-        bannerUrl: created.bannerPath ?? undefined,
+        imageUrl,
+        bannerUrl,
       },
       origin: options?.origin,
     });
@@ -122,6 +139,21 @@ export const updateFolder = async (folder: Folder, origin?: string): Promise<Fol
       updatedFolder.id
     );
 
+    const makeSyncUri = async (p: string | null | undefined) => {
+      if (!p) return undefined;
+      try {
+        if (typeof p === "string" && (p.startsWith("file://") || p.startsWith("content://"))) {
+          return (await uriToBase64(p)) || p;
+        }
+      } catch {
+        // ignore
+      }
+      return p;
+    };
+
+    const imageUrl = await makeSyncUri(updatedFolder.photoPath);
+    const bannerUrl = await makeSyncUri(updatedFolder.bannerPath);
+
     emitEntityServerEvent({
       type: "UPSERT_FOLDER",
       payload: {
@@ -132,8 +164,8 @@ export const updateFolder = async (folder: Folder, origin?: string): Promise<Fol
         color: updatedFolder.color ?? undefined,
         createdAt: updatedFolder.createdAt,
         updatedAt: updatedFolder.updatedAt,
-        imageUrl: updatedFolder.photoPath ?? undefined,
-        bannerUrl: updatedFolder.bannerPath ?? undefined,
+        imageUrl,
+        bannerUrl,
       },
       origin,
     });

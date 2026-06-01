@@ -20,12 +20,21 @@ const ElementToolbar: React.FC<ElementToolbarProps> = ({
   onSendBackward
 }) => {
   return (
-    <div className={styles.toolbarContainer} onClick={(e) => e.stopPropagation()}>
-      <button className={styles.toolbarBtn} onClick={onDuplicate} title="Duplicar">
+    <div
+      className={styles.toolbarContainer}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button type="button" className={styles.toolbarBtn} onClick={onDuplicate} title="Duplicar">
         <Copy size={16} />
       </button>
 
-      <button className={styles.toolbarBtn} onClick={onLockToggle} title={isLocked ? "Desbloquear" : "Bloquear"}>
+      <button
+        type="button"
+        className={styles.toolbarBtn}
+        onClick={onLockToggle}
+        title={isLocked ? "Desbloquear" : "Bloquear"}
+      >
         {isLocked ? <Lock size={16} className={styles.lockedIcon} /> : <Unlock size={16} />}
       </button>
 
@@ -33,11 +42,11 @@ const ElementToolbar: React.FC<ElementToolbarProps> = ({
         <>
           <div className={styles.divider} />
           
-          <button className={styles.toolbarBtn} onClick={onBringForward} title="Trazer para frente">
+          <button type="button" className={styles.toolbarBtn} onClick={onBringForward} title="Trazer para frente">
             <ArrowUp size={16} />
           </button>
           
-          <button className={styles.toolbarBtn} onClick={onSendBackward} title="Enviar para trás">
+          <button type="button" className={styles.toolbarBtn} onClick={onSendBackward} title="Enviar para trás">
             <ArrowDown size={16} />
           </button>
         </>
@@ -45,7 +54,12 @@ const ElementToolbar: React.FC<ElementToolbarProps> = ({
 
       <div className={styles.divider} />
 
-      <button className={`${styles.toolbarBtn} ${styles.deleteBtn}`} onClick={onDelete} title="Excluir">
+      <button
+        type="button"
+        className={`${styles.toolbarBtn} ${styles.deleteBtn}`}
+        onClick={onDelete}
+        title="Excluir"
+      >
         <Trash size={16} />
       </button>
     </div>

@@ -451,18 +451,7 @@ const FoldersPage: React.FC = () => {
       }
 
       if (actionId === "add-file") {
-        const file: FolderEntry = {
-          id: makeId("task"),
-          parentId: currentFolderId,
-          type: "task",
-          name: `New Task ${visibleEntries.filter((item) => item.type === "task").length + 1}`,
-          description: "Created from quick action",
-          content: "",
-          color: "#22c55e",
-          createdAt: Date.now(),
-        };
-
-        setEntries((prev) => [file, ...prev]);
+        navigate(`/notes/new${currentFolderId ? `?folderId=${currentFolderId}` : ""}`);
         return;
       }
 
