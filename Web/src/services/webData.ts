@@ -1,5 +1,4 @@
-// Single source of truth for persisted Web app data.
-// Data is normalized on read/write so screens can safely consume a stable shape.
+import { safeLocalStorage } from "../utils/storage";
 
 const STORAGE_KEY = "note.web.data.v1";
 const SYNCED_FLAG_KEY = "note.web.synced.v1";
@@ -196,8 +195,8 @@ const normalizeData = (input: unknown): DataStore => {
 // Safely reads from localStorage. Returns empty data if synced before, else empty.
 export const loadData = (): DataStore => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    const hasSynced = localStorage.getItem(SYNCED_FLAG_KEY) === "1";
+    const raw = safeLocalStorage.getItem(STORAGE_KEY);
+    const hasSynced = safeLocalStorage.getItem(SYNCED_FLAG_KEY) === "1";
 
     if (!raw) {
       if (hasSynced) {
@@ -213,7 +212,7 @@ export const loadData = (): DataStore => {
 
     return normalizeData(JSON.parse(raw));
   } catch {
-    const hasSynced = localStorage.getItem(SYNCED_FLAG_KEY) === "1";
+    const hasSynced = safeLocalStorage.getItem(SYNCED_FLAG_KEY) === "1";
 
     if (hasSynced) {
       const empty = emptyData();
@@ -231,14 +230,14 @@ export const loadData = (): DataStore => {
 export const saveData = (data: DataStore): void => {
   try {
     const normalized = normalizeData(data);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    safeLocalStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   } catch {
     // Ignore storage errors to keep UI/runtime stable.
   }
 };
 
 export const markSynced = (): void => {
-  localStorage.setItem(SYNCED_FLAG_KEY, "1");
+  safeLocalStorage.setItem(SYNCED_FLAG_KEY, "1");
 };
 
 export const getFolders = (): DataFolder[] => loadData().folders;

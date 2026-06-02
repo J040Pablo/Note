@@ -5,7 +5,11 @@ import LanguageDetector from 'i18next-browser-languagedetector';
 import enTranslations from './locales/en.json';
 import ptBRTranslations from './locales/pt-BR.json';
 
+import { isStorageAvailable } from './utils/storage';
+
 const LANGUAGE_STORAGE_KEY = 'language';
+
+const canUseStorage = isStorageAvailable('localStorage');
 
 i18n
   .use(LanguageDetector)
@@ -24,9 +28,9 @@ i18n
       escapeValue: false, // react already safes from xss
     },
     detection: {
-      order: ['localStorage', 'navigator'],
+      order: canUseStorage ? ['localStorage', 'navigator'] : ['navigator'],
       lookupLocalStorage: LANGUAGE_STORAGE_KEY,
-      caches: ['localStorage'],
+      caches: canUseStorage ? ['localStorage'] : [],
     },
   });
 

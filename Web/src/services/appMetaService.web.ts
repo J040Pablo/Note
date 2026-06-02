@@ -3,6 +3,7 @@
 
 import { dispatchEntitySyncEvent } from "../features/tasks/sync";
 import { isWebMobileSyncMode } from "./webSyncMode";
+import { safeLocalStorage } from "../utils/storage";
 import type { ID, PinnedItem, PinnedItemType, RecentItem, RecentItemType } from "../types";
 
 const PINNED_KEY = "pinned_items";
@@ -42,12 +43,12 @@ const parseRecord = <T>(raw: string | null, fallback: T): MetaRecord<T> => {
 };
 
 const readMetaRecord = <T>(key: string, fallback: T): MetaRecord<T> => {
-  return parseRecord<T>(localStorage.getItem(key), fallback);
+  return parseRecord<T>(safeLocalStorage.getItem(key), fallback);
 };
 
 const writeMetaRecord = <T>(key: string, value: T, updatedAt = Date.now()): void => {
   try {
-    localStorage.setItem(key, JSON.stringify({ value, updatedAt }));
+    safeLocalStorage.setItem(key, JSON.stringify({ value, updatedAt }));
   } catch {
     // Ignore storage errors
   }
@@ -55,12 +56,12 @@ const writeMetaRecord = <T>(key: string, value: T, updatedAt = Date.now()): void
 
 const readWithFallback = <T>(primaryKey: string, legacyKey: string, fallback: T): MetaRecord<T> => {
   const primary = readMetaRecord<T>(primaryKey, fallback);
-  if (primary.updatedAt > 0 || localStorage.getItem(primaryKey)) {
+  if (primary.updatedAt > 0 || safeLocalStorage.getItem(primaryKey)) {
     return primary;
   }
 
   const legacy = readMetaRecord<T>(legacyKey, fallback);
-  if (legacy.updatedAt > 0 || localStorage.getItem(legacyKey)) {
+  if (legacy.updatedAt > 0 || safeLocalStorage.getItem(legacyKey)) {
     writeMetaRecord(primaryKey, legacy.value, legacy.updatedAt);
     return legacy;
   }

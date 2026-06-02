@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Spectru",
-    "slug": "spectru",
+    "slug": "life-organizer",
     "version": "0.1.0",
     "icon": "./assets/icon.png",
     "scheme": "spectru",
@@ -46,7 +46,8 @@
       "expo-camera",
       "expo-notifications",
       "./expo-plugins/app-widget",
-      "expo-audio"
+      "expo-audio",
+      "expo-asset"
     ]
   }
 }

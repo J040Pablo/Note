@@ -1,4 +1,5 @@
 import MessageQueue from "../../services/messageQueue";
+import { safeLocalStorage } from "../../utils/storage";
 
 export type SyncPriority = "low" | "medium" | "high";
 
@@ -168,10 +169,10 @@ const SYNC_CLIENT_ID_KEY = "note.sync.clientId";
 
 const getOrCreateClientId = (): string => {
   try {
-    const current = window.localStorage.getItem(SYNC_CLIENT_ID_KEY)?.trim();
+    const current = safeLocalStorage.getItem(SYNC_CLIENT_ID_KEY)?.trim();
     if (current) return current;
     const next = `web-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    window.localStorage.setItem(SYNC_CLIENT_ID_KEY, next);
+    safeLocalStorage.setItem(SYNC_CLIENT_ID_KEY, next);
     return next;
   } catch {
     return `web-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
@@ -182,7 +183,7 @@ const CLIENT_ID = getOrCreateClientId();
 
 const isSyncDebugEnabled = (): boolean => {
   try {
-    return import.meta.env.DEV && window.localStorage.getItem("note.sync.debug") === "1";
+    return import.meta.env.DEV && safeLocalStorage.getItem("note.sync.debug") === "1";
   } catch {
     return false;
   }

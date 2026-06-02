@@ -13,23 +13,32 @@ const getDB = (): Promise<IDBDatabase> => {
   if (dbPromise) return dbPromise;
 
   dbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onupgradeneeded = (event) => {
-      const db = (event.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME, { keyPath: "id" });
+    try {
+      if (typeof indexedDB === "undefined") {
+        throw new Error("IndexedDB is not supported in this environment");
       }
-    };
 
-    request.onsuccess = (event) => {
-      resolve((event.target as IDBOpenDBRequest).result);
-    };
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onerror = (event) => {
-      console.error("[webFileStore] Database error:", (event.target as IDBOpenDBRequest).error);
-      reject((event.target as IDBOpenDBRequest).error);
-    };
+      request.onupgradeneeded = (event) => {
+        const db = (event.target as IDBOpenDBRequest).result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: "id" });
+        }
+      };
+
+      request.onsuccess = (event) => {
+        resolve((event.target as IDBOpenDBRequest).result);
+      };
+
+      request.onerror = (event) => {
+        console.error("[webFileStore] Database error:", (event.target as IDBOpenDBRequest).error);
+        reject((event.target as IDBOpenDBRequest).error);
+      };
+    } catch (e) {
+      console.error("[webFileStore] Failed to open IndexedDB:", e);
+      reject(e);
+    }
   });
 
   return dbPromise;

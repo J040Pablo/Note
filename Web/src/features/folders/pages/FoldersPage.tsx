@@ -34,6 +34,7 @@ import { subscribeTaskSyncMessages, type SyncFolder, type SyncNote, type SyncQui
 import { subscribeSyncBridge } from "../../../services/syncBridge";
 import { exportFolderPackage, importFolderPackage, exportNotePackage, exportQuickNotePackage } from "../../../services/folderPackageService";
 import { useTranslation } from "react-i18next";
+import { safeLocalStorage } from "../../../utils/storage";
 import styles from "./FoldersPage.module.css";
 import { loadFolderEntries } from "../selectors";
 
@@ -227,7 +228,7 @@ const FoldersPage: React.FC = () => {
   // Data source moved from hardcoded array to persistent webData layer.
   const [entries, setEntries] = React.useState<FolderEntry[]>(() => loadFolderEntries());
   const [viewMode, setViewMode] = React.useState<FolderViewMode>(() => {
-    const stored = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+    const stored = safeLocalStorage.getItem(VIEW_MODE_STORAGE_KEY);
     return stored === "grid" || stored === "list" ? stored : "list";
   });
   const [filters, setFilters] = React.useState<FolderFilters>(defaultFilters);
@@ -285,7 +286,7 @@ const FoldersPage: React.FC = () => {
   }, [isMobileSync]);
 
   React.useEffect(() => {
-    window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
+    safeLocalStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode);
   }, [viewMode]);
 
   React.useEffect(

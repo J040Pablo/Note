@@ -1,4 +1,5 @@
 import React from "react";
+import { safeLocalStorage } from "../utils/storage";
 
 export type AppMode = "standalone" | "mobile-sync";
 
@@ -18,7 +19,7 @@ export const AppModeProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [ready, setReady] = React.useState(false);
 
   React.useEffect(() => {
-    const stored = localStorage.getItem(MODE_STORAGE_KEY);
+    const stored = safeLocalStorage.getItem(MODE_STORAGE_KEY);
     if (stored === "standalone" || stored === "mobile-sync") {
       setModeState(stored);
     }
@@ -27,12 +28,12 @@ export const AppModeProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const setMode = React.useCallback((nextMode: AppMode) => {
     setModeState(nextMode);
-    localStorage.setItem(MODE_STORAGE_KEY, nextMode);
+    safeLocalStorage.setItem(MODE_STORAGE_KEY, nextMode);
   }, []);
 
   const clearMode = React.useCallback(() => {
     setModeState(null);
-    localStorage.removeItem(MODE_STORAGE_KEY);
+    safeLocalStorage.removeItem(MODE_STORAGE_KEY);
   }, []);
 
   const value = React.useMemo<AppModeContextValue>(

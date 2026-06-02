@@ -11,6 +11,7 @@ import {
 import styles from "./EntryModePage.module.css";
 
 import { useTranslation } from "react-i18next";
+import { safeLocalStorage } from "../../../utils/storage";
 import { AppLogo } from "../../../components/ui";
 
 const EntryModePage: React.FC = () => {
@@ -18,8 +19,8 @@ const EntryModePage: React.FC = () => {
   const navigate = useNavigate();
   const { setMode } = useAppMode();
 
-  const [mobileIp, setMobileIp] = React.useState<string>(() => localStorage.getItem("tasks.sync.ip") ?? "192.168.1.107");
-  const [mobilePort, setMobilePort] = React.useState<string>(() => localStorage.getItem("tasks.sync.port") ?? "8787");
+  const [mobileIp, setMobileIp] = React.useState<string>(() => safeLocalStorage.getItem("tasks.sync.ip") ?? "192.168.1.107");
+  const [mobilePort, setMobilePort] = React.useState<string>(() => safeLocalStorage.getItem("tasks.sync.port") ?? "8787");
   const [syncStatus, setSyncStatus] = React.useState(getTaskSyncStatus());
 
   const pairingUrl = React.useMemo(() => {
@@ -46,8 +47,8 @@ const EntryModePage: React.FC = () => {
   const handleConnectMobile = React.useCallback(() => {
     if (!pairingUrl) return;
 
-    localStorage.setItem("tasks.sync.ip", mobileIp.trim());
-    localStorage.setItem("tasks.sync.port", mobilePort.replace(/\D+/g, "") || "8787");
+    safeLocalStorage.setItem("tasks.sync.ip", mobileIp.trim());
+    safeLocalStorage.setItem("tasks.sync.port", mobilePort.replace(/\D+/g, "") || "8787");
     connectTaskSync(pairingUrl);
   }, [mobileIp, mobilePort, pairingUrl]);
 

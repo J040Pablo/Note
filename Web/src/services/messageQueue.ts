@@ -2,6 +2,7 @@
  * Message Queue for offline handling
  * Persists messages locally and retries on reconnection
  */
+import { safeLocalStorage } from '../utils/storage';
 
 export interface QueuedMessage {
   id: string;
@@ -37,7 +38,7 @@ export class MessageQueue implements IMessageQueue {
 
   private loadFromStorage(): void {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY);
+      const stored = safeLocalStorage.getItem(STORAGE_KEY);
       if (stored) {
         this.messages = JSON.parse(stored);
       }
@@ -49,7 +50,7 @@ export class MessageQueue implements IMessageQueue {
 
   private saveToStorage(): void {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.messages));
+      safeLocalStorage.setItem(STORAGE_KEY, JSON.stringify(this.messages));
     } catch (error) {
       console.warn('[MessageQueue] Failed to save to storage', error);
     }
@@ -89,7 +90,7 @@ export class MessageQueue implements IMessageQueue {
 
   clear(): void {
     this.messages = [];
-    localStorage.removeItem(STORAGE_KEY);
+    safeLocalStorage.removeItem(STORAGE_KEY);
   }
 
   getAll(): QueuedMessage[] {

@@ -13,6 +13,7 @@ import {
 import { loadData, markSynced, saveData, type DataNote, type DataQuickNote, type DataFolder } from "./webData";
 import { migrateSingleImage } from "./imageMigration";
 import { getMetaRecord, setMetaRecord } from "./appMetaService.web";
+import { safeLocalStorage } from "../utils/storage";
 import type { TaskItem } from "../features/tasks/types";
 import { setSyncDataFromStoreData } from "../store/syncDataStore";
 
@@ -297,7 +298,7 @@ const handleEntityMessage = async (message: SyncIncomingMessage) => {
     case "DELETE_APP_META": {
       const current = getMetaRecord(message.payload.key, null as unknown);
       if (message.payload.updatedAt >= (current.updatedAt ?? 0)) {
-        localStorage.removeItem(message.payload.key);
+        safeLocalStorage.removeItem(message.payload.key);
         emit({ type: "APP_META_DELETE", key: message.payload.key });
       }
       break;

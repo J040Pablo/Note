@@ -31,6 +31,7 @@ import {
   reorderTasks as serviceReorderTasks
 } from "../../../services/tasksService.web";
 import { useSyncDataStore } from "../../../store/syncDataStore";
+import { safeLocalStorage } from "../../../utils/storage";
 import styles from "./TasksPage.module.css";
 
 const WEEKDAYS_EN = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
@@ -112,8 +113,8 @@ const TasksPage: React.FC = () => {
   const isMobileSync = mode === "mobile-sync";
 
   const tasks = useSyncDataStore((state) => state.tasks);
-  const [mobileIp, setMobileIp] = React.useState<string>(() => localStorage.getItem("tasks.sync.ip") ?? "192.168.1.107");
-  const [mobilePort, setMobilePort] = React.useState<string>(() => localStorage.getItem("tasks.sync.port") ?? "8787");
+  const [mobileIp, setMobileIp] = React.useState<string>(() => safeLocalStorage.getItem("tasks.sync.ip") ?? "192.168.1.107");
+  const [mobilePort, setMobilePort] = React.useState<string>(() => safeLocalStorage.getItem("tasks.sync.port") ?? "8787");
   const [syncStatus, setSyncStatus] = React.useState(getTaskSyncStatus());
   const [selectedDate, setSelectedDate] = React.useState<string>(toDateKey(new Date()));
   const [monthCursor, setMonthCursor] = React.useState<Date>(new Date());
@@ -354,8 +355,8 @@ const TasksPage: React.FC = () => {
                 className={styles.syncButton}
                 onClick={() => {
                   if (!pairingUrl) return;
-                  localStorage.setItem("tasks.sync.ip", mobileIp.trim());
-                  localStorage.setItem("tasks.sync.port", mobilePort.replace(/\D+/g, "") || "8787");
+                  safeLocalStorage.setItem("tasks.sync.ip", mobileIp.trim());
+                  safeLocalStorage.setItem("tasks.sync.port", mobilePort.replace(/\D+/g, "") || "8787");
                   connectTaskSync(pairingUrl);
                   window.setTimeout(() => {
                     requestTaskSync();

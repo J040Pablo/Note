@@ -10,6 +10,7 @@ import { subscribeSyncBridge } from "../../../services/syncBridge";
 import styles from "./SettingsPage.module.css";
 
 import { useTranslation } from "react-i18next";
+import { safeLocalStorage, safeSessionStorage } from "../../../utils/storage";
 
 const SettingsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -62,9 +63,9 @@ const SettingsPage: React.FC = () => {
       const data = await importBackupFile(file);
       
       // Save current state to sessionStorage as temporary safety fallback
-      const current = localStorage.getItem("note.web.data.v1");
+      const current = safeLocalStorage.getItem("note.web.data.v1");
       if (current) {
-        sessionStorage.setItem("note.web.data.v1.undo", current);
+        safeSessionStorage.setItem("note.web.data.v1.undo", current);
       }
 
       importCompleteStore(data);

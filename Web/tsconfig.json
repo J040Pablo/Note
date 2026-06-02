@@ -20,7 +20,8 @@
       "@hooks/*": ["hooks/*"],
       "@styles/*": ["styles/*"],
       "@types/*": ["types/*"]
-    }
+    },
+    "types": ["vite/client"]
   },
   "include": ["src", "index.html"],
   "exclude": ["node_modules", "dist"]

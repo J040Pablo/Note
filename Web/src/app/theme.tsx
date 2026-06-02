@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from "react";
+import { safeLocalStorage } from "../utils/storage";
 
 type Theme = "light" | "dark";
 
@@ -15,7 +16,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [theme, setThemeState] = useState<Theme>("light");
 
   useEffect(() => {
-    const savedTheme = localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
+    const savedTheme = safeLocalStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
     if (savedTheme === "light" || savedTheme === "dark") {
       setThemeState(savedTheme);
     }
@@ -27,7 +28,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } else {
       document.body.classList.remove("dark");
     }
-    localStorage.setItem(THEME_STORAGE_KEY, theme);
+    safeLocalStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
   const toggleTheme = useCallback(() => {
