@@ -22,6 +22,7 @@ const EntryModePage: React.FC = () => {
   const [mobileIp, setMobileIp] = React.useState<string>(() => safeLocalStorage.getItem("tasks.sync.ip") ?? "192.168.1.107");
   const [mobilePort, setMobilePort] = React.useState<string>(() => safeLocalStorage.getItem("tasks.sync.port") ?? "8787");
   const [syncStatus, setSyncStatus] = React.useState(getTaskSyncStatus());
+  const [syncError, setSyncError] = React.useState<any>(null);
 
   const pairingUrl = React.useMemo(() => {
     const ip = mobileIp.trim();
@@ -32,7 +33,10 @@ const EntryModePage: React.FC = () => {
   }, [mobileIp, mobilePort]);
 
   React.useEffect(() => {
-    const unsubStatus = subscribeTaskSyncStatus(setSyncStatus);
+    const unsubStatus = subscribeTaskSyncStatus((s, e) => {
+      setSyncStatus(s);
+      setSyncError(e);
+    });
     return () => {
       unsubStatus();
     };
@@ -120,6 +124,9 @@ const EntryModePage: React.FC = () => {
                   <Link2 size={14} />
                   {t("pairingStatus", { status: t(syncStatus) })}
                 </p>
+                {syncStatus === "error" && syncError && (
+                  <p className={styles.errorLine}>{syncError.message}</p>
+                )}
               </div>
             </div>
 

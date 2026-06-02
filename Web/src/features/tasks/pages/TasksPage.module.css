@@ -401,3 +401,13 @@
     align-items: flex-start;
   }
 }
+
+.syncErrorBanner {
+  background: #FEE2E2;
+  color: #DC2626;
+  border: 1px solid #F87171;
+  padding: 10px 14px;
+  border-radius: 12px;
+  margin: 12px 0;
+  font-size: 0.95rem;
+}

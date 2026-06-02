@@ -127,10 +127,15 @@ export type TaskSyncEvent = {
   timestamp: number;
 };
 
-type SyncStatus = "disconnected" | "connecting" | "connected";
+type SyncStatus = "disconnected" | "connecting" | "connected" | "error";
+
+export type SyncError = {
+  code: "MIXED_CONTENT" | "TIMEOUT" | "REFUSED" | "INVALID_URL" | "SECURE_REQUIRED" | "UNKNOWN";
+  message: string;
+};
 
 type MessageListener = (message: SyncIncomingMessage) => void;
-type StatusListener = (status: SyncStatus) => void;
+type StatusListener = (status: SyncStatus, error?: SyncError | null) => void;
 
 type ReliableMessage = {
   id: string;
@@ -150,10 +155,12 @@ type PendingMessageState = {
 
 let socket: WebSocket | null = null;
 let status: SyncStatus = "disconnected";
+let lastError: SyncError | null = null;
 let activeUrl = "";
 let shouldReconnect = false;
 let reconnectAttempts = 0;
 let reconnectTimer: number | null = null;
+let connectionTimeoutTimer: number | null = null;
 
 // Message queue for offline support + retry
 const messageQueue = new MessageQueue();
@@ -197,9 +204,10 @@ const logSyncDebug = (...args: unknown[]) => {
 const messageListeners = new Set<MessageListener>();
 const statusListeners = new Set<StatusListener>();
 
-const emitStatus = (nextStatus: SyncStatus) => {
+const emitStatus = (nextStatus: SyncStatus, error: SyncError | null = null) => {
   status = nextStatus;
-  statusListeners.forEach((listener) => listener(status));
+  lastError = error;
+  statusListeners.forEach((listener) => listener(status, error));
 };
 
 const emitMessage = (message: SyncIncomingMessage) => {
@@ -693,6 +701,27 @@ export const connectTaskSync = (url: string) => {
   const normalizedUrl = url.trim();
   if (!normalizedUrl) return;
 
+  const isSecurePage = window.location.protocol === "https:";
+  const isWebsocketSecure = normalizedUrl.startsWith("wss://");
+  
+  // Mixed Content Diagnostics
+  console.log("[SYNC][DIAGNOSTICS]", {
+    protocol: window.location.protocol,
+    websocketUrl: normalizedUrl,
+    isSecureContext: window.isSecureContext,
+    isSecurePage,
+    isWebsocketSecure
+  });
+
+  if (isSecurePage && !isWebsocketSecure) {
+    console.warn("[SYNC][SECURITY] Blocked insecure ws:// connection from https:// origin.");
+    emitStatus("error", {
+      code: "MIXED_CONTENT",
+      message: "Secure browsers cannot connect to insecure ws:// servers from HTTPS pages. Run the web app locally or enable WSS."
+    });
+    return;
+  }
+
   shouldReconnect = true;
   clearReconnectTimer();
 
@@ -708,9 +737,32 @@ export const connectTaskSync = (url: string) => {
   activeUrl = normalizedUrl;
   emitStatus("connecting");
 
-  socket = new WebSocket(normalizedUrl);
+  try {
+    socket = new WebSocket(normalizedUrl);
+    
+    // Connection timeout filter
+    if (connectionTimeoutTimer) window.clearTimeout(connectionTimeoutTimer);
+    connectionTimeoutTimer = window.setTimeout(() => {
+      if (status === "connecting") {
+        console.warn("[SYNC][TIMEOUT] Connection attempt timed out");
+        socket?.close();
+        emitStatus("error", {
+          code: "TIMEOUT",
+          message: "Connection timed out. Check if the IP and port are correct and reachable."
+        });
+      }
+    }, 10000);
+  } catch (error) {
+    console.error("[SYNC][ERROR] Failed to initialize WebSocket", error);
+    emitStatus("error", {
+      code: "INVALID_URL",
+      message: "Invalid WebSocket URL or restricted protocol."
+    });
+    return;
+  }
 
   socket.onopen = () => {
+    if (connectionTimeoutTimer) window.clearTimeout(connectionTimeoutTimer);
     reconnectAttempts = 0;
     emitStatus("connected");
     console.log("[SYNC][CONNECT] Web connected");
@@ -797,34 +849,74 @@ export const connectTaskSync = (url: string) => {
     }, delay);
   };
 
-  socket.onerror = () => {
-    console.log("[SYNC][ERROR]", "-", "WebSocket error");
-    emitStatus("disconnected");
-    scheduleReconnect();
+  socket.onerror = (event) => {
+    if (connectionTimeoutTimer) window.clearTimeout(connectionTimeoutTimer);
+    console.error("[SYNC][WS_ERROR]", event);
+    
+    // Most browsers don't give detailed error info for security reasons,
+    // but we can infer Mixed Content or Refused based on state.
+    if (isSecurePage && !isWebsocketSecure) {
+       emitStatus("error", {
+         code: "MIXED_CONTENT",
+         message: "Mixed Content: Insecure WebSocket blocked by browser safety."
+       });
+    } else {
+       emitStatus("error", {
+         code: "REFUSED",
+         message: "Connection refused. Ensure the mobile server is running and on the same network."
+       });
+    }
   };
 
-  socket.onclose = () => {
+  socket.onclose = (event) => {
+    if (connectionTimeoutTimer) window.clearTimeout(connectionTimeoutTimer);
     stopAckRetryLoop();
-    socket = null;
-    emitStatus("disconnected");
-    scheduleReconnect();
+    
+    if (status !== "error") {
+      emitStatus("disconnected");
+    }
+
+    console.log("[SYNC][CLOSE]", event.code, event.reason);
+    
+    if (event.code === 1006 && status !== "error") {
+       // Abnormal closure often means unreachable or refused
+       emitStatus("error", {
+         code: "REFUSED",
+         message: "Connection closed unexpectedly (1006). Is the IP correct?"
+       });
+    }
+
+    if (shouldReconnect) {
+      scheduleReconnect();
+    }
   };
 };
 
 export const disconnectTaskSync = () => {
   shouldReconnect = false;
-  reconnectAttempts = 0;
+  activeUrl = "";
   clearReconnectTimer();
-  stopAckRetryLoop();
+  if (connectionTimeoutTimer) window.clearTimeout(connectionTimeoutTimer);
+
   if (socket) {
     socket.close();
     socket = null;
   }
-  activeUrl = "";
+
   emitStatus("disconnected");
 };
 
 export const getTaskSyncStatus = (): SyncStatus => status;
+
+export const getTaskSyncError = (): SyncError | null => lastError;
+
+export const subscribeTaskSyncStatus = (listener: StatusListener) => {
+  statusListeners.add(listener);
+  listener(status, lastError);
+  return () => {
+    statusListeners.delete(listener);
+  };
+};
 
 export const requestTaskSync = (): boolean => {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -836,12 +928,6 @@ export const requestTaskSync = (): boolean => {
 export const subscribeTaskSyncMessages = (listener: MessageListener) => {
   messageListeners.add(listener);
   return () => { messageListeners.delete(listener); };
-};
-
-export const subscribeTaskSyncStatus = (listener: StatusListener) => {
-  statusListeners.add(listener);
-  listener(status);
-  return () => { statusListeners.delete(listener); };
 };
 
 export const dispatchTaskSyncEvent = (event: Omit<TaskSyncEvent, "timestamp">) => {

@@ -1034,7 +1034,7 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
       return null;
     }
 
-    const instance = new WebsocketServerCtor(ipAddress, port);
+    const instance = new WebsocketServerCtor("0.0.0.0", port);
     instance.on("connection", (socket: SocketClient) => {
       const socketId = getSocketId(socket);
       clients.set(socketId, socket);

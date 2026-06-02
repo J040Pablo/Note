@@ -116,6 +116,7 @@ const TasksPage: React.FC = () => {
   const [mobileIp, setMobileIp] = React.useState<string>(() => safeLocalStorage.getItem("tasks.sync.ip") ?? "192.168.1.107");
   const [mobilePort, setMobilePort] = React.useState<string>(() => safeLocalStorage.getItem("tasks.sync.port") ?? "8787");
   const [syncStatus, setSyncStatus] = React.useState(getTaskSyncStatus());
+  const [syncError, setSyncError] = React.useState<any>(null);
   const [selectedDate, setSelectedDate] = React.useState<string>(toDateKey(new Date()));
   const [monthCursor, setMonthCursor] = React.useState<Date>(new Date());
   const [filters, setFilters] = React.useState<TaskFilters>(defaultFilters);
@@ -169,7 +170,10 @@ const TasksPage: React.FC = () => {
   }, [isMobileSync]);
 
   React.useEffect(() => {
-    return subscribeTaskSyncStatus(setSyncStatus);
+    return subscribeTaskSyncStatus((s, e) => {
+      setSyncStatus(s);
+      setSyncError(e);
+    });
   }, []);
 
   React.useEffect(() => {
@@ -363,11 +367,16 @@ const TasksPage: React.FC = () => {
                   }, 200);
                 }}
               >
-                {syncStatus === "connected" ? t("connected") : syncStatus === "connecting" ? t("connecting") : t("connect")}
+                {syncStatus === "connected" ? t("connected") : syncStatus === "connecting" ? t("connecting") : syncStatus === "error" ? t("error") : t("connect")}
               </button>
             </div>
           ) : (
             <div className={styles.standaloneBadge}>{t("standaloneMode")}</div>
+          )}
+          {isMobileSync && syncStatus === "error" && syncError && (
+             <div className={styles.syncErrorBanner}>
+               <strong>{t("connectionFailed")}:</strong> {syncError.message}
+             </div>
           )}
           <TaskFiltersPanel
             value={filters}
