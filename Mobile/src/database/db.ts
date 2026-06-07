@@ -155,7 +155,6 @@ const ensureInitialized = async (db: SQLite.SQLiteDatabase): Promise<void> => {
     initializationPromise = (async () => {
       await initializeDb(db);
       initialized = true;
-      log("[db] initialization completed");
     })();
 
     initializationPromise.catch((error) => {

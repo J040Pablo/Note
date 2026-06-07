@@ -42,11 +42,6 @@ Notifications.setNotificationHandler({
   }),
 });
 
-const logNotificationsUnavailableOnce = () => {
-  if (hasLoggedNotificationsUnavailable || !shouldLogDev || notificationsAvailable) return;
-  hasLoggedNotificationsUnavailable = true;
-  log('[Notifications] Local notifications are only available in development builds.');
-};
 
 const buildTriggerDate = (scheduledDate: string, scheduledTime: string): Date | null => {
   const [year, month, day] = scheduledDate.split('-').map(Number);
@@ -100,7 +95,6 @@ const buildTimeIntervalTrigger = (seconds: number): NotificationTriggerInput => 
 
 const scheduleTaskNotificationsInternal = async (task: Task): Promise<string[]> => {
   if (!notificationsAvailable) {
-    logNotificationsUnavailableOnce();
     return [];
   }
 
@@ -156,7 +150,6 @@ export const addNotificationResponseListener = (
   callback: (response: NotificationResponse) => void
 ): Subscription | { remove: () => void } => {
   if (!notificationsAvailable) {
-    logNotificationsUnavailableOnce();
     return noopSubscription;
   }
 
@@ -165,7 +158,6 @@ export const addNotificationResponseListener = (
 
 export const requestNotificationPermission = async (): Promise<boolean> => {
   if (!notificationsAvailable) {
-    logNotificationsUnavailableOnce();
     return false;
   }
 
@@ -423,16 +415,6 @@ export const logScheduledNotificationsDetailed = async (): Promise<void> => {
   try {
     const scheduled = await Notifications.getAllScheduledNotificationsAsync();
 
-    if (shouldLogDev) {
-      log(`[NOTIF][LOG] Total scheduled notifications: ${scheduled.length}`);
-
-      scheduled.forEach((notification, index) => {
-        const taskId = getTaskIdFromNotification(notification);
-        log(
-          `[NOTIF][LOG] [${index}] id=${notification.identifier} taskId=${taskId || 'none'} trigger=${JSON.stringify(notification.trigger)}`
-        );
-      });
-    }
   } catch (error) {
     logError('[NOTIF][LOG] Error logging scheduled notifications:', error);
   }

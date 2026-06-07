@@ -11,12 +11,14 @@ import LinkModal from "@components/LinkModal";
 import { useLinkHandler } from "@hooks/useLinkHandler";
 import { useInternalSearch } from "@hooks/useInternalSearch";
 import { stringToLink } from "@utils/linkUtils";
+import { pickAndSaveImage, uriToBase64 } from "@services/imageService";
 
 interface QuickRichTextEditorProps {
   value: string;
-  onChangeText: (html: string) => void;
+  onChangeText?: (html: string) => void;
   placeholder?: string;
   onBlockChange?: (payload: { blockId: string; html: string }) => void;
+  readOnly?: boolean;
 }
 
 type EditorMessage =
@@ -77,17 +79,61 @@ const textBlockToHtml = (block: NoteTextBlock): string => {
 const richBlocksToHtmlFragment = (blocks: NoteTextBlock[]): string =>
   blocks.map((block) => textBlockToHtml(block)).join("");
 
+/**
+ * Global cache for base64 converted images to avoid redundant FS operations.
+ */
+const imageCache = new Map<string, string>();
+
+/**
+ * Prepares HTML for preview by converting local file:// images to base64.
+ * This is used exclusively for rendering in the WebView and does not affect persisted data.
+ */
+async function prepareHtmlForPreview(html: string): Promise<string> {
+  if (!html || !html.includes('file://')) return html;
+
+  const imgRegex = /<img([^>]*)src="(file:\/\/[^"]+)"([^>]*)>/g;
+  const matches = [...html.matchAll(imgRegex)];
+  if (matches.length === 0) return html;
+
+  let result = html;
+  for (const match of matches) {
+    const [fullTag, before, fileUri, after] = match;
+    try {
+      let base64Data = imageCache.get(fileUri);
+      
+      if (!base64Data) {
+        base64Data = await uriToBase64(fileUri) || "";
+        if (base64Data) {
+          imageCache.set(fileUri, base64Data);
+        }
+      }
+
+      if (base64Data) {
+        // Replace with base64 and keep the original URI in data-file-uri
+        const newTag = `<img${before}src="${base64Data}" data-file-uri="${fileUri}"${after}>`;
+        result = result.replace(fullTag, newTag);
+      }
+      } catch (err) {
+        // no-op
+      }
+  }
+  return result;
+}
+
 const QuickRichTextEditor = memo(function QuickRichTextEditor({
   value,
   onChangeText,
   placeholder = "Write something...",
-  onBlockChange
+  onBlockChange,
+  readOnly = false
 }: QuickRichTextEditorProps) {
   const { theme } = useTheme();
   const webViewRef = useRef<WebView>(null);
   const initialHtmlRef = useRef<string>(toInitialHtml(value));
   const lastSentHtmlRef = useRef<string>(initialHtmlRef.current);
   const isEditorReadyRef = useRef(false);
+  const [isReady, setIsReady] = useState(false);
+  const hasInjectedImagesRef = useRef(false);
   const [hasSelection, setHasSelection] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
@@ -125,8 +171,6 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
   // Link integration
   const { linkModalVisible, openLinkModal, closeLinkModal, insertExternalLink, insertInternalLink, handleLinkPress } = useLinkHandler((html: string) => {
     onInsertLink(html);
-    // After link is inserted via modal, we need to close it
-    // This will be handled in onMessage when shouldOpenModal is false
   });
   const { searchInternalItems } = useInternalSearch();
 
@@ -179,10 +223,19 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
       a:active {
         opacity: 0.7;
       }
+
+      img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 12px;
+        margin-top: 8px;
+        margin-bottom: 8px;
+        display: block;
+      }
     </style>
   </head>
   <body>
-    <div id="editor" contenteditable="true" data-placeholder=${safePlaceholder}></div>
+    <div id="editor" contenteditable="${!readOnly}" data-placeholder=${safePlaceholder}></div>
     <script>
       const post = (payload) => {
         window.ReactNativeWebView?.postMessage(JSON.stringify(payload));
@@ -191,8 +244,19 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
       const editor = document.getElementById('editor');
       editor.innerHTML = ${initial};
 
+      let lastEmittedHtml = '';
+      let emitTimer = null;
+
       const emitContent = () => {
-        post({ type: 'content', html: editor.innerHTML });
+        const html = editor.innerHTML;
+        if (html === lastEmittedHtml) return;
+        lastEmittedHtml = html;
+        post({ type: 'content', html });
+      };
+
+      const scheduleEmit = () => {
+        clearTimeout(emitTimer);
+        emitTimer = setTimeout(emitContent, 300);
       };
 
       const emitSelection = () => {
@@ -269,6 +333,46 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
           emitContent();
           emitSelection();
         },
+        insertImageAtCursor(dataUri, fileUri) {
+          const img = document.createElement('img');
+          img.src = dataUri;
+          if (fileUri) img.setAttribute('data-file-uri', fileUri);
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+          img.style.display = 'block';
+          img.style.marginTop = '12px';
+          img.style.marginBottom = '12px';
+          img.style.borderRadius = '12px';
+          img.setAttribute('contenteditable', 'false');
+
+          const sel = window.getSelection();
+          if (!sel || sel.rangeCount === 0) {
+            editor.appendChild(img);
+          } else {
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(img);
+          }
+
+          const p = document.createElement('p');
+          p.innerHTML = '<br>';
+          if (img.nextSibling) {
+            img.parentNode.insertBefore(p, img.nextSibling);
+          } else {
+            img.parentNode.appendChild(p);
+          }
+
+          const newRange = document.createRange();
+          newRange.setStart(p, 0);
+          newRange.collapse(true);
+          const s = window.getSelection();
+          s.removeAllRanges();
+          s.addRange(newRange);
+
+          editor.focus();
+          emitContent();
+          emitSelection();
+        },
         bold() { document.execCommand('bold'); collapseSelectionToEnd(); emitContent(); emitSelection(); editor.focus(); },
         italic() { document.execCommand('italic'); collapseSelectionToEnd(); emitContent(); emitSelection(); editor.focus(); },
         underline() { document.execCommand('underline'); collapseSelectionToEnd(); emitContent(); emitSelection(); editor.focus(); },
@@ -277,7 +381,7 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
         fontSize(px) { applyToSelection({ fontSize: px + 'px' }); editor.focus(); }
       };
 
-      editor.addEventListener('input', emitContent);
+      editor.addEventListener('input', scheduleEmit);
       editor.addEventListener('paste', (event) => {
         const clipboard = event.clipboardData;
         if (!clipboard) return;
@@ -300,29 +404,52 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
     </script>
   </body>
 </html>`;
-  }, [placeholder, theme.colors.background, theme.colors.textPrimary, theme.colors.textSecondary]);
+  }, [placeholder, theme.colors.background, theme.colors.textPrimary, theme.colors.textSecondary, readOnly]);
 
+  // One-time image conversion: after WebView is ready, convert file:// to base64
   useEffect(() => {
-    if (!isEditorReadyRef.current) {
-      const nextHtml = toInitialHtml(value);
-      initialHtmlRef.current = nextHtml;
-      lastSentHtmlRef.current = nextHtml;
+    if (!isReady || hasInjectedImagesRef.current) return;
+    
+    const html = initialHtmlRef.current;
+    if (!html || !html.includes('file://')) {
+      hasInjectedImagesRef.current = true;
       return;
     }
 
-    // Keep raw value once editor is live to preserve caret/selection.
-    const nextHtml = typeof value === "string" ? value : "";
-
-    if (nextHtml === lastSentHtmlRef.current) return;
-
-    lastSentHtmlRef.current = nextHtml;
-    webViewRef.current?.injectJavaScript(
-      `window.__quickEditor && window.__quickEditor.setHtml(${JSON.stringify(nextHtml)}); true;`
-    );
-  }, [value]);
+    hasInjectedImagesRef.current = true;
+    
+    (async () => {
+      const converted = await prepareHtmlForPreview(html);
+      if (converted !== html && webViewRef.current) {
+        lastSentHtmlRef.current = converted;
+        webViewRef.current.injectJavaScript(
+          `window.__quickEditor && window.__quickEditor.setHtml(${JSON.stringify(converted)}); true;`
+        );
+      }
+    })();
+  }, [isReady]);
 
   const sendCommand = useCallback((command: string) => {
     webViewRef.current?.injectJavaScript(`window.__quickEditor && ${command}; true;`);
+  }, []);
+
+  const handlePickImage = useCallback(async () => {
+    try {
+      const fileUri = await pickAndSaveImage("quick-note");
+      if (!fileUri) return;
+
+      const dataUri = await uriToBase64(fileUri);
+      if (!dataUri) return;
+
+      const safeDataUri = JSON.stringify(dataUri);
+      const safeFileUri = JSON.stringify(fileUri);
+
+      webViewRef.current?.injectJavaScript(
+        `window.__quickEditor && window.__quickEditor.insertImageAtCursor(${safeDataUri}, ${safeFileUri}); true;`
+      );
+    } catch (error) {
+      console.error("[QuickRichTextEditor] Image insertion failed", error);
+    }
   }, []);
 
   const toggleColorPicker = useCallback(() => {
@@ -426,11 +553,15 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
 
         if (payload.type === "content") {
           isEditorReadyRef.current = true;
-          const html = (payload as EditorMessage & { html?: string }).html ?? "";
+          setIsReady(true);
+          // Strip base64 back to file:// for persistence using data-file-uri
+          const rawHtml = (payload as EditorMessage & { html?: string }).html ?? "";
+          const html = rawHtml.replace(/<img([^>]*)src="data:image\/[^;]+;base64,[^"]+"([^>]*)data-file-uri="(file:\/\/[^"]+)"([^>]*)>/g, '<img$1src="$3"$2$4>');
+
           if (html === lastSentHtmlRef.current) return;
           lastSentHtmlRef.current = html;
           onBlockChange?.({ blockId: "quick-root-block", html });
-          onChangeText(html);
+          onChangeText?.(html);
         }
       } catch {
         // no-op
@@ -441,7 +572,7 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
 
   return (
     <View style={styles.root}>
-      {toolbarVisible && (
+      {!readOnly && toolbarVisible && (
         <View style={styles.toolbarStack}>
           <View style={[styles.toolbar, { borderColor: theme.colors.border, backgroundColor: theme.colors.surfaceElevated }]}> 
             <Pressable style={styles.toolButton} onPress={() => sendCommand("window.__quickEditor.bold()")}> 
@@ -501,6 +632,15 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
             >
               <Ionicons name="link" size={14} color={theme.colors.primary} />
             </Pressable>
+
+            <View style={styles.divider} />
+
+            <Pressable
+              style={[styles.toolButton]}
+              onPress={handlePickImage}
+            >
+              <Ionicons name="image-outline" size={18} color={theme.colors.primary} />
+            </Pressable>
           </View>
 
           {isColorPickerOpen && (
@@ -557,13 +697,15 @@ const QuickRichTextEditor = memo(function QuickRichTextEditor({
           originWhitelist={["*"]}
           source={{ html: htmlDoc }}
           onMessage={onMessage}
-          hideKeyboardAccessoryView
-          keyboardDisplayRequiresUserAction={false}
-          style={styles.webview}
-          javaScriptEnabled
-          domStorageEnabled
-          scrollEnabled
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+          allowFileAccess={true}
+          mixedContentMode="always"
+          style={[styles.webview, { backgroundColor: theme.colors.background }]}
+          scrollEnabled={true}
           overScrollMode="never"
+          bounces={false}
+          textInteractionEnabled={!readOnly}
           injectedJavaScriptBeforeContentLoaded={`
             document.addEventListener('click', function(e) {
               const link = e.target.closest('a');

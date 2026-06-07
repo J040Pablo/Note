@@ -168,7 +168,6 @@ const createMessageId = (): string => `${Date.now()}-${Math.random().toString(36
 
 const logSyncDebug = (...args: unknown[]) => {
   if (!shouldLogDev) return;
-  log(...args);
 };
 
 const normalizeOptionalString = (value: unknown): string | null => {
@@ -302,7 +301,6 @@ const sendToClient = (socket: SocketClient, message: unknown) => {
     if (normalized && typeof normalized === "object") {
       const type = String((normalized as { type?: string }).type ?? "UNKNOWN");
       const id = String((normalized as { id?: string }).id ?? "-");
-      log("[SYNC][SEND]", id, type);
     }
 
     socket.send(JSON.stringify(normalized));
@@ -388,7 +386,6 @@ const sendAck = (
       status,
     },
   });
-  log("[SYNC][ACK]", messageId, status);
 };
 
 const hasOwn = (value: unknown, key: string): boolean =>
@@ -514,7 +511,6 @@ export const waitForFullSync = async (): Promise<void> => {
 };
 
 const sendInitialData = async (socket: SocketClient) => {
-  log("[SYNC] Fetching data...");
 
   const notes = await getAllNotes().catch((e) => {
     logError("[SYNC ERROR notes]", e);
@@ -531,13 +527,6 @@ const sendInitialData = async (socket: SocketClient) => {
   const folders = await getAllFolders().catch((e) => {
     logError("[SYNC ERROR folders]", e);
     return [];
-  });
-
-  log("[SYNC] Data fetched", {
-    notes: notes.length,
-    quickNotes: quickNotes.length,
-    tasks: tasks.length,
-    folders: folders.length,
   });
 
   // Ensure notes/quickNotes do not contain local-only file:// URIs when sent over the wire.
@@ -616,9 +605,7 @@ const sendInitialData = async (socket: SocketClient) => {
     pendingFullSyncIds.add(message.id);
   }
 
-  log("[SYNC] SENDING FULL_SYNC");
   sendToClient(socket, message);
-  log("[SYNC] FULL_SYNC SENT");
   // Resolve any waiters
   if (fullSyncResolvers.length > 0) {
     fullSyncResolvers.forEach((fn) => {
@@ -687,7 +674,6 @@ const handleTaskToggle = async (payload: Extract<SyncIncomingMessage, { type: "T
       ? payload.date
       : toDateKey(new Date());
 
-  log("[MOBILE][TOGGLE_APPLY]", { taskId: id, date: dateKey });
   await toggleTaskForDate(existing, dateKey, origin);
 };
 
@@ -764,7 +750,6 @@ const handleIncomingMessage = async (socket: SocketClient, message: SyncIncoming
     const syncId = String(message.payload?.id ?? "").trim();
     if (syncId) {
       pendingFullSyncIds.delete(syncId);
-      log("[SYNC][ACK]", syncId, "FULL_SYNC");
     }
     return;
   }
@@ -1017,7 +1002,6 @@ export const startTaskSyncServer = async (port = DEFAULT_SYNC_PORT): Promise<{ u
     if (isExpoGo) {
       if (!hasLoggedExpoGoWsUnsupported && shouldLogDev) {
         hasLoggedExpoGoWsUnsupported = true;
-        log("[sync] Disabled in Expo Go. Local WebSocket server requires a development build.");
       }
       return null;
     }

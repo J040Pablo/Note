@@ -6,9 +6,6 @@ import { log, warn, error as logError } from '@utils/logger';
 export const useTaskSyncServer = () => {
   useEffect(() => {
     if (isExpoGo) {
-      if (shouldLogDev) {
-        log("[sync] Skipping local WebSocket server in Expo Go.");
-      }
       return;
     }
 
@@ -17,12 +14,8 @@ export const useTaskSyncServer = () => {
     startTaskSyncServer()
       .then((result) => {
         if (!mounted || !result?.url) return;
-        if (shouldLogDev) {
-          log(`[sync] connect web client at ${result.url}`);
-        }
       })
       .catch((error) => {
-        warn("[sync] failed to start", error);
       });
 
     return () => {

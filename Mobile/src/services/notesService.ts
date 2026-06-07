@@ -86,7 +86,6 @@ export const createNote = async (
     updatedAt,
   });
 
-  log("[DB][UPSERT]", id);
 
   const created: Note = {
     id,

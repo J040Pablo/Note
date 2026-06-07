@@ -129,7 +129,6 @@ const FolderDetailScreen: React.FC = () => {
   const folderId = route.params?.folderId ?? null;
   const routeTrail = route.params?.trail;
 
-  log("Current route:", route.name, route.params);
 
   const folders = useAppStore((s) => s.folders);
   const upsertFolder = useAppStore((s) => s.upsertFolder);

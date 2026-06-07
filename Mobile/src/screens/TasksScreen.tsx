@@ -512,9 +512,7 @@ const TasksScreen: React.FC = () => {
     if (!__DEV__) return;
 
     try {
-      log("[NOTIF][SCHEDULE] DEV validation started");
-      const testId = await scheduleTestNotification();
-      log(`[NOTIF][SCHEDULE] Test notification id=${String(testId)}`);
+      await scheduleTestNotification();
 
       const now = new Date();
       const plus15 = new Date(now.getTime() + 15 * 60 * 1000);
@@ -526,12 +524,8 @@ const TasksScreen: React.FC = () => {
         reminders: ["AT_TIME", "10_MIN_BEFORE", "1_HOUR_BEFORE"]
       });
 
-      log(
-        `[NOTIF][SCHEDULE] DEV task created id=${testTask.id} notificationIds=${JSON.stringify(testTask.notificationIds ?? [])}`
-      );
 
-      const allScheduled = await getScheduledNotifications();
-      log(`[NOTIF][SCHEDULE] Total scheduled after DEV validation: ${allScheduled.length}`);
+      await getScheduledNotifications();
       await logScheduledNotificationsDetailed();
       upsertTask(testTask);
       showToast("DEV notif validation triggered");
@@ -1552,7 +1546,6 @@ const TasksScreen: React.FC = () => {
                   
                   taskSubmittingRef.current = true;
                   setTaskSubmitting(true);
-                  log("[task] Creating task:", trimmedText);
                   
                   try {
                     const dateForTask = repeatDays.length ? null : scheduledDate || null;
@@ -1562,12 +1555,10 @@ const TasksScreen: React.FC = () => {
                     if (dateForTask && timeForTask && reminders.length > 0) {
                       if (areNotificationsAvailable()) {
                         const granted = await requestNotificationPermission();
-                        log(`[NOTIF][TasksScreen] Permission preflight: ${granted ? "granted" : "denied"}`);
                         if (!granted) {
                           showToast("Permissão de notificação negada", "error");
                         }
                       } else {
-                        warn("[NOTIF][TasksScreen] Notifications unavailable (Expo Go or unsupported runtime)");
                       }
                     }
                     
@@ -1581,9 +1572,6 @@ const TasksScreen: React.FC = () => {
                         repeatDays,
                         reminders
                       });
-                      log(
-                        `[NOTIF][TasksScreen] Updated task=${updated.id} scheduledIds=${updated.notificationIds?.length ?? 0}`
-                      );
                       upsertTask(updated);
 
                       // Update subtasks
@@ -1631,10 +1619,6 @@ const TasksScreen: React.FC = () => {
                         repeatDays,
                         reminders
                       });
-                      log("[task] Task created successfully:", created.id);
-                      log(
-                        `[NOTIF][TasksScreen] Created task=${created.id} scheduledIds=${created.notificationIds?.length ?? 0}`
-                      );
                       upsertTask(created);
 
                       // Create subtasks linked to parent

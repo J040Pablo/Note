@@ -57,7 +57,6 @@ export const connectTaskSyncClient = (url: string): Promise<void> => {
     ws.onmessage = (event) => {
       const incoming = safeParse(String(event.data));
       if (!incoming) return;
-      log("[sync-client] message", incoming.type);
     };
 
     ws.onerror = () => {
